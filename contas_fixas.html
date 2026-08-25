@@ -1,0 +1,1236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Contas fixas</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+/* Mesmas colunas do Dashboard Financeiro manual. A linha carrega SÓ estes
+   valores: tudo que é contexto (regra, vínculo, categoria, vencimento) vive no
+   painel de detalhe, senão a tabela deixa de ser legível de relance. */
+.colunas { display: grid; grid-template-columns: 22px 1fr 128px 112px 106px 120px 100px 158px 50px; gap: 10px; align-items: center; }
+
+.cabec { padding: 0 10px 10px; color: var(--text-3); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.cabec .c { text-align: center; }
+
+.fixa { padding: 9px 10px; border-bottom: 1px solid var(--line); }
+.fixa:last-child { border-bottom: 0; }
+.fixa:hover { background: var(--surface-2); }
+.fixa .nome { font-size: 14px; font-weight: 650; letter-spacing: .02em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Triângulo de abrir/fechar, como no dashboard: é o único jeito óbvio de saber
+   que a linha expande — e de fechá-la depois. */
+.seta { width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 7px; display: grid; place-items: center; font-size: 9px; color: var(--text-2); transition: transform .12s; }
+.seta.aberta { transform: rotate(90deg); color: var(--azul); }
+
+.acoes-cel { display: flex; gap: 2px; justify-content: flex-end; }
+/* Discreto, mas nunca invisível: escondido atrás de :hover, o menu simplesmente
+   não existia para quem procurava por ele. */
+.acoes-cel .icone { width: 22px; min-height: 22px; opacity: .4; }
+.fixa:hover .acoes-cel .icone, .acoes-cel .icone:focus-visible { opacity: 1; }
+.acoes-cel .info { border: 1px solid var(--line-forte); border-radius: 50%; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+.acoes-cel .info:hover { border-color: var(--azul); color: var(--azul); background: rgba(74,149,234,.10); }
+
+/* Caixa de valor bruto: editável, como no dashboard manual. */
+.bruto { width: 100%; text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; padding: 6px 9px 6px 3px; border: 0; background: transparent; }
+.bruto.auto { color: var(--text-2); }
+.dinheiro-input { display: flex; align-items: center; width: 100%; min-height: 31px; border: 1px solid var(--line-forte); border-radius: 8px; background: var(--surface-2); overflow: hidden; }
+.dinheiro-input:focus-within { border-color: var(--azul); box-shadow: 0 0 0 2px rgba(74,149,234,.10); }
+.dinheiro-input > span { padding-left: 9px; color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.dinheiro-input input { flex:1; min-width:0; border:0; border-radius:0; outline:0; background:transparent; box-shadow:none; }
+.dinheiro-input input:focus { border:0; outline:0; box-shadow:none; }
+.colunas > .dinheiro-input, .sub-linha .dinheiro-input { justify-content: center; gap: 5px; }
+.colunas > .dinheiro-input > span, .sub-linha .dinheiro-input > span { padding-left: 0; }
+.colunas > .dinheiro-input input, .sub-linha .dinheiro-input input {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 5ch;
+  max-width: 9ch;
+  field-sizing: content;
+  text-align: left;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pilula { display: block; width: 100%; padding: 5px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; text-align: center; border: 1px solid var(--line-forte); background: var(--surface-2); color: var(--text-2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pilula.tag-pessoais { border-color: rgba(74,149,234,.42); background: rgba(74,149,234,.12); color: #8dbdf3; }
+.pilula.tag-empresa { border-color: rgba(63,191,127,.42); background: rgba(63,191,127,.12); color: #7fd8a8; }
+.pilula.informativa { border-color:rgba(141,158,178,.35); background:var(--surface-2); color:var(--text-3); }
+.fixa.informativa .nome::after { content:"Informativa"; display:inline-flex; margin-left:8px; padding:2px 6px; border:1px solid var(--line-forte); border-radius:999px; color:var(--text-3); font-size:9.5px; font-weight:650; text-transform:uppercase; letter-spacing:.04em; vertical-align:2px; }
+.pilula.desc { border-color: rgba(74,149,234,.30); background: rgba(74,149,234,.09); color: #8dbdf3; }
+.pilula.desc.zero { border-color: var(--line); background: none; color: var(--text-3); font-weight: 450; }
+.pilula.pago { border-color: rgba(63,191,127,.42); background: rgba(63,191,127,.12); color: #7fd8a8; }
+.pilula.pendente { border-color: rgba(232,149,74,.40); background: rgba(232,149,74,.10); color: #efb277; }
+
+.liquido { text-align: center; font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 650; color: var(--verde); }
+.liquido.nulo { color: var(--text-3); font-weight: 450; }
+
+select.forma { width: 100%; font-size: 13.5px; padding: 6px 8px; text-align: center; }
+select.forma.herdada { color: var(--text-2); }
+
+/* Subdescontos: uma pequena tabela centralizada, sem campos perdidos num
+   cartão muito largo. Cabeçalho, linhas e resumo compartilham o mesmo eixo. */
+.subs { margin: 10px 0 6px 32px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); overflow: hidden; }
+.subs-tit { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.subs-tit-texto { display: grid; gap: 2px; }
+.subs-tit strong { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-1); }
+.subs-tit small { color: var(--text-3); font-size: 11.5px; }
+.subs-tit-acoes { display: flex; align-items: center; gap: 6px; }
+.subs-corpo { width: min(920px, calc(100% - 32px)); margin: 14px auto 16px; }
+.sub-cabec, .sub-linha { display: grid; grid-template-columns: minmax(220px, 1fr) 140px 180px 30px; gap: 12px; align-items: center; }
+.sub-cabec { padding: 0 10px 7px; color: var(--text-3); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.sub-cabec span:nth-child(2), .sub-cabec span:nth-child(3) { text-align: center; }
+.sub-linhas { display: grid; gap: 7px; }
+.sub-linha { padding: 7px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.sub-linha:focus-within { border-color: rgba(74,149,234,.50); box-shadow: 0 0 0 2px rgba(74,149,234,.08); }
+.sub-linha input, .sub-linha select { min-height: 31px; font-size: 12.5px; padding: 6px 9px; background: var(--surface-2); }
+.sub-linha .dinheiro-input input { border: 0; background: transparent; text-align: right; padding-left: 3px; }
+.sub-linha .v { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.sub-remover { color: var(--text-3); }
+.sub-remover:hover { color: var(--vermelho); background: rgba(231,91,91,.10); }
+.sub-vazio { color: var(--text-3); font-size: 12.5px; padding: 18px; text-align: center; border: 1px dashed var(--line-forte); border-radius: 10px; }
+.sub-resumo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sub-resumo div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 11px; border-radius: 9px; background: var(--surface); color: var(--text-3); font-size: 11.5px; }
+.sub-resumo strong { color: var(--text-1); font-size: 13px; font-variant-numeric: tabular-nums; }
+.sub-resumo .destaque strong { color: var(--verde); }
+
+.modal-detalhe { width: min(980px, 100%); }
+.det { display: grid; grid-template-columns: 140px minmax(0, 1fr) 140px minmax(0, 1fr); gap: 10px 18px; padding: 6px 0; font-size: 13px; }
+.det dt { color: var(--text-3); white-space: nowrap; }
+.det dd { margin: 0; color: var(--text-1); overflow-wrap: anywhere; }
+.det .grupo { grid-column: 1 / -1; margin-top: 10px; padding: 14px 0 2px; border-top: 1px solid var(--line); color: var(--azul); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+.det .grupo:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+.previa { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); font-size: 12.5px; max-height: 168px; overflow: auto; }
+.previa .l { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; color: var(--text-2); }
+.previa .l span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+
+/* Cards de fatura portados do dashboard manual. Os valores exibidos vêm
+   integrais da Pluggy; os vínculos servem apenas para deduplicar o total. */
+.faturas-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.fatura-card { position: relative; min-height: 168px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, var(--surface), #171a1f); box-shadow: 0 14px 34px rgba(0,0,0,.18); overflow: visible; }
+.fatura-card.total { background: linear-gradient(145deg, rgba(74,149,234,.96), #182332); border-color: rgba(74,149,234,.55); }
+.fatura-card.banco { cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; }
+.fatura-card.banco:hover { transform: translateY(-2px); border-color: rgba(74,149,234,.34); box-shadow: 0 18px 42px rgba(0,0,0,.22); z-index: 8; }
+.fatura-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.fatura-rotulo { color: var(--text-3); font-size: 10.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.fatura-card.total .fatura-rotulo { color: rgba(255,255,255,.76); }
+.fatura-banco { padding: 4px 7px; border: 1px solid var(--line-forte); border-radius: 999px; color: var(--text-2); font-size: 10.5px; }
+.fatura-valor { margin: 15px 0 12px; font-size: clamp(24px, 2.1vw, 34px); font-weight: 750; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.fatura-barra { height: 6px; margin: 2px 0 12px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.fatura-barra span { display: block; height: 100%; border-radius: inherit; }
+.fatura-linhas { display: flex; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 11.5px; }
+.fatura-dica { margin-top: 10px; color: var(--text-3); font-size: 10.5px; }
+.fatura-card.total .fatura-dica { color: rgba(255,255,255,.70); }
+.card-modal-resumo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+.card-modal-resumo div { padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+.card-modal-resumo span { display: block; margin-bottom: 5px; color: var(--text-3); font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.card-modal-resumo strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.card-modal-lista { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; }
+.card-modal-cabec, .card-modal-linha { display: grid; grid-template-columns: minmax(0, 1fr) 220px 130px; gap: 16px; align-items: center; }
+.card-modal-cabec { padding: 9px 14px; background: var(--surface-2); color: var(--text-3); font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.card-modal-cabec span:last-child { text-align: right; }
+.card-modal-linha { padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.card-modal-linha:first-child { border-top: 0; }
+.card-modal-linha span:nth-child(2) { color: var(--text-3); }
+.card-modal-linha strong { text-align: right; font-variant-numeric: tabular-nums; }
+.card-modal-vazio { padding: 30px 16px; color: var(--text-3); text-align: center; font-size: 13px; }
+.vinculos-painel { margin-bottom: 14px; padding: 22px 28px 26px; }
+.vinculos-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 18px; }
+.vinculos-topo h2 { margin: 0 0 5px; font-size: 17px; }
+.vinculos-topo p { margin: 0; color: var(--text-3); font-size: 12px; }
+.vinculos-total { min-width: 190px; padding: 10px 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); text-align: right; }
+.vinculos-total span { display: block; margin-bottom: 3px; color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.vinculos-total strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.vinculos-tabela { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; }
+.vinculos-cabec, .vinculos-linha { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 110px; gap: 16px; align-items: center; }
+.vinculos-cabec { padding: 10px 14px; background: var(--surface-2); color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.vinculos-linha { padding: 13px 14px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.vinculos-linha:first-child { border-top: 0; }
+.vinculos-linha strong { font-variant-numeric: tabular-nums; }
+.vinculos-linha .muted { font-variant-numeric: tabular-nums; }
+.vinculos-linha button { justify-self: end; }
+.contas-composicao { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
+.contas-coluna { grid-column: span 3; display: grid; gap: 14px; min-width: 0; }
+.contas-coluna .vinculos-painel { margin-bottom: 0; }
+.contas-composicao > .painel { margin-bottom: 0 !important; }
+.composicao { grid-column: span 1; padding: 20px; }
+.composicao h2 { margin: 0 0 15px; font-size: 17px; }
+.composicao-lista { display: grid; gap: 10px; }
+.composicao-card { min-height: 92px; display: flex; flex-direction: column; justify-content: center; padding: 15px 17px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, var(--surface-2), var(--surface)); }
+.composicao-card span { margin-bottom: 7px; color: var(--text-3); font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.composicao-card strong { font-size: 24px; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.composicao-card.saldo.positivo strong { color: var(--verde); }
+.composicao-card.saldo.negativo strong { color: var(--vermelho); }
+.composicao-card .nota-estimativa { margin-top: 5px; font-size: 10.5px; font-weight: 450; text-transform: none; letter-spacing: normal; color: var(--text-3); }
+
+@media (max-width: 1700px) {
+  .colunas { grid-template-columns: 22px minmax(220px, 1fr) 112px 120px 100px 50px; }
+  .col-tag, .col-desc, .col-forma { display: none; }
+}
+
+@media (max-width: 1350px) {
+  .contas-composicao { grid-template-columns: 1fr; }
+  .contas-coluna, .composicao { grid-column: auto; }
+  .composicao-lista { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .composicao-card strong { font-size: 19px; }
+}
+
+@media (max-width: 1180px) {
+  .faturas-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .colunas { grid-template-columns: 22px 1fr 106px 112px 96px 50px; }
+  .col-tag, .col-desc, .col-forma { display: none; }
+  .subs { margin-left: 0; }
+  .subs-corpo { width: calc(100% - 20px); }
+  .sub-cabec { display: none; }
+  .sub-linha { grid-template-columns: minmax(0, 1fr) 96px 28px; }
+  .sub-linha .forma-sub { display: none; }
+  .sub-resumo { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .det { grid-template-columns: 120px minmax(0, 1fr); }
+}
+@media (max-width: 900px) { .composicao-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) {
+  .faturas-grid { grid-template-columns: 1fr; }
+  .composicao-lista { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Contas fixas</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="estado" id="estado">Carregando…</span>
+      <button class="primario" id="btnNova">+ Nova conta</button>
+    </div>
+  </header>
+
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+    <button id="btnMes" data-abre-pop><span id="rotuloMes">Mês</span></button>
+    <span id="resumoConciliacao" hidden></span>
+  </div>
+
+  <section class="faturas-grid" id="metricas" aria-label="Faturas e total do mês"></section>
+
+  <section class="contas-composicao" aria-label="Contas fixas e composição do mês">
+    <div class="contas-coluna">
+      <div class="painel" style="padding:14px 10px 6px">
+        <div class="cabec colunas">
+          <span></span>
+          <span>Item</span>
+          <span class="c col-tag">Tag</span>
+          <span class="c">Valor bruto</span>
+          <span class="c col-desc">Descontos</span>
+          <span class="c">Valor líquido</span>
+          <span class="c">Pago</span>
+          <span class="c col-forma">Pagamento</span>
+          <span></span>
+        </div>
+        <div id="lista"></div>
+        <div id="vazio"></div>
+      </div>
+      <section class="painel vinculos-painel" aria-labelledby="vinculosTitulo">
+        <div class="vinculos-topo">
+          <div><h2 id="vinculosTitulo">Itens vinculados às faturas</h2></div>
+          <div class="vinculos-total"><span>Total bruto dos cartões</span><strong id="vinculosTotal">R$ 0,00</strong></div>
+        </div>
+        <div class="vinculos-tabela">
+          <div class="vinculos-cabec"><span>Cartão</span><span>Fatura Bruto</span><span>Vínculos</span><span>Valor vinculado</span><span></span></div>
+          <div id="vinculosLista"></div>
+        </div>
+      </section>
+    </div>
+    <aside class="painel composicao" aria-labelledby="composicaoTitulo">
+      <h2 id="composicaoTitulo">Composição do mês</h2>
+      <div class="composicao-lista">
+        <div class="composicao-card"><span>Total receitas</span><strong id="compReceitas">R$ 0,00</strong><div class="nota-estimativa" id="compReceitasNota" hidden></div></div>
+        <div class="composicao-card"><span>Total despesas</span><strong id="compDespesas">R$ 0,00</strong></div>
+        <div class="composicao-card"><span>Total cartões</span><strong id="compCartoes">R$ 0,00</strong></div>
+        <div class="composicao-card"><span>Total despesas pessoais</span><strong id="compPessoais">R$ 0,00</strong></div>
+        <div class="composicao-card"><span>Total despesas empresa</span><strong id="compEmpresa">R$ 0,00</strong></div>
+        <div class="composicao-card saldo" id="compSaldoCard"><span>Saldo do mês</span><strong id="compSaldo">R$ 0,00</strong><div class="nota-estimativa" id="compSaldoNota" hidden></div></div>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<div class="pop" id="popMes" hidden style="min-width:210px">
+  <div class="pop-lista" id="popMesLista"></div>
+</div>
+
+<div class="pop" id="popVinculo" hidden style="min-width:360px">
+  <div class="pop-busca"><input type="search" id="vincBusca" placeholder="Buscar transação do mês…" autocomplete="off" /></div>
+  <div class="pop-lista" id="vincLista"></div>
+</div>
+
+<div class="pop" id="popAcoes" hidden style="min-width:220px">
+  <div class="pop-lista" id="popAcoesLista"></div>
+</div>
+
+<div class="pop" id="popTag" hidden style="min-width:190px">
+  <div class="pop-lista" id="popTagLista"></div>
+</div>
+
+<div class="modal-fundo" id="modalTx" hidden>
+  <div class="modal modal-detalhe">
+    <div class="modal-tit">
+      <div><h2 id="txTitulo">Mais informações</h2><p class="muted" style="margin:4px 0 0">Cadastro, transação vinculada e cálculo do mês.</p></div>
+      <button class="icone" id="txFechar" aria-label="Fechar">×</button>
+    </div>
+    <dl class="det" id="txDetalhe"></dl>
+    <div class="modal-rodape" id="txAcoes"></div>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modalCard" hidden>
+  <div class="modal modal-detalhe">
+    <div class="modal-tit">
+      <div><h2 id="cardModalTitulo">Itens vinculados</h2><p class="muted" id="cardModalSub" style="margin:4px 0 0">Itens reconhecidos dentro da fatura.</p></div>
+      <button class="icone" id="cardModalFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="card-modal-resumo" id="cardModalResumo"></div>
+    <div class="card-modal-lista">
+      <div class="card-modal-cabec"><span>Item</span><span>Tipo</span><span>Valor</span></div>
+      <div id="cardModalLista"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-tit">
+      <h2 id="modalTitulo">Nova conta fixa</h2>
+      <button class="icone" id="btnFechar" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="form-grid">
+      <label class="campo full"><span>Nome</span>
+        <input id="fNome" type="text" placeholder="ex.: Internet" autocomplete="off" /></label>
+
+      <label class="campo"><span>Valor previsto</span>
+        <span class="dinheiro-input"><span>R$</span><input id="fValor" type="text" inputmode="decimal" value="0,00" /></span></label>
+
+      <label class="campo"><span>Dia de vencimento</span>
+        <input id="fDia" type="number" min="1" max="31" placeholder="opcional" /></label>
+
+      <label class="campo"><span>Tag</span><select id="fTag"></select></label>
+
+      <label class="campo"><span>Forma de pagamento padrão</span><select id="fForma"></select></label>
+
+      <label class="campo full"><span>Vincular à transação cuja descrição CONTÉM</span>
+        <input id="fTermo" type="text" placeholder="ex.: CLARO" autocomplete="off" /></label>
+
+      <label class="campo"><span>Conta/cartão</span><select id="fConta"></select></label>
+
+      <label class="campo"><span>Categoria</span><select id="fCategoria"></select></label>
+
+      <label class="campo"><span>Vale a partir de</span>
+        <input id="fDesde" type="month" /></label>
+
+      <label class="campo"><span>Até (opcional)</span>
+        <input id="fAte" type="month" /></label>
+
+      <label class="check full"><input id="fIncluirCalculos" type="checkbox" checked />
+        Incluir nos cálculos finais do mês</label>
+      <p class="muted full" style="margin:-5px 0 0;font-size:12px">
+        Desmarque para manter a despesa visível na empresa sem reduzir novamente o saldo.</p>
+    </div>
+
+    <div class="previa" id="previa">Escreva o termo acima para ver o que ele pega no mês.</div>
+    <p class="estado erro" id="modalErro" style="margin:8px 0 0"></p>
+
+    <div class="modal-rodape">
+      <button class="perigo" id="btnExcluir" hidden style="margin-right:auto">Excluir</button>
+      <button class="sutil" id="btnCancelar">Cancelar</button>
+      <button class="primario" id="btnSalvar">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modalDesc" hidden>
+  <div class="modal" style="width:min(460px,100%)">
+    <div class="modal-tit">
+      <h2>Novo subdesconto</h2>
+      <button class="icone" id="dFechar" aria-label="Fechar">×</button>
+    </div>
+    <div style="display:grid;gap:12px">
+      <label class="campo"><span>Descrição</span>
+        <input id="dDescricao" type="text" placeholder="ex.: Rateio com o Pedro" /></label>
+      <label class="campo"><span>Valor</span>
+        <span class="dinheiro-input"><span>R$</span><input id="dValor" type="text" inputmode="decimal" value="0,00" /></span></label>
+      <label class="campo"><span>Forma de pagamento</span><select id="dForma"></select></label>
+      <p class="muted" style="margin:0;font-size:12.5px">
+        Reembolso sai do total de gastos. Subdesconto que não é reembolso continua
+        sendo gasto seu — só muda a forma de pagamento.
+      </p>
+    </div>
+    <p class="estado erro" id="dErro" style="margin:8px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="dCancelar">Cancelar</button>
+      <button class="primario" id="dSalvar">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+const el = id => document.getElementById(id);
+
+// MESES_DISP e não MESES: app.js já usa MESES para os nomes dos meses, e duas
+// declarações no escopo global derrubam a página inteira.
+let MES = "", MESES_DISP = [], ITENS = [], CATEGORIAS = [], CONTAS = [];
+let TAGS = [], FORMAS = [], ABERTAS = new Set();
+let FATURAS = null, EXTRATO_MES = null;
+let editando = null, fixaDoMenu = null, fixaDoVinculo = null;
+let fixaDoDesconto = null, fixaDaTag = null;
+let vincTimer = null, previaTimer = null;
+
+const CHAVE_ULTIMO_MES = "financeiroPluggy.contasFixas.ultimoMes";
+function ultimoMesSalvo() {
+  try {
+    const mes = localStorage.getItem(CHAVE_ULTIMO_MES) || "";
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : "";
+  } catch { return ""; }
+}
+function salvarUltimoMes(mes) {
+  try { localStorage.setItem(CHAVE_ULTIMO_MES, mes); } catch { /* opcional */ }
+}
+
+const REEMBOLSO = "__reembolso__";
+const acharItem = id => ITENS.find(i => i.id === id);
+const mesAnterior = mes => {
+  const [ano, numero] = String(mes).split("-").map(Number);
+  const data = new Date(ano, numero - 2, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+};
+const completarAno = (meses, referencia) => {
+  const todos = new Set(Array.isArray(meses) ? meses : []);
+  const ano = String(referencia || [...todos].sort().at(-1) || "").slice(0, 4);
+  if (/^\d{4}$/.test(ano)) {
+    for (let numero = 1; numero <= 12; numero += 1) {
+      todos.add(`${ano}-${String(numero).padStart(2, "0")}`);
+    }
+  }
+  return [...todos].filter(mes => String(mes).startsWith(`${ano}-`)).sort();
+};
+const fmtValor = v => Number(v || 0).toLocaleString("pt-BR", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+const lerValor = texto => {
+  const limpo = String(texto ?? "").replace(/R\$\s?/g, "").trim();
+  if (!limpo) return 0;
+  const numero = Number(limpo.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(numero) ? Math.max(0, numero) : 0;
+};
+
+/* ------------------------------------------------------------------ render */
+
+function opcoesForma(selecionada, { auto = "", reembolso = false } = {}) {
+  const opcoes = auto ? [`<option value="">${esc(auto)}</option>`] : [];
+  for (const f of FORMAS) {
+    opcoes.push(`<option value="${esc(f.id)}" ${f.id === selecionada ? "selected" : ""}>${esc(f.nome)}</option>`);
+  }
+  if (reembolso) {
+    opcoes.push(`<option value="${REEMBOLSO}" ${selecionada === REEMBOLSO ? "selected" : ""}>Reembolso</option>`);
+  }
+  return opcoes.join("");
+}
+
+function subdescontos(i) {
+  const linhas = i.descontos.map(d => `
+    <div class="sub-linha">
+      <input type="text" data-desc-campo="descricao" data-desc="${esc(d.id)}"
+             value="${esc(d.descricao)}" aria-label="Descrição do subdesconto" />
+      <label class="dinheiro-input">
+        <span>R$</span>
+        <input type="text" inputmode="decimal" class="v" data-desc-campo="valor"
+               data-desc="${esc(d.id)}" value="${fmtValor(d.valor)}" aria-label="Valor do subdesconto" />
+      </label>
+      <select class="forma-sub" data-desc-campo="forma" data-desc="${esc(d.id)}"
+              aria-label="Forma de pagamento do subdesconto">
+        ${opcoesForma(d.forma, { reembolso: true })}
+      </select>
+      <button class="icone sub-remover" data-tira-desc="${esc(d.id)}" title="Remover subdesconto"
+              aria-label="Remover ${esc(d.descricao)}">×</button>
+    </div>`).join("");
+
+  return `
+    <div class="subs">
+      <div class="subs-tit">
+        <div class="subs-tit-texto">
+          <strong>Subdescontos de ${esc(i.nome)}</strong>
+          <small>${i.descontos.length} ${i.descontos.length === 1 ? "item lançado" : "itens lançados"} neste mês</small>
+        </div>
+        <div class="subs-tit-acoes">
+          <button class="sutil" data-novo-desc="${esc(i.id)}">+ Adicionar</button>
+          <button class="icone" data-fecha-desc="${esc(i.id)}" aria-label="Fechar subdescontos" title="Fechar">×</button>
+        </div>
+      </div>
+      <div class="subs-corpo">
+        <div class="sub-cabec"><span>Item</span><span>Valor</span><span>Pagamento</span><span></span></div>
+        <div class="sub-linhas">${linhas || '<div class="sub-vazio">Nenhum subdesconto neste mês.</div>'}</div>
+        <div class="sub-resumo">
+          <div><span>Descontos</span><strong>R$ ${fmtValor(i.totalDescontos)}</strong></div>
+          <div><span>Reembolsos</span><strong>R$ ${fmtValor(i.reembolsos)}</strong></div>
+          <div class="destaque"><span>Gasto nos cálculos</span><strong>R$ ${fmtValor(i.gastoCalculo)}</strong></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function linha(i) {
+  const aberta = ABERTAS.has(i.id);
+
+  // O rótulo de "Automático" já mostra qual forma foi herdada, senão a pessoa
+  // não teria como saber no que "automático" resultou sem abrir o detalhe.
+  const rotuloAuto = i.origemForma === "manual"
+    ? "Automático"
+    : `Automático (${i.formaNome})`;
+
+  const deOnde = { transacao: "pago segundo o extrato", manual: "decidido à mão",
+                   pendente: "nenhuma transação casou ainda" }[i.origemPago] || "";
+
+  return `
+    <div class="fixa ${i.incluidaCalculos ? "" : "informativa"}" data-fixa="${esc(i.id)}">
+      <div class="colunas">
+        <button class="icone seta ${aberta ? "aberta" : ""}" data-abre-desc="${esc(i.id)}"
+                aria-expanded="${aberta}" aria-label="${aberta ? "Fechar" : "Abrir"} descontos">▶</button>
+        <div class="nome" title="${esc(i.nome)}">${esc(i.nome)}</div>
+        <div class="col-tag">
+          <button class="pilula ${i.tag === "Contas Empresa" ? "tag-empresa" : "tag-pessoais"}"
+                  data-tag="${esc(i.id)}" data-abre-pop>${esc(i.tag)}</button>
+        </div>
+        <label class="dinheiro-input" title="${esc(i.origemValor === "transacao" ? "valor real da transação vinculada"
+                        : i.origemValor === "manual" ? "ajustado à mão neste mês" : "valor previsto no cadastro")}">
+          <span>R$</span>
+          <input class="bruto ${i.origemValor === "manual" ? "" : "auto"}" type="text" inputmode="decimal"
+                 data-bruto="${esc(i.id)}" value="${fmtValor(i.valor)}" aria-label="Valor bruto" />
+        </label>
+        <button class="pilula desc col-desc ${i.totalDescontos ? "" : "zero"}" data-abre-desc="${esc(i.id)}"
+                title="Abrir os subdescontos">−R$ ${fmtValor(i.totalDescontos)}</button>
+        <div class="liquido ${i.liquido ? "" : "nulo"}">R$ ${fmtValor(i.liquido)}</div>
+        <button class="pilula ${i.incluidaCalculos ? (i.pago ? "pago" : "pendente") : "informativa"}"
+                ${i.incluidaCalculos ? `data-pago="${esc(i.id)}"` : "disabled"}
+                title="${i.incluidaCalculos ? `${esc(deOnde)} — clique para forçar o contrário, de novo para voltar ao automático` : "Visível apenas nos gastos da empresa"}">
+          ${i.incluidaCalculos ? (i.pago ? "Pago" : "Pendente") : "Informativa"}</button>
+        <div class="col-forma">
+          <select class="forma ${i.origemForma === "manual" ? "" : "herdada"}" data-forma="${esc(i.id)}"
+                  title="${esc(i.origemForma === "transacao" ? "veio da conta da transação vinculada"
+                            : i.origemForma === "cadastro" ? "padrão do cadastro" : "escolhida neste mês")}">
+            ${opcoesForma(i.origemForma === "manual" ? i.forma : "", { auto: rotuloAuto })}
+          </select>
+        </div>
+        <div class="acoes-cel">
+          <button class="icone info" data-detalhe="${esc(i.id)}"
+                  aria-label="Mais informações" title="Mais informações">i</button>
+          <button class="icone" data-menu="${esc(i.id)}" data-abre-pop aria-label="Ações">⋯</button>
+        </div>
+      </div>
+      ${aberta ? subdescontos(i) : ""}
+    </div>`;
+}
+
+function bancoDoCartao(cartao) {
+  const texto = `${cartao.id} ${cartao.nome}`.toLowerCase();
+  if (texto.includes("itau") || texto.includes("itaú") || texto.includes("consolidado:itau")) return "itau";
+  if (texto.includes("nubank")) return "nubank";
+  if (texto.includes("inter")) return "inter";
+  return "";
+}
+
+function calcularCards() {
+  const indice = Math.max(0, Number(MES.slice(5, 7)) - 1);
+  const detalhes = { itau: [], nubank: [], inter: [] };
+  const adicionar = (banco, titulo, valor, tipo) => {
+    if (!detalhes[banco] || !(valor > 0)) return;
+    detalhes[banco].push({ titulo, valor: Number(valor), tipo });
+  };
+
+  // Mesmas regras do dashboard manual: a parcela líquida da conta sai do
+  // cartão principal; reembolso também sai dele; subdesconto comum sai do
+  // banco escolhido no próprio subdesconto. PIX nunca altera fatura.
+  for (const item of ITENS) {
+    if (item.incluidaCalculos && detalhes[item.forma]) {
+      adicionar(item.forma, item.nome, item.liquido, "Conta fixa paga no cartão");
+    }
+    for (const d of item.incluidaCalculos ? item.descontos : []) {
+      if (d.forma === REEMBOLSO) {
+        if (detalhes[item.forma]) adicionar(item.forma, `${item.nome} › ${d.descricao}`, d.valor, "Reembolso");
+      } else if (detalhes[d.forma]) {
+        adicionar(d.forma, `${item.nome} › ${d.descricao}`, d.valor, "Subdesconto pago no cartão");
+      }
+    }
+  }
+
+  const nomes = { itau: "Itaú", nubank: "Nubank", inter: "Inter" };
+  const cartoes = Object.keys(nomes).map(banco => {
+    const cartao = FATURAS?.cartoes?.find(c => bancoDoCartao(c) === banco);
+    const original = cartao ? Number(FATURAS.valores?.[cartao.id]?.[indice] || 0) : 0;
+    const jaContabilizado = detalhes[banco].reduce((s, d) => s + d.valor, 0);
+    // Seguro Carro já é somado como conta fixa em outro lugar da tela; se a
+    // fatura também mostrasse ele inteiro, o mês contaria esse gasto duas
+    // vezes. "Descontada" é o que sobra na fatura sem o que já é contado ali.
+    const descontado = Math.max(0, original - jaContabilizado);
+    return { banco, nome: nomes[banco], original, jaContabilizado, descontado,
+             detalhes: detalhes[banco] };
+  });
+  const totalFaturas = cartoes.reduce((s, c) => s + c.original, 0);
+  const totalJaNosCartoes = cartoes.reduce((s, c) => s + c.jaContabilizado, 0);
+  const totalContasFixas = ITENS.reduce((s, item) => s + Number(item.gastoCalculo || 0), 0);
+  return {
+    cartoes,
+    totalFaturas,
+    // O vínculo não muda a fatura. Ele só impede que a mesma despesa seja
+    // somada novamente quando faturas e contas fixas formam o total do mês.
+    totalMes: totalFaturas + totalContasFixas - totalJaNosCartoes,
+  };
+}
+
+function renderCardsFaturas() {
+  const t = calcularCards();
+  const maximo = Math.max(1, ...t.cartoes.map(c => Math.max(0, c.original)));
+  const cores = { itau: "#f28c35", nubank: "#9b74e8", inter: "#4a95ea" };
+  el("metricas").innerHTML = `
+    <article class="fatura-card total">
+      <div class="fatura-topo"><span class="fatura-rotulo">Total do mês</span><span class="fatura-banco">sem duplicar</span></div>
+      <div class="fatura-valor">${fmtBRL(t.totalMes)}</div>
+    </article>` + t.cartoes.map(c => {
+      const pct = Math.min(100, Math.max(0, c.original) / maximo * 100);
+      return `
+        <article class="fatura-card banco" data-card-banco="${c.banco}"
+                 tabindex="0" role="link" aria-label="Abrir transações de ${c.nome} em ${esc(labelMes(MES))}">
+          <div class="fatura-topo"><span class="fatura-rotulo">${c.nome}</span><span class="fatura-banco">Open Finance</span></div>
+          <div class="fatura-valor">${fmtBRL(c.original)}</div>
+          <div class="fatura-barra"><span style="width:${pct.toFixed(1)}%;background:${cores[c.banco]}"></span></div>
+          <div class="fatura-linhas"><span>Fatura de ${esc(labelMes(MES))}</span><span>${c.detalhes.length} ${c.detalhes.length === 1 ? "vínculo reconhecido" : "vínculos reconhecidos"}</span></div>
+          <div class="fatura-dica">Clique para abrir as transações deste cartão.</div>
+        </article>`;
+    }).join("");
+
+  el("vinculosTotal").textContent = fmtBRL(t.totalFaturas);
+  el("vinculosLista").innerHTML = t.cartoes.map(c => {
+    const vinculado = c.detalhes.reduce((s, d) => s + d.valor, 0);
+    return `<div class="vinculos-linha">
+      <strong>${esc(c.nome)}</strong><strong>${fmtBRL(c.original)}</strong>
+      <span>${c.detalhes.length} ${c.detalhes.length === 1 ? "item" : "itens"}</span>
+      <span class="muted">${fmtBRL(vinculado)}</span>
+      <button class="sutil" data-lista-banco="${c.banco}">Ver lista</button>
+    </div>`;
+  }).join("");
+}
+
+function renderComposicao(resumoFixas) {
+  const t = calcularCards();
+  const pessoais = Number(resumoFixas?.porTag?.["Contas Pessoais"] || 0);
+  const empresa = Number(resumoFixas?.porTag?.["Contas Empresa"] || 0);
+  const resumoExtrato = EXTRATO_MES?.resumo;
+  const entradas = Number(resumoExtrato?.entradas || 0);
+  const saldo = entradas - t.totalMes;
+  el("compReceitas").textContent = fmtBRL(entradas);
+  el("compDespesas").textContent = fmtBRL(t.totalMes);
+  // Descontado, não bruto: "Total despesas" já é cartões-descontados + contas
+  // fixas (ver totalMes em calcularCards()). Mostrar o bruto aqui faria a
+  // composição não bater -- cartão sozinho pareceria maior que o total.
+  const totalCartoesDescontado = t.cartoes.reduce((s, c) => s + c.descontado, 0);
+  el("compCartoes").textContent = fmtBRL(totalCartoesDescontado);
+  el("compPessoais").textContent = fmtBRL(pessoais);
+  el("compEmpresa").textContent = fmtBRL(empresa);
+  el("compSaldo").textContent = fmtBRL(saldo);
+  el("compSaldoCard").classList.toggle("positivo", saldo >= 0);
+  el("compSaldoCard").classList.toggle("negativo", saldo < 0);
+
+  // As 4 entradas de salário do mês ainda não aconteceram todas: o valor usa
+  // o valor esperado cadastrado em Entradas (se houver) ou a média do ano no
+  // lugar do recebido parcial. Isto avisa nos dois cards que dependem de
+  // "entradas" -- senão o número parece real e não é.
+  const origemEntradas = resumoExtrato?.entradasOrigem === "manual"
+    ? "pelo valor esperado" : "pela média do ano";
+  const avisarEstimativa = (id) => {
+    const nota = el(id);
+    nota.hidden = !resumoExtrato?.entradasEstimativa;
+    if (resumoExtrato?.entradasEstimativa) {
+      nota.textContent = `Entradas projetadas ${origemEntradas} · recebido até agora ${fmtBRL(resumoExtrato.entradasRecebidas)}`;
+    }
+  };
+  avisarEstimativa("compReceitasNota");
+  avisarEstimativa("compSaldoNota");
+}
+
+function abrirTransacoesDoBanco(banco) {
+  const q = new URLSearchParams({ month: MES, card: banco });
+  location.href = `transacoes.html?${q}`;
+}
+
+function abrirDetalhesCard(banco) {
+  const card = calcularCards().cartoes.find(c => c.banco === banco);
+  if (!card) return;
+  el("cardModalTitulo").textContent = `Itens vinculados · ${card.nome}`;
+  el("cardModalSub").textContent = "Lista informativa; o valor da fatura não é alterado.";
+  el("cardModalResumo").innerHTML = `
+    <div><span>Fatura Bruto</span><strong>${fmtBRL(card.original)}</strong></div>
+    <div><span>Fatura Descontada</span><strong>${fmtBRL(card.descontado)}</strong></div>
+    <div><span>Mês</span><strong>${esc(labelMes(MES))}</strong></div>
+    <div><span>Vínculos reconhecidos</span><strong>${card.detalhes.length}</strong></div>`;
+  el("cardModalLista").innerHTML = card.detalhes.length ? card.detalhes.map(d => `
+    <div class="card-modal-linha">
+      <span>${esc(d.titulo)}</span><span>${esc(d.tipo)}</span><strong>${fmtBRL(d.valor)}</strong>
+    </div>`).join("") : '<div class="card-modal-vazio">Nenhum item vinculado a esta fatura.</div>';
+  el("modalCard").hidden = false;
+}
+
+function fecharDetalhesCard() { el("modalCard").hidden = true; }
+
+function render(p) {
+  ITENS = p.itens;
+  TAGS = p.tags;
+  FORMAS = p.formas;
+  const r = p.resumo;
+
+  renderCardsFaturas();
+  renderComposicao(r);
+
+  el("lista").innerHTML = ITENS.map(linha).join("");
+  el("vazio").innerHTML = ITENS.length ? ""
+    : `<div class="vazio">
+        <div>Nenhuma conta fixa neste mês.</div>
+        <button class="primario" data-clonar-mes style="margin-top:14px">Clonar ${esc(labelMes(mesAnterior(MES)))}</button>
+        <button data-nova-vazia style="margin:14px 0 0 7px">Criar nova conta</button>
+      </div>`;
+
+  el("resumoConciliacao").textContent = r.quantidade
+    ? `${r.conciliadas} de ${r.quantidade} casadas com o extrato · descontos ${fmtBRL(r.descontos)}`
+    : "";
+  setEstado("estado", `${r.quantidade} conta(s)`, "ok");
+}
+
+async function carregar() {
+  const [fixas, faturas, extrato] = await Promise.all([
+    pedir(`/fixas?month=${encodeURIComponent(MES)}`),
+    pedir(`/pluggy-cartoes?year=${encodeURIComponent(MES.slice(0, 4))}&group=fatura`).catch(() => null),
+    pedir(`/extrato?month=${encodeURIComponent(MES)}&limit=1&offset=0`).catch(() => null),
+  ]);
+  FATURAS = faturas;
+  EXTRATO_MES = extrato;
+  render(fixas);
+  el("rotuloMes").textContent = labelMes(MES);
+}
+
+async function ajustarMes(fixaId, dados) {
+  try {
+    await pedir(`/fixas/${encodeURIComponent(fixaId)}/mes?month=${encodeURIComponent(MES)}`,
+                "PUT", dados);
+    await carregar();
+  } catch (err) { setEstado("estado", err.message, "erro"); }
+}
+
+async function clonarMesAnterior() {
+  const origem = mesAnterior(MES);
+  if (!window.confirm(`Clonar as contas de ${labelMes(origem)} para ${labelMes(MES)}?`)) return;
+  setEstado("estado", "Clonando mês anterior…");
+  try {
+    const resposta = await pedir("/fixas/clonar-mes", "POST", { origem, destino: MES });
+    await carregar();
+    setEstado("estado", `${resposta.quantidade} conta(s) clonada(s)`, "ok");
+  } catch (err) { setEstado("estado", err.message, "erro"); }
+}
+
+/* ------------------------------------------------------ cadastro da conta */
+
+function abrirModal(item = null) {
+  editando = item?.id || null;
+  el("modalTitulo").textContent = item ? "Editar conta fixa" : "Nova conta fixa";
+  el("btnSalvar").textContent = item ? "Salvar" : "Criar";
+  el("btnExcluir").hidden = !item;
+  el("modalErro").textContent = "";
+
+  el("fNome").value = item?.nome ?? "";
+  el("fValor").value = fmtValor(item?.valorPrevisto ?? 0);
+  el("fDia").value = item?.diaVencimento ?? "";
+  el("fTermo").value = item?.termo ?? "";
+  el("fDesde").value = item?.desde ?? MES;
+  el("fAte").value = item?.ate ?? "";
+  el("fIncluirCalculos").checked = item?.incluidaCalculos ?? true;
+
+  el("fTag").innerHTML = TAGS.map(t =>
+    `<option ${t === (item?.tag ?? TAGS[0]) ? "selected" : ""}>${esc(t)}</option>`).join("");
+  el("fForma").innerHTML = opcoesForma(item?.formaPadrao ?? "",
+                                       { auto: "Seguir a transação vinculada" });
+  el("fCategoria").innerHTML = ['<option value="">Sem categoria</option>']
+    .concat(CATEGORIAS.map(c =>
+      `<option value="${esc(c.id)}" ${c.id === item?.categoria?.id ? "selected" : ""}>${c.paiId ? "    " : ""}${esc(c.nome)}</option>`)).join("");
+  el("fConta").innerHTML = ['<option value="">Qualquer conta</option>']
+    .concat(CONTAS.map(c =>
+      `<option value="${esc(c.id)}" ${c.id === item?.contaId ? "selected" : ""}>${esc(c.nome)}</option>`)).join("");
+
+  el("modal").hidden = false;
+  el("fNome").focus();
+  atualizarPrevia();
+}
+
+function fecharModal() { el("modal").hidden = true; editando = null; }
+
+/** Mostra o que a regra CONTÉM pega no mês — a regra é escrita às cegas se
+ *  quem cadastra não vê o resultado antes de salvar. */
+async function atualizarPrevia() {
+  const termo = el("fTermo").value.trim();
+  const caixa = el("previa");
+  if (!termo) {
+    caixa.textContent = "Escreva o termo acima para ver o que ele pega no mês.";
+    return;
+  }
+  try {
+    const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(termo)}`);
+    if (!p.total) {
+      caixa.innerHTML = `<span class="muted">Nada em ${esc(labelMes(MES))} contém “${esc(termo)}”. A conta fica sem vínculo até aparecer.</span>`;
+      return;
+    }
+    caixa.innerHTML =
+      `<div class="muted" style="margin-bottom:5px">${p.total} transação(ões) em ${esc(labelMes(MES))} contêm “${esc(termo)}”${p.total > 1 ? " — vence a de valor mais próximo do previsto" : ""}:</div>` +
+      p.transacoes.slice(0, 8).map(t =>
+        `<div class="l"><span>${esc(t.descricao)}</span><span>${fmtData(t.data)} · ${fmtBRL(t.valor)}</span></div>`).join("");
+  } catch (e) {
+    caixa.innerHTML = `<span class="estado erro">${esc(e.message)}</span>`;
+  }
+}
+
+async function salvar() {
+  const dados = {
+    nome: el("fNome").value.trim(),
+    tag: el("fTag").value,
+    valorPrevisto: lerValor(el("fValor").value),
+    diaVencimento: el("fDia").value || null,
+    categoriaId: el("fCategoria").value || null,
+    termo: el("fTermo").value.trim(),
+    contaId: el("fConta").value || "",
+    forma: el("fForma").value || "",
+    desde: el("fDesde").value || "",
+    ate: el("fAte").value || "",
+    incluirCalculos: el("fIncluirCalculos").checked,
+  };
+  if (!dados.nome) { el("modalErro").textContent = "Informe o nome da conta."; return; }
+
+  el("btnSalvar").disabled = true;
+  try {
+    if (editando) await pedir(`/fixas/${encodeURIComponent(editando)}`, "PUT", dados);
+    else await pedir("/fixas", "POST", dados);
+    fecharModal();
+    await carregar();
+  } catch (e) { el("modalErro").textContent = e.message; }
+  finally { el("btnSalvar").disabled = false; }
+}
+
+async function excluirConta(item) {
+  if (!window.confirm(`Excluir “${item.nome}”? O histórico mensal e os subdescontos dela vão junto.`)) return false;
+  await pedir(`/fixas/${encodeURIComponent(item.id)}`, "DELETE");
+  ABERTAS.delete(item.id);
+  await carregar();
+  return true;
+}
+
+/* --------------------------------------------------------- subdescontos */
+
+/** Abre ou fecha o cartão de descontos e repinta.
+ *
+ *  Marcar o estado sem repintar era o bug de "não fecha": a linha continuava
+ *  fechada mas o conjunto já dizia aberta, então o clique seguinte só desfazia
+ *  a marca e a tela não mexia. Toda mudança de ABERTAS passa por aqui. */
+function alternarDescontos(id, forcar) {
+  const abrir = forcar ?? !ABERTAS.has(id);
+  if (abrir) ABERTAS.add(id); else ABERTAS.delete(id);
+  el("lista").innerHTML = ITENS.map(linha).join("");
+}
+
+function abrirDesconto(fixaId) {
+  fixaDoDesconto = fixaId;
+  el("dDescricao").value = "";
+  el("dValor").value = "0,00";
+  el("dForma").innerHTML = opcoesForma("pix", { reembolso: true });
+  el("dErro").textContent = "";
+  el("modalDesc").hidden = false;
+  el("dDescricao").focus();
+}
+
+async function salvarDesconto() {
+  const dados = {
+    descricao: el("dDescricao").value.trim(),
+    valor: lerValor(el("dValor").value),
+    forma: el("dForma").value,
+  };
+  if (!dados.descricao) { el("dErro").textContent = "Informe a descrição."; return; }
+  try {
+    await pedir(`/fixas/${encodeURIComponent(fixaDoDesconto)}/descontos?month=${encodeURIComponent(MES)}`,
+                "POST", dados);
+    ABERTAS.add(fixaDoDesconto);   // carregar() repinta logo abaixo
+    el("modalDesc").hidden = true;
+    await carregar();
+  } catch (e) { el("dErro").textContent = e.message; }
+}
+
+/* ----------------------------------------------------------------- vínculo */
+
+async function renderVinculo(busca = "") {
+  const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(busca)}`);
+  el("vincLista").innerHTML = p.transacoes.length
+    ? `<button class="pop-item" data-tx="">Voltar ao vínculo pela regra</button><div class="pop-sep"></div>` +
+      p.transacoes.map(t => `
+        <button class="pop-item" data-tx="${esc(t.id)}" ${t.jaVinculada ? 'style="opacity:.5"' : ""}>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(t.descricao)}</span>
+          <span class="muted" style="font-size:11.5px">${fmtData(t.data)} · ${fmtBRL(t.valor)}</span>
+        </button>`).join("")
+    : `<div class="pop-vazio">Nenhuma saída no mês com esse texto.</div>`;
+}
+
+function abrirVinculo(fixaId, ancora) {
+  fixaDoVinculo = fixaId;
+  el("vincBusca").value = "";
+  renderVinculo("");
+  abrirPop(el("popVinculo"), ancora);
+}
+
+/** Painel de detalhe: tudo que foi tirado da linha mora aqui.
+ *
+ *  A tabela só carrega os números; regra, vínculo, categoria e vigência são
+ *  contexto que se consulta de vez em quando, não a cada varredura da tela. */
+function abrirDetalhe(item) {
+  const t = item.transacao;
+  fixaDoVinculo = item.id;
+  el("txTitulo").textContent = item.nome;
+
+  const campos = [["grupo", "Conta fixa"]];
+  campos.push(["Tag", item.tag]);
+  if (!t || Math.abs(item.valorPrevisto - t.valor) >= .01) {
+    campos.push(["Valor previsto", fmtBRL(item.valorPrevisto)]);
+  }
+  if (item.diaVencimento) campos.push(["Vencimento", `dia ${item.diaVencimento}`]);
+  if (item.categoria?.nome) campos.push(["Categoria", item.categoria.nome]);
+  campos.push(["Vigência", `${labelMes(item.desde) || "sempre"} até ${item.ate ? labelMes(item.ate) : "sem fim"}`]);
+  campos.push(["Regra", item.termo ? `descrição contém “${item.termo}”` : "sem regra — vínculo só à mão"]);
+
+  campos.push(["grupo", "Transação vinculada"]);
+  if (item.origemTransacao === "manual_perdido") {
+    campos.push(["Situação", "a transação vinculada não está mais neste mês"]);
+  } else if (!t) {
+    campos.push(["Situação", item.termo
+      ? `nada em ${labelMes(MES)} contém “${item.termo}”`
+      : "nenhuma transação vinculada"]);
+  } else {
+    campos.push(["Data de pagamento", fmtData(t.data)]);
+    campos.push(["Descrição", t.descricao]);
+    campos.push(["Valor", fmtBRL(t.valor)]);
+    campos.push(["Conta", t.conta]);
+    if (t.categoria && t.categoria !== item.categoria?.nome) {
+      campos.push(["Categoria", t.categoria]);
+    }
+    if (t.parcela) campos.push(["Parcela", t.parcela]);
+    campos.push(["Situação", t.status === "PENDING" ? "Pendente de compensação" : "Efetivada"]);
+  }
+
+  // Sem desconto, o valor/conta da transação já explicam tudo. O bloco de
+  // cálculo só aparece quando há alguma diferença que valha explicar.
+  const mostrarCalculo = !t || item.totalDescontos > 0 ||
+    item.origemValor === "manual" || item.origemForma === "manual";
+  if (mostrarCalculo) {
+    campos.push(["grupo", "Cálculo do mês"]);
+    campos.push(["Bruto", fmtBRL(item.valor)]);
+    if (item.totalDescontos > 0) {
+      campos.push(["Descontos", `${fmtBRL(item.totalDescontos)} em ${item.descontos.length} item(ns)`]);
+      if (item.reembolsos > 0) campos.push(["Reembolsos", fmtBRL(item.reembolsos)]);
+      campos.push(["Líquido", fmtBRL(item.liquido)]);
+    }
+    campos.push(["Gasto considerado", fmtBRL(item.gasto)]);
+    if (!t || item.origemForma !== "transacao") {
+      campos.push(["Pagamento", item.formaNome]);
+    }
+  }
+
+  el("txDetalhe").innerHTML = campos.map(([k, v]) =>
+    k === "grupo" ? `<div class="grupo">${esc(v)}</div>`
+                  : `<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join("");
+
+  el("txAcoes").innerHTML = `
+    <button class="sutil" id="txTrocar">${t ? "Trocar transação vinculada" : "Vincular transação"}</button>
+    ${item.origemTransacao === "manual" || item.origemTransacao === "manual_perdido"
+      ? '<button class="sutil" id="txSoltar">Desfazer vínculo manual</button>' : ""}`;
+  el("txTrocar").addEventListener("click", trocarVinculo);
+  el("txSoltar")?.addEventListener("click", soltarVinculo);
+
+  el("modalTx").hidden = false;
+}
+
+function fecharDetalhe() { el("modalTx").hidden = true; }
+
+function trocarVinculo() {
+  const id = fixaDoVinculo;
+  const alvo = document.querySelector(`[data-detalhe="${CSS.escape(id)}"]`);
+  fecharDetalhe();
+  if (alvo) abrirVinculo(id, alvo);
+}
+
+async function soltarVinculo() {
+  const id = fixaDoVinculo;
+  fecharDetalhe();
+  // Desfazer só apaga o vínculo manual; se a regra ainda casar, ela reassume —
+  // por isso o "pago" também volta ao automático.
+  await ajustarMes(id, { transacaoId: null, pago: null });
+}
+
+/* ---------------------------------------------------------------- eventos */
+
+function ligar() {
+  el("metricas").addEventListener("click", e => {
+    const card = e.target.closest("[data-card-banco]");
+    if (card) abrirTransacoesDoBanco(card.dataset.cardBanco);
+  });
+  el("metricas").addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest("[data-card-banco]");
+    if (!card) return;
+    e.preventDefault();
+    abrirTransacoesDoBanco(card.dataset.cardBanco);
+  });
+
+  el("vinculosLista").addEventListener("click", e => {
+    const botao = e.target.closest("[data-lista-banco]");
+    if (botao) abrirDetalhesCard(botao.dataset.listaBanco);
+  });
+
+  el("cardModalFechar").addEventListener("click", fecharDetalhesCard);
+  el("modalCard").addEventListener("click", e => {
+    if (e.target.id === "modalCard") fecharDetalhesCard();
+  });
+
+  el("btnNova").addEventListener("click", () => abrirModal());
+  el("vazio").addEventListener("click", e => {
+    if (e.target.closest("[data-clonar-mes]")) return clonarMesAnterior();
+    if (e.target.closest("[data-nova-vazia]")) abrirModal();
+  });
+  el("btnFechar").addEventListener("click", fecharModal);
+  el("btnCancelar").addEventListener("click", fecharModal);
+  el("btnSalvar").addEventListener("click", salvar);
+  el("modal").addEventListener("click", e => { if (e.target.id === "modal") fecharModal(); });
+  el("fTermo").addEventListener("input", () => {
+    clearTimeout(previaTimer);
+    previaTimer = setTimeout(atualizarPrevia, 300);
+  });
+
+  el("btnExcluir").addEventListener("click", async () => {
+    try {
+      if (await excluirConta(acharItem(editando))) fecharModal();
+    } catch (e) { el("modalErro").textContent = e.message; }
+  });
+
+  el("dFechar").addEventListener("click", () => { el("modalDesc").hidden = true; });
+  el("dCancelar").addEventListener("click", () => { el("modalDesc").hidden = true; });
+  el("dSalvar").addEventListener("click", salvarDesconto);
+  el("modalDesc").addEventListener("click", e => {
+    if (e.target.id === "modalDesc") el("modalDesc").hidden = true;
+  });
+  el("txFechar").addEventListener("click", fecharDetalhe);
+  el("modalTx").addEventListener("click", e => {
+    if (e.target.id === "modalTx") fecharDetalhe();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (!el("modal").hidden) fecharModal();
+    if (!el("modalDesc").hidden) el("modalDesc").hidden = true;
+    if (!el("modalTx").hidden) fecharDetalhe();
+    if (!el("modalCard").hidden) fecharDetalhesCard();
+  });
+
+  el("btnMes").addEventListener("click", e => {
+    el("popMesLista").innerHTML = MESES_DISP.map(m =>
+      `<button class="pop-item ${m === MES ? "marcado" : ""}" data-mes="${m}">${labelMes(m)}</button>`).join("");
+    abrirPop(el("popMes"), e.currentTarget);
+  });
+  el("popMesLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-mes]");
+    if (!b) return;
+    MES = b.dataset.mes; fecharPop();
+    salvarUltimoMes(MES);
+    await carregar();
+  });
+
+  el("vincBusca").addEventListener("input", e => {
+    clearTimeout(vincTimer);
+    const v = e.target.value;
+    vincTimer = setTimeout(() => renderVinculo(v), 250);
+  });
+
+  el("vincLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-tx]");
+    if (!b || !fixaDoVinculo) return;
+    fecharPop();
+    await ajustarMes(fixaDoVinculo, { transacaoId: b.dataset.tx || null });
+  });
+
+  el("popTagLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-usa-tag]");
+    if (!b || !fixaDaTag) return;
+    const item = fixaDaTag;
+    fecharPop();
+    try {
+      await pedir(`/fixas/${encodeURIComponent(item.id)}`, "PUT", {
+        nome: item.nome, tag: b.dataset.usaTag, valorPrevisto: item.valorPrevisto,
+        diaVencimento: item.diaVencimento, categoriaId: item.categoria?.id || null,
+        termo: item.termo, contaId: item.contaId, forma: item.formaPadrao,
+        desde: item.desde, ate: item.ate,
+      });
+      await carregar();
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+
+  // Um select/input não dispara "click" útil, então a edição escuta "change".
+  el("lista").addEventListener("change", async e => {
+    const conta = e.target.closest("[data-forma]");
+    if (conta) return ajustarMes(conta.dataset.forma, { forma: conta.value });
+
+    const bruto = e.target.closest("[data-bruto]");
+    if (bruto) {
+      const texto = bruto.value.trim();
+      return ajustarMes(bruto.dataset.bruto,
+                        { valor: texto === "" ? null : lerValor(texto) });
+    }
+
+    const campo = e.target.closest("[data-desc-campo]");
+    if (!campo) return;
+    const achado = ITENS.flatMap(i => i.descontos.map(d => [i, d]))
+                        .find(([, d]) => d.id === campo.dataset.desc);
+    if (!achado) return;
+    const [item, d] = achado;
+    ABERTAS.add(item.id);
+    try {
+      await pedir(`/fixas/${encodeURIComponent(item.id)}/descontos?month=${encodeURIComponent(MES)}`,
+                  "POST", {
+        id: d.id,
+        descricao: campo.dataset.descCampo === "descricao" ? campo.value : d.descricao,
+        valor: campo.dataset.descCampo === "valor" ? lerValor(campo.value) : d.valor,
+        forma: campo.dataset.descCampo === "forma" ? campo.value : d.forma,
+      });
+      await carregar();
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+
+  el("lista").addEventListener("click", async e => {
+    const det = e.target.closest("[data-detalhe]");
+    if (det) return abrirDetalhe(acharItem(det.dataset.detalhe));
+
+    const t = e.target.closest("[data-tag]");
+    if (t) {
+      fixaDaTag = acharItem(t.dataset.tag);
+      el("popTagLista").innerHTML = TAGS.map(tag =>
+        `<button class="pop-item ${tag === fixaDaTag.tag ? "marcado" : ""}" data-usa-tag="${esc(tag)}">${esc(tag)}</button>`).join("");
+      abrirPop(el("popTag"), t);
+      return;
+    }
+
+    const fecha = e.target.closest("[data-fecha-desc]");
+    if (fecha) return alternarDescontos(fecha.dataset.fechaDesc, false);
+
+    const ab = e.target.closest("[data-abre-desc]");
+    if (ab) return alternarDescontos(ab.dataset.abreDesc);
+
+    const novo = e.target.closest("[data-novo-desc]");
+    if (novo) return abrirDesconto(novo.dataset.novoDesc);
+
+    const s = e.target.closest("[data-pago]");
+    if (s) {
+      const item = acharItem(s.dataset.pago);
+      // Ciclo: automático → o contrário do que está → automático.
+      return ajustarMes(item.id, { pago: item.origemPago === "manual" ? null : !item.pago });
+    }
+
+    const d = e.target.closest("[data-tira-desc]");
+    if (d) {
+      try {
+        await pedir(`/fixas/descontos/${encodeURIComponent(d.dataset.tiraDesc)}`, "DELETE");
+        await carregar();
+      } catch (err) { setEstado("estado", err.message, "erro"); }
+      return;
+    }
+
+    const m = e.target.closest("[data-menu]");
+    if (m) {
+      fixaDoMenu = acharItem(m.dataset.menu);
+      el("popAcoesLista").innerHTML = `
+        <button class="pop-item" data-acao="editar">Editar cadastro</button>
+        <button class="pop-item" data-acao="desconto">Adicionar subdesconto</button>
+        <button class="pop-item" data-acao="valor">Voltar valor ao automático</button>
+        <button class="pop-item" data-acao="encerrar">Encerrar em ${labelMes(MES)}</button>
+        <div class="pop-sep"></div>
+        <button class="pop-item" data-acao="excluir" style="color:var(--vermelho)">Excluir conta</button>`;
+      abrirPop(el("popAcoes"), m, { alinhar: "direita" });
+    }
+  });
+
+  el("popAcoesLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-acao]");
+    if (!b || !fixaDoMenu) return;
+    const item = fixaDoMenu;
+    const acao = b.dataset.acao;
+    fecharPop();
+
+    if (acao === "editar") return abrirModal(item);
+    if (acao === "desconto") { alternarDescontos(item.id, true); return abrirDesconto(item.id); }
+    if (acao === "detalhes") return abrirDetalhe(item);
+
+    if (acao === "excluir") {
+      try { await excluirConta(item); }
+      catch (err) { setEstado("estado", err.message, "erro"); }
+      return;
+    }
+
+    if (acao === "encerrar") {
+      // Parcelamento que acabou: em vez de excluir e perder o histórico, marca
+      // o último mês em que a conta ainda existe.
+      if (!window.confirm(`“${item.nome}” deixa de aparecer depois de ${labelMes(MES)}. O histórico até aqui fica.`)) return;
+      try {
+        await pedir(`/fixas/${encodeURIComponent(item.id)}`, "PUT", {
+          nome: item.nome, tag: item.tag, valorPrevisto: item.valorPrevisto,
+          diaVencimento: item.diaVencimento, categoriaId: item.categoria?.id || null,
+          termo: item.termo, contaId: item.contaId, forma: item.formaPadrao,
+          desde: item.desde, ate: MES,
+        });
+        await carregar();
+      } catch (err) { setEstado("estado", err.message, "erro"); }
+      return;
+    }
+
+    // O bruto se edita direto na linha; aqui só se desfaz o ajuste, para o
+    // valor voltar a vir da transação (ou do previsto).
+    if (item.origemValor !== "manual") {
+      setEstado("estado", `“${item.nome}” já está no valor automático.`, "ok");
+      return;
+    }
+    await ajustarMes(item.id, { valor: null });
+  });
+}
+
+(async function iniciar() {
+  montarNav("contas_fixas.html");
+  ligar();
+  try {
+    const f = await pedirCache("/extrato/filtros");
+    CATEGORIAS = f.categorias || [];
+    CONTAS = f.contas || [];
+    MES = ultimoMesSalvo() || f.mesAtual || "";
+    MESES_DISP = completarAno(f.meses, MES);
+    salvarUltimoMes(MES);
+    await carregar();
+  } catch (e) {
+    setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
+    el("vazio").innerHTML =
+      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+  }
+})();
+</script>
+</body>
+</html>

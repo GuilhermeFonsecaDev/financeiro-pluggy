@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Investimentos</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+.caixinha-hero { display:grid; grid-template-columns:minmax(300px,1.25fr) minmax(500px,2fr); gap:14px; margin-bottom:14px; }
+.hero-principal { position:relative; overflow:hidden; min-height:178px; padding:22px; border-color:rgba(74,149,234,.5); background:linear-gradient(125deg,#234d7d 0%,#213b5c 58%,var(--surface) 100%); }
+.hero-principal::after { content:""; position:absolute; width:250px; height:250px; right:-100px; top:-120px; border-radius:50%; background:rgba(93,174,255,.12); }
+.hero-kicker { color:#a8cff7; font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.07em; }
+.hero-valor { margin:12px 0 2px; font-size:39px; line-height:1.1; font-weight:700; letter-spacing:-.035em; }
+.hero-nota { color:#b8c8da; font-size:13px; }
+.hero-meta { display:flex; gap:20px; margin-top:22px; flex-wrap:wrap; color:#d4e1ef; font-size:12px; }
+.hero-meta span { display:grid; gap:2px; }
+.hero-meta small { color:#91a7bd; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+.hero-grade { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.hero-mini { padding:17px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); }
+.hero-mini .rotulo { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
+.hero-mini strong { display:block; margin-top:7px; font-size:21px; letter-spacing:-.02em; }
+.hero-mini small { display:block; margin-top:3px; color:var(--text-3); font-size:11px; }
+.sec-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:14px 0; }
+.chart { width:100%; height:clamp(250px,16vw,330px); display:block; overflow:visible; }
+.chart-grid { stroke:var(--line); stroke-width:1; }
+.chart-area { fill:rgba(74,149,234,.11); }
+.chart-line { fill:none; stroke:var(--azul); stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round; }
+.chart-dot { fill:var(--surface); stroke:var(--azul); stroke-width:2; }
+.chart-area.aportes { fill:rgba(63,191,127,.10); }
+.chart-line.aportes { stroke:var(--verde); }
+.chart-dot.aportes { stroke:var(--verde); }
+.chart-label { fill:var(--text-3); font-size:10px; }
+.legenda { display:flex; justify-content:space-between; gap:12px; margin-top:-2px; color:var(--text-3); font-size:11.5px; }
+.lote-nome { max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.taxa { color:#9fc5ed; }
+.ganho { color:var(--verde); }
+.perda { color:var(--vermelho); }
+.linha-resumo { background:var(--surface-2); font-weight:650; }
+.tipo-mov { display:inline-flex; min-width:72px; justify-content:center; padding:3px 8px; border-radius:999px; font-size:11.5px; font-weight:650; }
+.tipo-mov.aporte { color:#8bd5b0; background:rgba(63,191,127,.11); border:1px solid rgba(63,191,127,.3); }
+.tipo-mov.resgate { color:#f0b980; background:rgba(232,149,74,.1); border:1px solid rgba(232,149,74,.3); }
+.confirmado { display:inline-flex; align-items:center; gap:5px; color:#8bd5b0; font-size:11.5px; white-space:nowrap; }
+.confirmado::before { content:"✓"; display:grid; place-items:center; width:17px; height:17px; border-radius:50%; background:rgba(63,191,127,.12); border:1px solid rgba(63,191,127,.32); }
+.barra-mes { display:flex; align-items:center; gap:9px; }
+.barra-trilho { width:105px; height:5px; border-radius:99px; background:var(--surface-3); overflow:hidden; }
+.barra-fill { height:100%; border-radius:99px; background:var(--azul); }
+.tabela-scroll-10 { max-height:458px; overflow-y:auto; scrollbar-gutter:stable; }
+.tabela-scroll-10 tbody tr { height:42px; }
+.tabela-scroll-10 thead th { position:sticky; top:0; z-index:2; background:var(--surface); box-shadow:0 1px 0 var(--line); }
+.tabela-scroll-10::-webkit-scrollbar { width:8px; }
+.tabela-scroll-10::-webkit-scrollbar-track { background:var(--surface-2); border-radius:999px; }
+.tabela-scroll-10::-webkit-scrollbar-thumb { background:var(--line-forte); border-radius:999px; }
+.tabela-scroll-10::-webkit-scrollbar-thumb:hover { background:var(--text-3); }
+.detalhes > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.detalhes > summary::-webkit-details-marker { display:none; }
+.detalhes > summary::after { content:"Abrir lista"; color:var(--azul); font-size:13px; font-weight:600; }
+.detalhes[open] > summary::after { content:"Fechar lista"; }
+.detalhes[open] > summary { margin-bottom:14px; }
+.filtros-mov { display:flex; gap:7px; margin:0 0 12px; flex-wrap:wrap; }
+.filtros-mov button { min-height:30px; padding:4px 11px; border-radius:999px; font-size:12.5px; }
+.filtros-mov button.ativo { border-color:var(--azul); background:var(--azul-suave); color:#9ac8f6; }
+.filtros-mov select { min-height:30px; margin-left:auto; padding-top:4px; padding-bottom:4px; border-radius:999px; font-size:12.5px; }
+@media (max-width:1400px) { .hero-grade { grid-template-columns:repeat(2,minmax(0,1fr)); } .hero-mini.media-aporte { grid-column:1/-1; } }
+@media (max-width:1200px) { .sec-grid { grid-template-columns:1fr; } }
+@media (max-width:1100px) { .caixinha-hero { grid-template-columns:1fr; } }
+@media (max-width:760px) { .hero-grade { grid-template-columns:1fr 1fr; } .hero-valor { font-size:32px; } }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div><h1>Investimentos</h1></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><button id="btnAtualizar">Atualizar Pluggy</button></div>
+  </header>
+
+  <section class="caixinha-hero">
+    <article class="painel hero-principal">
+      <div class="hero-kicker">Caixinha Itaú · saldo líquido</div>
+      <div class="hero-valor" id="vLiquido">R$ 0,00</div>
+      <div class="hero-nota">valor atual após impostos, segundo a posição enviada pelo Itaú à Pluggy</div>
+      <div class="hero-meta">
+        <span><small>Referência</small><b id="vReferencia">—</b></span>
+        <span><small>Lotes ativos</small><b id="vLotes">0</b></span>
+        <span><small>Rentabilidade</small><b id="vTaxa">100% do CDI</b></span>
+      </div>
+    </article>
+    <div class="hero-grade">
+      <article class="hero-mini"><span class="rotulo">Valor bruto</span><strong id="vBruto">R$ 0,00</strong><small>antes de impostos</small></article>
+      <article class="hero-mini"><span class="rotulo">Ganho bruto</span><strong class="positivo" id="vGanhoBruto">R$ 0,00</strong><small id="pGanhoBruto">0,00% sobre o aplicado</small></article>
+      <article class="hero-mini media-aporte"><span class="rotulo">Média líquida mensal · 2026</span><strong id="vMediaLiquida2026">R$ 0,00</strong><small id="pMediaLiquida2026">aplicações menos resgates</small></article>
+    </div>
+  </section>
+
+  <section class="sec-grid">
+    <article class="painel">
+      <div class="painel-tit"><div><h2>Valor líquido por mês</h2><div class="sub">aplicações menos resgates em cada mês</div></div></div>
+      <svg id="graficoAportes" class="chart" aria-label="Valor líquido mensal da Caixinha"></svg>
+      <div class="legenda"><span id="aportesInicio">—</span><span id="aportesFim">—</span></div>
+    </article>
+    <article class="painel">
+      <div class="painel-tit"><div><h2>Evolução do valor total</h2><div class="sub">saldo mensal reconstruído a partir do valor atual e das movimentações</div></div></div>
+      <svg id="graficoTotal" class="chart" aria-label="Evolução do valor total da Caixinha"></svg>
+      <div class="legenda"><span id="totalInicio">—</span><span id="totalFim">—</span></div>
+    </article>
+  </section>
+
+  <section class="painel" style="margin-bottom:14px">
+    <div class="painel-tit"><div><h2>Movimentação por mês</h2><div class="sub">valores confirmados no extrato da conta Itaú</div></div></div>
+    <div class="tabela-wrap tabela-scroll-10"><table>
+      <thead><tr><th>Mês</th><th class="num">Aplicações</th><th class="num">Resgates</th><th class="num">Fluxo líquido</th><th class="num">Movimentos</th><th>Intensidade</th></tr></thead>
+      <tbody id="meses"></tbody>
+    </table></div>
+  </section>
+
+  <details class="painel detalhes" id="detMovimentos">
+    <summary><div><h2>Todas as movimentações</h2><div class="sub" id="movSub">histórico confirmado no extrato da Pluggy</div></div></summary>
+    <div class="filtros-mov" id="filtrosMovimentos" aria-label="Filtrar movimentações">
+      <button class="ativo" data-filtro-mov="todos">Todas</button>
+      <button data-filtro-mov="BUY">Aportes</button>
+      <button data-filtro-mov="SELL">Resgates</button>
+      <select id="filtroPeriodo" aria-label="Filtrar por mês e ano"><option value="todos">Todos os meses</option></select>
+    </div>
+    <div class="tabela-wrap tabela-scroll-10"><table>
+      <thead><tr><th>Data</th><th>Movimento</th><th>Descrição do extrato</th><th class="num">Valor</th><th>Conta</th><th>Confirmação</th></tr></thead>
+      <tbody id="movimentos"></tbody>
+    </table></div>
+  </details>
+</main>
+
+<script src="app.js"></script>
+<script>
+const el = id => document.getElementById(id);
+let D = null;
+let filtroMovimentos = "todos";
+let filtroPeriodo = "todos";
+const pct = v => `${Number(v || 0).toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}%`;
+const dataIso = v => fmtData(String(v || "").slice(0,10));
+
+function desenharGrafico(id, serie, {classe="", zero=true, signed=false}={}) {
+  const svg = el(id);
+  const W=Math.max(560,Math.round(svg.clientWidth || 900));
+  const H=Math.max(250,Math.round(svg.clientHeight || 280));
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio","xMidYMid meet");
+  if (!serie.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" class="chart-label">Histórico ainda não disponível</text>`; return; }
+  const vals = serie.map(p => Number(p.valor || 0));
+  let min = zero ? 0 : Math.min(...vals);
+  let max = Math.max(1,...vals);
+  if (signed) { min=Math.min(0,...vals); max=Math.max(0,...vals); const folga=Math.max(1,(max-min)*.08); min-=folga; max+=folga; }
+  else if (!zero && serie.length > 1) { const folga=Math.max(1,(max-min)*.18); min=Math.max(0,min-folga); max+=folga; }
+  else if (!zero) { min=0; max*=1.12; }
+  const faixa = max-min || 1;
+  const L=64,R=18,T=18,B=24;
+  const x = i => L + (W-L-R) * (serie.length===1 ? .5 : i/(serie.length-1));
+  const y = v => T + (H-T-B) * (1-(v-min)/faixa);
+  const linha = serie.map((p,i) => `${x(i)},${y(p.valor)}`).join(" ");
+  const baseY=y(0);
+  const area = `${x(0)},${baseY} ${linha} ${x(serie.length-1)},${baseY}`;
+  const grades = [0,.25,.5,.75,1].map(f => { const yy=T+(H-T-B)*f; const valor=max-faixa*f; return `<line class="chart-grid" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="chart-label" x="${L+4}" y="${yy-5}">${esc(fmtBRLCurto(valor))}</text>`; }).join("");
+  const dots = serie.map((p,i) => `<circle class="chart-dot ${classe}" cx="${x(i)}" cy="${y(p.valor)}" r="3.5"><title>${esc(p.rotulo)}: ${fmtBRL(p.valor)}</title></circle>`).join("");
+  svg.innerHTML = `${grades}<polygon class="chart-area ${classe}" points="${area}"/><polyline class="chart-line ${classe}" points="${linha}"/>${dots}`;
+}
+
+function renderGraficos() {
+  const meses=D.meses||[];
+  const liquidos=meses.map(m=>({rotulo:labelMes(m.mes),valor:Number(m.liquido||0),mes:m.mes}));
+  desenharGrafico("graficoAportes",liquidos,{classe:"aportes",signed:true});
+  if(liquidos.length){ el("aportesInicio").textContent=`${liquidos[0].rotulo} · ${fmtBRL(liquidos[0].valor)}`; el("aportesFim").textContent=`${liquidos.at(-1).rotulo} · ${fmtBRL(liquidos.at(-1).valor)}`; }
+
+  let saldo=Number(D.resumo?.liquido||0);
+  const totais=new Array(meses.length);
+  for(let i=meses.length-1;i>=0;i--){ totais[i]={rotulo:labelMes(meses[i].mes),valor:saldo}; saldo-=Number(meses[i].liquido||0); }
+  desenharGrafico("graficoTotal",totais,{zero:false});
+  if(totais.length){ el("totalInicio").textContent=`${totais[0].rotulo} · ${fmtBRL(totais[0].valor)}`; el("totalFim").textContent=`${totais.at(-1).rotulo} · ${fmtBRL(totais.at(-1).valor)}`; }
+}
+
+function renderMovimentos() {
+  const lista=D.movimentos.filter(m=>(filtroMovimentos==="todos" || m.tipo===filtroMovimentos) && (filtroPeriodo==="todos" || String(m.data).slice(0,7)===filtroPeriodo));
+  const nome=filtroMovimentos==="BUY" ? "aportes" : filtroMovimentos==="SELL" ? "resgates" : "operações";
+  el("movSub").textContent=`${lista.length} ${nome} · API com fallback do extrato`;
+  el("movimentos").innerHTML=lista.map(m=>`<tr><td class="data">${dataIso(m.data)}</td><td><span class="tipo-mov ${m.tipo==='BUY'?'aporte':'resgate'}">${m.tipo==='BUY'?'Aplicação':m.tipo==='SELL'?'Resgate':esc(m.tipo)}</span></td><td><div class="lote-nome">${esc(m.descricao)}</div></td><td class="num ${m.tipo==='BUY'?'positivo':'negativo'}">${m.tipo==='BUY'?'+':'−'} ${fmtBRL(m.valor)}</td><td>${esc(m.conta||'Itaú')}</td><td><span class="confirmado">${m.origem==='Extrato Itaú'?'Fallback extrato':'API conferida'}</span></td></tr>`).join("");
+}
+
+function render() {
+  const r = D.resumo;
+  el("vLiquido").textContent=fmtBRL(r.liquido); el("vBruto").textContent=fmtBRL(r.bruto);
+  el("vGanhoBruto").textContent=fmtBRL(r.rendimentoBruto);
+  el("vReferencia").textContent=dataIso(r.dataReferencia);
+  el("vLotes").textContent=`${r.lotesAtivos} ativos`;
+  el("pGanhoBruto").textContent=`${pct(r.original ? r.rendimentoBruto/r.original*100 : 0)} sobre o aplicado`;
+  const taxas=[...new Set(D.lotes.map(l=>`${l.taxa ?? "—"}% ${l.tipoTaxa || ""}`))]; el("vTaxa").textContent=taxas.join(" · ");
+
+  const meses2026=(D.meses||[]).filter(m=>String(m.mes||"").startsWith("2026-"));
+  const mediaLiquida2026=meses2026.length ? meses2026.reduce((s,m)=>s+Number(m.liquido||0),0)/meses2026.length : 0;
+  const mediaEl=el("vMediaLiquida2026");
+  mediaEl.textContent=fmtBRL(mediaLiquida2026);
+  mediaEl.classList.toggle("positivo",mediaLiquida2026>=0);
+  mediaEl.classList.toggle("negativo",mediaLiquida2026<0);
+  el("pMediaLiquida2026").textContent=`média de ${meses2026.length} ${meses2026.length===1?"mês":"meses"} · aplicações menos resgates`;
+
+  const maxMes=Math.max(1,...D.meses.map(m=>Math.max(m.aplicacoes,m.resgates)));
+  el("meses").innerHTML=[...D.meses].reverse().map(m=>`<tr><td>${labelMes(m.mes)}</td><td class="num positivo">${fmtBRL(m.aplicacoes)}</td><td class="num negativo">${fmtBRL(m.resgates)}</td><td class="num ${m.liquido>=0?'ganho':'perda'}">${fmtBRL(m.liquido)}</td><td class="num">${m.quantidade}</td><td><div class="barra-mes"><div class="barra-trilho"><div class="barra-fill" style="width:${Math.max(2,Math.max(m.aplicacoes,m.resgates)/maxMes*100)}%"></div></div></div></td></tr>`).join("");
+  const periodos=[...new Set(D.movimentos.map(m=>String(m.data).slice(0,7)).filter(Boolean))].sort().reverse();
+  el("filtroPeriodo").innerHTML=`<option value="todos">Todos os meses</option>${periodos.map(p=>`<option value="${esc(p)}">${labelMes(p)}</option>`).join("")}`;
+  el("filtroPeriodo").value=filtroPeriodo;
+  renderMovimentos();
+  renderGraficos();
+  setEstado("estado", `posição coletada em ${new Date(r.coletadoEm).toLocaleString('pt-BR')}`, "ok");
+}
+
+async function carregar(){ try { D=await pedir('/investimentos'); render(); } catch(e){ setEstado('estado',e.message,'erro'); } }
+el("filtrosMovimentos").addEventListener("click",e=>{
+  const botao=e.target.closest("[data-filtro-mov]"); if(!botao) return;
+  filtroMovimentos=botao.dataset.filtroMov;
+  el("filtrosMovimentos").querySelectorAll("button").forEach(b=>b.classList.toggle("ativo",b===botao));
+  renderMovimentos();
+});
+el("filtroPeriodo").addEventListener("change",e=>{ filtroPeriodo=e.target.value; renderMovimentos(); });
+el("btnAtualizar").addEventListener("click",async e=>{ e.currentTarget.disabled=true; try{ await pedir('/pluggy-sync','POST',{}); setEstado('estado','atualização iniciada; a tela continua disponível','ok'); }catch(err){setEstado('estado',err.message,'erro');}finally{e.currentTarget.disabled=false;} });
+montarNav("investimentos.html"); carregar();
+let resizeGrafico;
+window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) renderGraficos(); },120); });
+</script>
+</body>
+</html>

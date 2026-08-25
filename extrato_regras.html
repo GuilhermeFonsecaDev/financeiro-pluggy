@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regras</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+.regra { display: grid; grid-template-columns: 30px 1fr 120px 44px 34px; gap: 12px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--line); }
+.regra:last-child { border-bottom: 0; }
+.regra:hover { background: var(--surface-2); }
+.regra.off { opacity: .45; }
+.ordem { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.regra-nome { font-size: 14px; font-weight: 600; }
+.regra-cond { margin-top: 2px; color: var(--text-3); font-size: 12.5px; }
+.regra-cond b { color: var(--text-2); font-weight: 600; }
+.termo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+.afeta { text-align: right; color: var(--text-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* Interruptor: alvo pequeno, estado óbvio pela cor e pela posição. */
+.switch { position: relative; width: 34px; height: 19px; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--line-forte); transition: background .14s ease; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 999px; background: var(--text-3); transition: transform .14s ease, background .14s ease; }
+.switch input:checked + span { background: var(--azul); border-color: var(--azul); }
+.switch input:checked + span::after { transform: translateX(15px); background: #fff; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+.dinheiro-input { display:flex; align-items:center; width:100%; min-height:31px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); overflow:hidden; }
+.dinheiro-input:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
+.dinheiro-input > span { padding-left:9px; color:var(--text-3); font-size:12px; }
+.dinheiro-input input { flex:1; min-width:0; border:0; border-radius:0; outline:0; background:transparent; box-shadow:none; }
+.dinheiro-input input:focus { border:0; outline:0; box-shadow:none; }
+.termos-topo { display:flex; align-items:center; margin-bottom:6px; }
+.termos-topo > span { color:var(--text-3); font-size:12px; }
+.termo-add { display:block; width:100%; height:34px; min-height:34px; padding:0; border:1px dashed var(--line-forte); border-radius:8px; background:transparent; color:var(--azul); font-size:12.5px; cursor:pointer; }
+.termo-add:hover { border-style:solid; border-color:var(--azul); background:var(--surface-2); }
+.termos-lista { display:grid; gap:7px; }
+/* O input ocupa a linha toda, igual aos outros campos do formulario; o x de
+   remover fica por dentro dele, e nao numa coluna que encurtava a caixa. */
+.termo-linha { position:relative; }
+.termo-linha input { width:100%; padding-right:34px; }
+.termo-remover { position:absolute; right:5px; top:50%; transform:translateY(-50%); width:24px; height:24px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--text-3); font-size:16px; line-height:1; cursor:pointer; }
+.termo-remover:hover { background:var(--surface-3); color:var(--vermelho); }
+@media (max-width: 900px) {
+  .regra { grid-template-columns: 30px 1fr 34px; }
+  .afeta, .switch { display: none; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Regras</h1>
+      <p class="sub" id="notaSistema"></p>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="estado" id="estado">Carregando…</span>
+      <button class="primario" id="btnNova">+ Nova regra</button>
+    </div>
+  </header>
+
+  <section class="painel" style="padding:6px 10px">
+    <div id="lista"></div>
+    <div id="vazio"></div>
+  </section>
+</main>
+
+<div class="pop" id="popAcoes" hidden style="min-width:190px">
+  <div class="pop-lista" id="popAcoesLista"></div>
+</div>
+
+<div class="modal-fundo" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-tit">
+      <h2 id="modalTitulo">Nova regra</h2>
+      <button class="icone" id="btnFechar" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="form-grid">
+      <label class="campo full"><span>Nome</span>
+        <input id="fNome" type="text" placeholder="ex.: Mercado do bairro" autocomplete="off" /></label>
+
+      <label class="campo"><span>Quando</span>
+        <select id="fCampo">
+          <option value="descricao">A descrição</option>
+          <option value="categoria_original">A categoria da Pluggy</option>
+        </select></label>
+
+      <label class="campo"><span>Condição</span>
+        <select id="fOperador">
+          <option value="contem">contém</option>
+          <option value="comeca_com">começa com</option>
+          <option value="igual">é igual a</option>
+        </select></label>
+
+      <div class="campo full">
+        <div class="termos-topo"><span>Termos</span></div>
+        <div class="termos-lista" id="fTermos"></div>
+        <button type="button" class="termo-add" id="btnAddTermo" data-add-termo
+                style="margin-top:7px">+ Adicionar termo</button>
+      </div>
+
+      <label class="campo"><span>Valor mínimo <small>(opcional)</small></span>
+        <span class="dinheiro-input"><span>R$</span><input id="fValorMin" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" /></span></label>
+
+      <label class="campo"><span>Valor máximo <small>(opcional)</small></span>
+        <span class="dinheiro-input"><span>R$</span><input id="fValorMax" type="text" inputmode="decimal" placeholder="sem limite" autocomplete="off" /></span></label>
+
+      <label class="campo full"><span>Renomear descrição para</span>
+        <input id="fDescricaoNova" type="text" placeholder="Opcional — ex.: BAR DO CHICO" autocomplete="off" /></label>
+
+      <label class="campo"><span>Categoria</span><select id="fCategoria"></select></label>
+
+      <label class="campo"><span>Prioridade</span>
+        <input id="fPrioridade" type="number" value="100" min="1" max="999" /></label>
+
+      <div class="full" style="display:flex;gap:18px;flex-wrap:wrap">
+        <label class="check"><input id="fIgnorar" type="checkbox" /> Tirar dos cálculos</label>
+        <label class="check"><input id="fAtivo" type="checkbox" checked /> Regra ativa</label>
+      </div>
+    </div>
+
+    <p class="muted" style="margin:14px 0 0;font-size:12.5px">
+      A comparação ignora maiúsculas, minúsculas e acentos. A faixa inclui os limites e usa o valor absoluto da transação. Prioridade menor é aplicada primeiro.
+    </p>
+    <p class="estado erro" id="modalErro" style="margin:8px 0 0"></p>
+
+    <div class="modal-rodape">
+      <button class="sutil" id="btnCancelar">Cancelar</button>
+      <button class="primario" id="btnSalvar">Criar regra</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+const OPERADORES = { contem: "contém", comeca_com: "começa com", igual: "é igual a" };
+const CAMPOS = { descricao: "a descrição", categoria_original: "a categoria da Pluggy" };
+
+let CATEGORIAS = [], REGRAS = [];
+let editando = null, regraDoMenu = null;
+
+const el = id => document.getElementById(id);
+const fmtValorRegra = valor => valor == null ? "" : Number(valor).toLocaleString("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 });
+const lerValorRegra = texto => {
+  const limpo = String(texto ?? "").replace(/R\$\s?/g, "").trim();
+  if (!limpo) return null;
+  const numero = Number(limpo.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(numero) ? numero : NaN;
+};
+const textoFaixa = regra => {
+  if (regra.valorMin != null && regra.valorMax != null) return `de ${fmtBRL(regra.valorMin)} a ${fmtBRL(regra.valorMax)}`;
+  if (regra.valorMin != null) return `a partir de ${fmtBRL(regra.valorMin)}`;
+  if (regra.valorMax != null) return `até ${fmtBRL(regra.valorMax)}`;
+  return "";
+};
+
+function criarLinhaTermo(valor = "", removivel = true) {
+  const linha = document.createElement("div");
+  linha.className = "termo-linha";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "f-termo";
+  input.placeholder = "ex.: RLRSOARES";
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Termo da regra");
+  input.value = valor;
+  linha.appendChild(input);
+  if (removivel) {
+    const remover = document.createElement("button");
+    remover.type = "button";
+    remover.className = "termo-remover";
+    remover.dataset.removeTermo = "";
+    remover.title = "Remover termo";
+    remover.setAttribute("aria-label", "Remover termo");
+    remover.textContent = "×";
+    linha.appendChild(remover);
+  }
+  el("fTermos").appendChild(linha);
+  return input;
+}
+
+function preencherTermos(valores = [""]) {
+  const termos = valores.filter(v => v != null);
+  el("fTermos").innerHTML = "";
+  (termos.length ? termos : [""]).forEach(valor => criarLinhaTermo(valor, true));
+}
+
+function termosAtuais() {
+  return [...document.querySelectorAll(".f-termo")]
+    .map(input => input.value.trim()).filter(Boolean);
+}
+
+function render() {
+  const alvo = el("lista");
+  if (!REGRAS.length) {
+    alvo.innerHTML = "";
+    el("vazio").innerHTML = `<div class="vazio">Nenhuma regra ainda. Crie a primeira em “Nova regra”.</div>`;
+    return;
+  }
+  el("vazio").innerHTML = "";
+  alvo.innerHTML = REGRAS.map((r, i) => {
+    const cat = r.categoriaId
+      ? `<span class="chip"><span class="ponto" style="background:${esc(r.categoriaCor || "#9ba1ab")}"></span>${esc(r.categoriaNome || r.categoriaId)}</span>`
+      : `<span class="muted" style="font-size:12.5px">mantém a categoria</span>`;
+    const fora = r.ignorarCalculos ? `<span class="chip aviso">fora dos cálculos</span>` : "";
+    const renomeia = r.descricaoNova
+      ? `<span class="chip">renomeia para “${esc(r.descricaoNova)}”</span>` : "";
+    const faixa = textoFaixa(r);
+    const termos = (r.termos?.length ? r.termos : [r.termo])
+      .map(termo => `“${esc(termo)}”`).join(" ou ");
+    return `
+      <div class="regra ${r.ativo ? "" : "off"}">
+        <span class="ordem">${i + 1}</span>
+        <div>
+          <div class="regra-nome">${esc(r.nome)}</div>
+          <div class="regra-cond">Quando <b>${esc(CAMPOS[r.campo] || r.campo)}</b>
+            ${esc(OPERADORES[r.operador] || r.operador)}
+            <span class="termo">${termos}</span>${faixa ? ` · valor ${esc(faixa)}` : ""}</div>
+          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${cat}${renomeia}${fora}</div>
+        </div>
+        <span class="afeta">${r.afetadas} transaç${r.afetadas === 1 ? "ão" : "ões"}</span>
+        <label class="switch" title="${r.ativo ? "Desativar" : "Ativar"}">
+          <input type="checkbox" data-alterna="${esc(r.id)}" ${r.ativo ? "checked" : ""}><span></span>
+        </label>
+        <button class="icone" data-abre-pop data-menu="${esc(r.id)}" aria-label="Ações">⋯</button>
+      </div>`;
+  }).join("");
+}
+
+/* ----------------------------------------------------------------- modal */
+
+function abrirModal(regra = null, pre = {}) {
+  editando = regra?.id || null;
+  el("modalTitulo").textContent = regra ? "Editar regra" : "Nova regra";
+  el("btnSalvar").textContent = regra ? "Salvar" : "Criar regra";
+  el("modalErro").textContent = "";
+
+  el("fNome").value = regra?.nome ?? pre.nome ?? "";
+  el("fCampo").value = regra?.campo ?? pre.campo ?? "descricao";
+  el("fOperador").value = regra?.operador ?? pre.operador ?? "contem";
+  preencherTermos(regra?.termos ?? pre.termos ?? [regra?.termo ?? pre.termo ?? ""]);
+  el("fValorMin").value = fmtValorRegra(regra?.valorMin ?? pre.valorMin ?? null);
+  el("fValorMax").value = fmtValorRegra(regra?.valorMax ?? pre.valorMax ?? null);
+  el("fDescricaoNova").value = regra?.descricaoNova ?? pre.descricaoNova ?? "";
+  el("fCategoria").value = regra?.categoriaId ?? pre.categoriaId ?? "";
+  el("fPrioridade").value = regra?.prioridade ?? 100;
+  el("fIgnorar").checked = regra ? regra.ignorarCalculos : !!pre.ignorar;
+  el("fAtivo").checked = regra ? regra.ativo : true;
+
+  el("modal").hidden = false;
+  el("fTermos").querySelector("input")?.focus();
+}
+
+function fecharModal() { el("modal").hidden = true; editando = null; }
+
+async function salvar() {
+  const valorMin = lerValorRegra(el("fValorMin").value);
+  const valorMax = lerValorRegra(el("fValorMax").value);
+  const termos = termosAtuais();
+  const dados = {
+    nome: el("fNome").value.trim() || termos[0] || "",
+    campo: el("fCampo").value,
+    operador: el("fOperador").value,
+    termo: termos[0] || "",
+    termos,
+    valorMin,
+    valorMax,
+    descricaoNova: el("fDescricaoNova").value.trim() || null,
+    categoriaId: el("fCategoria").value || null,
+    ignorarCalculos: el("fIgnorar").checked,
+    prioridade: Number(el("fPrioridade").value) || 100,
+    ativo: el("fAtivo").checked,
+  };
+  if (!dados.termos.length) { el("modalErro").textContent = "Informe pelo menos um termo a procurar."; return; }
+  if (Number.isNaN(valorMin) || Number.isNaN(valorMax)) { el("modalErro").textContent = "Informe valores mínimo e máximo válidos."; return; }
+  if (valorMin != null && valorMax != null && valorMin > valorMax) { el("modalErro").textContent = "O valor mínimo não pode ser maior que o valor máximo."; return; }
+
+  el("btnSalvar").disabled = true;
+  try {
+    if (editando) await pedir(`/extrato/regras/${encodeURIComponent(editando)}`, "PUT", dados);
+    else await pedir("/extrato/regras", "POST", dados);
+    fecharModal();
+    await recarregar();
+  } catch (e) {
+    el("modalErro").textContent = e.message;
+  } finally {
+    el("btnSalvar").disabled = false;
+  }
+}
+
+async function recarregar() {
+  const resposta = await pedir("/extrato/regras");
+  REGRAS = resposta.regras || [];
+  const sistema = resposta.sistema || 0;
+  el("notaSistema").textContent = sistema
+    ? `Além destas, ${sistema} regras de sistema rodam sempre — transferência `
+      + `entre contas próprias, resgate de cofrinho e pagamento de fatura. `
+      + `Elas sustentam os cálculos, então não são editáveis.`
+    : "";
+  render();
+  setEstado("estado", `${REGRAS.length} regra(s)`, "ok");
+}
+
+/* --------------------------------------------------------------- eventos */
+
+function ligar() {
+  el("btnNova").addEventListener("click", () => abrirModal());
+  el("btnAddTermo").addEventListener("click", () => criarLinhaTermo("", true).focus());
+  el("fTermos").addEventListener("click", e => {
+    const remover = e.target.closest("[data-remove-termo]");
+    // Sem termo nenhum a regra nao casa com nada, entao a ultima linha fica.
+    if (remover && el("fTermos").querySelectorAll(".termo-linha").length > 1) {
+      remover.closest(".termo-linha")?.remove();
+    }
+  });
+  el("btnFechar").addEventListener("click", fecharModal);
+  el("btnCancelar").addEventListener("click", fecharModal);
+  el("btnSalvar").addEventListener("click", salvar);
+  el("modal").addEventListener("click", e => { if (e.target.id === "modal") fecharModal(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !el("modal").hidden) fecharModal();
+  });
+
+  el("lista").addEventListener("change", async e => {
+    const t = e.target.closest("[data-alterna]");
+    if (!t) return;
+    const r = REGRAS.find(x => x.id === t.dataset.alterna);
+    try {
+      await pedir(`/extrato/regras/${encodeURIComponent(r.id)}`, "PUT", {
+        nome: r.nome, campo: r.campo, operador: r.operador, termo: r.termo,
+        termos: r.termos,
+        valorMin: r.valorMin, valorMax: r.valorMax,
+        categoriaId: r.categoriaId, descricaoNova: r.descricaoNova,
+        ignorarCalculos: r.ignorarCalculos,
+        prioridade: r.prioridade, ativo: t.checked,
+      });
+      await recarregar();
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+
+  el("lista").addEventListener("click", e => {
+    const b = e.target.closest("[data-menu]");
+    if (!b) return;
+    regraDoMenu = REGRAS.find(r => r.id === b.dataset.menu);
+    el("popAcoesLista").innerHTML = `
+      <button class="pop-item" data-acao="editar">✎  Editar</button>
+      <button class="pop-item" data-acao="duplicar">⧉  Duplicar</button>
+      <div class="pop-sep"></div>
+      <button class="pop-item" data-acao="remover" style="color:var(--vermelho)">Excluir</button>`;
+    abrirPop(el("popAcoes"), b, { alinhar: "direita" });
+  });
+
+  el("popAcoesLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-acao]");
+    if (!b || !regraDoMenu) return;
+    const r = regraDoMenu;
+    fecharPop();
+
+    if (b.dataset.acao === "editar") return abrirModal(r);
+    if (b.dataset.acao === "duplicar") {
+      return abrirModal(null, { nome: `${r.nome} (cópia)`, campo:r.campo,
+        operador:r.operador, termo:r.termo, termos:r.termos,
+        valorMin:r.valorMin, valorMax:r.valorMax,
+        categoriaId:r.categoriaId, descricaoNova:r.descricaoNova,
+        ignorar:r.ignorarCalculos });
+    }
+    const aviso = `Excluir “${r.nome}”? As ${r.afetadas} transações voltam à categoria automática.`;
+    if (!window.confirm(aviso)) return;
+    try {
+      await pedir(`/extrato/regras/${encodeURIComponent(r.id)}`, "DELETE");
+      await recarregar();
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+}
+
+(async function iniciar() {
+  montarNav("extrato_regras.html");
+  ligar();
+  try {
+    CATEGORIAS = (await pedir("/extrato/categorias")).categorias || [];
+    el("fCategoria").innerHTML = ['<option value="">Não alterar a categoria</option>']
+      .concat(CATEGORIAS.map(c =>
+        `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.nome)}</option>`)).join("");
+    await recarregar();
+
+    // Veio do menu de ações de uma transação: abre o cadastro já preenchido.
+    const url = new URLSearchParams(location.search);
+    if (url.get("nova")) {
+      abrirModal(null, { termo: url.get("termo") || "", ignorar: url.get("modo") === "ignorar" });
+    }
+  } catch (e) {
+    setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
+    el("vazio").innerHTML =
+      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+  }
+})();
+</script>
+</body>
+</html>

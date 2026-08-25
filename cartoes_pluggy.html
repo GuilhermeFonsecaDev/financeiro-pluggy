@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cartões Pluggy — Open Finance</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+/* Grade de faturas: 12 meses x cartoes. Primeira coluna fixa ao rolar. */
+table { table-layout: fixed; }
+th, td { text-align: right; white-space: nowrap; font-size: 13.5px; padding: 11px 12px; }
+th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; text-align: left; background: var(--surface); }
+th { background: var(--surface-2); }
+tr.total-row td { background: var(--azul-suave); font-weight: 650; }
+tr.total-row td:first-child { background: #1d3450; }
+tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
+.card-name { display: flex; align-items: center; gap: 9px; }
+.dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; flex: 0 0 auto; background: var(--verde); }
+.valor-cell { display: flex; align-items: center; justify-content: flex-end; }
+.valor { font-weight: 600; font-variant-numeric: tabular-nums; }
+.valor.zero, .total-cell.zero { color: var(--text-3); font-weight: 450; }
+.total-cell { color: #86dcae; font-weight: 650; font-variant-numeric: tabular-nums; }
+.aviso { margin: 0 0 14px; padding: 11px 14px; border: 1px solid rgba(232,149,74,.32); border-radius: var(--raio); background: rgba(232,149,74,.09); color: #f0b980; font-size: 13px; }
+.aviso[hidden] { display: none; }
+.vazio-cell { padding: 26px 14px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Cartões Pluggy</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button id="prevYearBtn" type="button">←</button>
+      <input id="yearInput" class="" type="number" min="2000" max="2100" step="1" />
+      <button id="nextYearBtn" type="button">→</button>
+      <select id="groupSelect" aria-label="Forma de agrupamento">
+        <option value="fatura" selected>Agrupar por fatura</option>
+        <option value="mes">Agrupar por mês da compra</option>
+      </select>
+    </div>
+  </header>
+
+  <section class="grid grid-4" style="margin-bottom:14px">
+    <article class="metrica">
+      <span class="rotulo">Total do ano</span>
+      <div id="yearTotal" class="valor">R$ 0,00</div>
+    </article>
+    <article class="metrica">
+      <span class="rotulo">Mês atual</span>
+      <div id="currentMonthTotal" class="valor">R$ 0,00</div>
+      <div class="nota" id="currentMonthLabel">—</div>
+    </article>
+    <article class="metrica">
+      <span class="rotulo">Maior mês</span>
+      <div id="biggestMonthTotal" class="valor">R$ 0,00</div>
+      <div class="nota" id="biggestMonthLabel">—</div>
+    </article>
+    <article class="metrica">
+      <span class="rotulo">Cartão mais caro</span>
+      <div id="biggestCardTotal" class="valor">R$ 0,00</div>
+      <div class="nota" id="biggestCardLabel">—</div>
+    </article>
+  </section>
+
+  <section class="painel" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table aria-label="Gastos por cartão e mês vindos do Open Finance">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+<script>
+// fmtBRL, esc, pedir e montarNav vêm do app.js; lá os meses se chamam MESES.
+const MONTHS = MESES;
+let selectedYear = new Date().getFullYear();
+let agrupamento = "fatura";
+let dados = null;
+// Cada carregamento ganha um token. Clicar rapido em "← Ano" dispara varias
+// requisicoes; sem isso a que responder por ultimo vence, e a tela pode acabar
+// mostrando os dados de um ano diferente do que esta no seletor.
+let requisicaoAtual = 0;
+
+const escapeHtml = esc;
+const api = caminho => pedir(caminho);
+
+function setStatus(text, kind = "") {
+  const el = document.getElementById("footerStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.className = kind;
+}
+
+function cartoes() { return dados ? dados.cartoes : []; }
+function valorMes(cartaoId, indice) { return Number(dados?.valores?.[cartaoId]?.[indice] || 0); }
+function totalCartao(cartaoId) {
+  return Array.from({ length: 12 }, (_, i) => valorMes(cartaoId, i)).reduce((a, b) => a + b, 0);
+}
+function totalMes(indice) { return Number(dados?.totalMes?.[indice] || 0); }
+
+function renderTable() {
+  const lista = cartoes();
+  const head = document.getElementById("tableHead");
+  const body = document.getElementById("tableBody");
+
+  if (!lista.length) {
+    head.innerHTML = "";
+    body.innerHTML = `<tr><td class="vazio-cell" colspan="3">Nenhum cartão de crédito conectado no Open Finance. Conecte no <code>meu.pluggy.ai</code> e rode <code>python importar_pluggy.py</code>.</td></tr>`;
+    return;
+  }
+
+  head.innerHTML = `
+    <tr>
+      <th>Mês</th>
+      ${lista.map(c => `<th>${escapeHtml(c.nome)}</th>`).join("")}
+      <th>Total mês</th>
+    </tr>
+  `;
+
+  const agora = new Date();
+  const indiceMesAtual = selectedYear === agora.getFullYear() ? agora.getMonth() : -1;
+
+  const linhas = MONTHS.map((mes, indice) => `
+    <tr class="${indice === indiceMesAtual ? "mes-atual" : ""}">
+      <td>
+        <span class="card-name">
+          <span class="dot month"></span>
+          ${mes}
+        </span>
+      </td>
+      ${lista.map(cartao => {
+        const valor = valorMes(cartao.id, indice);
+        return `
+        <td>
+          <div class="valor-cell">
+            <span class="valor ${valor === 0 ? "zero" : ""}">${fmtBRL(valor)}</span>
+          </div>
+        </td>`;
+      }).join("")}
+      <td class="total-cell ${totalMes(indice) === 0 ? "zero" : ""}">${fmtBRL(totalMes(indice))}</td>
+    </tr>
+  `).join("");
+
+  const linhaTotal = `
+    <tr class="total-row">
+      <td>Total ano</td>
+      ${lista.map(c => `<td>${fmtBRL(totalCartao(c.id))}</td>`).join("")}
+      <td>${fmtBRL(dados.totalAno)}</td>
+    </tr>
+  `;
+
+  body.innerHTML = linhas + linhaTotal;
+}
+
+function renderSummary() {
+  const lista = cartoes();
+  const agora = new Date();
+  const indiceMesAtual = selectedYear === agora.getFullYear() ? agora.getMonth() : 0;
+
+  const totaisPorMes = MONTHS.map((mes, indice) => ({ mes, indice, total: totalMes(indice) }));
+  const maiorMes = totaisPorMes.reduce((melhor, item) => item.total > melhor.total ? item : melhor, totaisPorMes[0]);
+  const totaisPorCartao = lista.map(cartao => ({ ...cartao, total: totalCartao(cartao.id) }));
+  const maiorCartao = totaisPorCartao.reduce(
+    (melhor, item) => item.total > melhor.total ? item : melhor,
+    totaisPorCartao[0] || { nome: "—", total: 0 }
+  );
+
+  document.getElementById("yearTotal").textContent = fmtBRL(dados?.totalAno || 0);
+  document.getElementById("currentMonthTotal").textContent = fmtBRL(totalMes(indiceMesAtual));
+  document.getElementById("currentMonthLabel").textContent = `${MONTHS[indiceMesAtual]} de ${selectedYear}`;
+  document.getElementById("biggestMonthTotal").textContent = fmtBRL(maiorMes.total);
+  document.getElementById("biggestMonthLabel").textContent = `${maiorMes.mes} de ${selectedYear}`;
+  document.getElementById("biggestCardTotal").textContent = fmtBRL(maiorCartao.total);
+  document.getElementById("biggestCardLabel").textContent = maiorCartao.nome;
+}
+
+function renderAviso() {
+  // A tela mantém apenas os dados principais; avisos explicativos foram removidos.
+}
+
+function renderFooter() {
+  // Rodapé informativo removido para reduzir ruído visual.
+}
+
+async function carregar() {
+  const token = ++requisicaoAtual;
+  setStatus("Carregando…");
+  const payload = await api(`/pluggy-cartoes?year=${encodeURIComponent(selectedYear)}&group=${encodeURIComponent(agrupamento)}`);
+  if (token !== requisicaoAtual) return; // resposta obsoleta: já pediram outro ano
+  dados = payload;
+  renderTable();
+  renderSummary();
+  renderAviso();
+  renderFooter();
+
+  // Estado da atualização automática: uma falha silenciosa aqui significaria
+  // olhar dados velhos sem saber.
+  let texto = `Dados de ${dados.anosDisponiveis.join(", ") || "—"}. Somente leitura.`;
+  let falhou = false;
+  try {
+    const st = await api("/pluggy-status");
+    if (st.emAndamento) {
+      texto += " Atualizando agora…";
+    } else if (st.ultimoResultado === "erro" || st.ultimoResultado === "sem_itens") {
+      falhou = true;
+      texto = `Atualização falhou: ${st.ultimoDetalhe || "motivo não registrado"}`;
+    } else if (st.ultimoResultado === "ok_parcial") {
+      texto += " Uma conexão antiga não respondeu.";
+    }
+  } catch {
+    // informativo apenas
+  }
+  setStatus(texto, falhou ? "err" : "");
+}
+
+async function trocarAno(delta) {
+  selectedYear += delta;
+  document.getElementById("yearInput").value = String(selectedYear);
+  await recarregar();
+}
+
+async function recarregar() {
+  try {
+    await carregar();
+  } catch (erro) {
+    setStatus(`Não consegui falar com o backend: ${erro.message}`, "err");
+    document.getElementById("tableBody").innerHTML =
+      `<tr><td class="vazio-cell" colspan="3">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue a página.</td></tr>`;
+  }
+}
+
+function ligarEventos() {
+  document.getElementById("prevYearBtn").addEventListener("click", () => trocarAno(-1));
+  document.getElementById("nextYearBtn").addEventListener("click", () => trocarAno(1));
+  document.getElementById("yearInput").addEventListener("change", event => {
+    const valor = Number(event.target.value);
+    if (Number.isFinite(valor) && valor >= 2000 && valor <= 2100) {
+      selectedYear = valor;
+      recarregar();
+    }
+  });
+  document.getElementById("groupSelect").addEventListener("change", event => {
+    agrupamento = event.target.value;
+    recarregar();
+  });
+}
+
+(function iniciar() {
+  montarNav("cartoes_pluggy.html");
+  document.getElementById("yearInput").value = String(selectedYear);
+  ligarEventos();
+  recarregar();
+})();
+</script>
+</body>
+</html>

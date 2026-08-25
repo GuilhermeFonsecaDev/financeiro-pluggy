@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Entradas</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+.entrada-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+.regra-entrada { display:grid; grid-template-columns:minmax(0,1fr) 150px 44px 34px; gap:12px; align-items:center; padding:14px 10px; border-bottom:1px solid var(--line); }
+.regra-entrada:last-child { border-bottom:0; }
+.regra-entrada:hover { background:var(--surface-2); }
+.regra-entrada.off { opacity:.45; }
+.regra-nome { font-size:14px; font-weight:650; }
+.regra-cond { margin-top:3px; color:var(--text-3); font-size:12.5px; }
+.regra-cond b { color:var(--text-2); font-weight:600; }
+.termo { color:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.regra-total { text-align:right; font-variant-numeric:tabular-nums; }
+.regra-total strong { display:block; color:var(--verde); font-size:14px; }
+.regra-total span { color:var(--text-3); font-size:11.5px; }
+.switch { position:relative; width:34px; height:19px; }
+.switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.switch span { position:absolute; inset:0; border-radius:999px; background:var(--surface-3); border:1px solid var(--line-forte); }
+.switch span::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--text-3); transition:transform .14s ease; }
+.switch input:checked + span { background:var(--azul); border-color:var(--azul); }
+.switch input:checked + span::after { transform:translateX(15px); background:#fff; }
+.lancamento { display:grid; grid-template-columns:76px minmax(0,1fr) 130px 92px; gap:12px; align-items:center; padding:13px 10px; border-bottom:1px solid var(--line); }
+.lancamento:last-child { border-bottom:0; }
+.lancamento.inativo { opacity:.48; }
+.lancamento.inativo .lancamento-desc,.lancamento.inativo .lancamento-valor { text-decoration:line-through; }
+.lancamento-data,.lancamento-conta { color:var(--text-3); font-size:12.5px; }
+.lancamento-desc { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13.5px; font-weight:600; }
+.lancamento-valor { color:var(--verde); text-align:right; font-weight:650; font-variant-numeric:tabular-nums; }
+.btn-entrada { min-height:29px; padding:4px 9px; font-size:11.5px; white-space:nowrap; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.form-grid .full { grid-column:1 / -1; }
+@media (max-width:820px) {
+  .regra-entrada { grid-template-columns:minmax(0,1fr) 34px; }
+  .regra-total,.switch { display:none; }
+  .lancamento { grid-template-columns:60px minmax(0,1fr) auto; }
+  .lancamento-valor { grid-column:2; text-align:left; }
+  .form-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <h1>Entradas</h1>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <input id="mes" type="month" aria-label="Mês" />
+      <span class="estado" id="estado">Carregando…</span>
+      <button class="primario" id="btnNova">+ Nova regra</button>
+    </div>
+  </header>
+
+  <section class="grid grid-4" style="margin-bottom:14px">
+    <article class="metrica"><span class="rotulo">Salário do mês</span><div class="valor positivo" id="mTotal">R$ 0,00</div></article>
+    <article class="metrica"><span class="rotulo">Lançamentos</span><div class="valor" id="mQuantidade">0</div></article>
+    <article class="metrica"><span class="rotulo">Regras ativas</span><div class="valor" id="mRegras">0</div></article>
+    <article class="metrica" style="position:relative">
+      <span class="rotulo">Valor esperado</span>
+      <div class="valor" id="mEsperado">Não definido</div>
+      <div class="nota">substitui a média em mês incompleto</div>
+      <button class="icone" id="btnEsperado" data-abre-pop aria-label="Editar valor esperado"
+              style="position:absolute;top:10px;right:10px">✎</button>
+    </article>
+  </section>
+
+  <section class="entrada-layout">
+    <article class="painel">
+      <div class="painel-tit"><h2 id="tituloLancamentos">Entradas reconhecidas</h2></div>
+      <div id="listaLancamentos"></div>
+      <div id="vazioLancamentos"></div>
+    </article>
+    <article class="painel">
+      <div class="painel-tit"><h2>Regras de salário</h2></div>
+      <div id="listaRegras"></div>
+      <div id="vazioRegras"></div>
+    </article>
+  </section>
+</main>
+
+<div class="pop" id="popAcoes" hidden style="min-width:180px">
+  <div class="pop-lista" id="popAcoesLista"></div>
+</div>
+
+<div class="pop" id="popEsperado" hidden style="min-width:240px;padding:12px">
+  <label class="campo"><span>Valor esperado por mês</span>
+    <input id="fEsperado" type="number" step="0.01" min="0" placeholder="ex.: 20000" autocomplete="off" /></label>
+  <p class="estado erro" id="esperadoErro" style="margin:8px 0 0"></p>
+  <div class="pop-rodape">
+    <button class="sutil" id="btnEsperadoRemover">Remover</button>
+    <button class="primario" id="btnEsperadoSalvar">Salvar</button>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-tit">
+      <h2 id="modalTitulo">Nova regra de entrada</h2>
+      <button class="icone" id="btnFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="form-grid">
+      <label class="campo full"><span>Nome</span><input id="fNome" type="text" placeholder="ex.: Salário empresa" autocomplete="off" /></label>
+      <label class="campo"><span>Condição</span><select id="fOperador">
+        <option value="contem">A descrição contém</option>
+        <option value="comeca_com">A descrição começa com</option>
+        <option value="igual">A descrição é igual a</option>
+      </select></label>
+      <label class="campo"><span>Termo</span><input id="fTermo" type="text" placeholder="ex.: PAGAMENTO SALARIO" autocomplete="off" /></label>
+      <label class="campo"><span>Do dia</span><input id="fDiaInicio" type="text" inputmode="numeric" value="1" /></label>
+      <label class="campo"><span>Até o dia</span><input id="fDiaFim" type="text" inputmode="numeric" value="31" /></label>
+      <label class="campo full"><span>Competência</span><select id="fCompetencia">
+        <option value="-1">Mês anterior ao pagamento</option>
+        <option value="0">Mesmo mês do pagamento</option>
+        <option value="1">Mês seguinte ao pagamento</option>
+      </select></label>
+      <label class="check full"><input id="fAtivo" type="checkbox" checked /> Regra ativa</label>
+    </div>
+    <p class="estado erro" id="modalErro" style="margin:10px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="btnCancelar">Cancelar</button>
+      <button class="primario" id="btnSalvar">Criar regra</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+const OPERADORES = { contem:"contém", comeca_com:"começa com", igual:"é igual a" };
+const COMPETENCIAS = { "-1":"mês anterior", "0":"mesmo mês", "1":"mês seguinte" };
+const el = id => document.getElementById(id);
+let DADOS = { regras:[], transacoes:[], total:0, quantidade:0, regrasAtivas:0, valorEsperado:null };
+let editando = null, regraMenu = null;
+
+function mesAtual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function render() {
+  el("mTotal").textContent = fmtBRL(DADOS.total);
+  el("mQuantidade").textContent = DADOS.quantidade;
+  el("mRegras").textContent = DADOS.regrasAtivas;
+  el("mEsperado").textContent = DADOS.valorEsperado != null ? fmtBRL(DADOS.valorEsperado) : "Não definido";
+  el("tituloLancamentos").textContent = `Entradas reconhecidas · ${labelMes(el("mes").value)}`;
+
+  el("listaRegras").innerHTML = DADOS.regras.map(r => `
+    <div class="regra-entrada ${r.ativo ? "" : "off"}">
+      <div>
+        <div class="regra-nome">${esc(r.nome)}</div>
+        <div class="regra-cond">Descrição ${esc(OPERADORES[r.operador] || r.operador)} <span class="termo">“${esc(r.termo)}”</span></div>
+        <div class="regra-cond">Dias ${r.diaInicio}–${r.diaFim} · competência: <b>${esc(COMPETENCIAS[String(r.deslocamentoMeses)])}</b></div>
+      </div>
+      <div class="regra-total"><strong>${fmtBRL(r.totalMes)}</strong><span>${r.afetadasMes} no mês · ${r.afetadas} no histórico</span></div>
+      <label class="switch" title="${r.ativo ? "Desativar" : "Ativar"}"><input type="checkbox" data-alterna="${esc(r.id)}" ${r.ativo ? "checked" : ""}><span></span></label>
+      <button class="icone" data-abre-pop data-menu="${esc(r.id)}" aria-label="Ações">⋯</button>
+    </div>`).join("");
+  el("vazioRegras").innerHTML = DADOS.regras.length ? "" : `<div class="vazio">Nenhuma regra de salário cadastrada.</div>`;
+
+  el("listaLancamentos").innerHTML = DADOS.transacoes.map(t => `
+    <div class="lancamento ${t.ativa ? "" : "inativo"}">
+      <span class="lancamento-data">${fmtData(t.data)}</span>
+      <div><div class="lancamento-desc" title="${esc(t.descricao)}">${esc(t.descricao)}</div><div class="lancamento-conta">${esc(t.conta)}</div></div>
+      <strong class="lancamento-valor">${fmtBRL(t.valor)}</strong>
+      <button class="sutil btn-entrada" data-alterna-entrada="${esc(t.id)}" data-ativa="${t.ativa ? "1" : "0"}">${t.ativa ? "Desativar" : "Reativar"}</button>
+    </div>`).join("");
+  el("vazioLancamentos").innerHTML = DADOS.transacoes.length ? "" : `<div class="vazio">Nenhuma entrada reconhecida neste mês.</div>`;
+}
+
+async function recarregar() {
+  DADOS = await pedir(`/extrato/entradas?month=${encodeURIComponent(el("mes").value)}`);
+  render();
+  setEstado("estado", `${DADOS.regras.length} regra(s)`, "ok");
+}
+
+function abrirModal(regra = null) {
+  editando = regra?.id || null;
+  el("modalTitulo").textContent = regra ? "Editar regra de entrada" : "Nova regra de entrada";
+  el("btnSalvar").textContent = regra ? "Salvar" : "Criar regra";
+  el("fNome").value = regra?.nome || "";
+  el("fOperador").value = regra?.operador || "contem";
+  el("fTermo").value = regra?.termo || "";
+  el("fDiaInicio").value = regra?.diaInicio ?? 1;
+  el("fDiaFim").value = regra?.diaFim ?? 31;
+  el("fCompetencia").value = String(regra?.deslocamentoMeses ?? 0);
+  el("fAtivo").checked = regra ? regra.ativo : true;
+  el("modalErro").textContent = "";
+  el("modal").hidden = false;
+  el("fNome").focus();
+}
+
+function fecharModal() { el("modal").hidden = true; editando = null; }
+
+async function salvar() {
+  const dados = {
+    nome:el("fNome").value.trim(), operador:el("fOperador").value,
+    termo:el("fTermo").value.trim(), ativo:el("fAtivo").checked,
+    diaInicio:Number(el("fDiaInicio").value), diaFim:Number(el("fDiaFim").value),
+    deslocamentoMeses:Number(el("fCompetencia").value),
+  };
+  if (!dados.termo) { el("modalErro").textContent = "Informe o termo a procurar."; return; }
+  if (!dados.nome) dados.nome = dados.termo;
+  el("btnSalvar").disabled = true;
+  try {
+    const caminho = editando ? `/extrato/entradas/regras/${encodeURIComponent(editando)}` : "/extrato/entradas/regras";
+    await pedir(caminho, editando ? "PUT" : "POST", dados);
+    fecharModal();
+    await recarregar();
+  } catch (e) { el("modalErro").textContent = e.message; }
+  finally { el("btnSalvar").disabled = false; }
+}
+
+function ligar() {
+  el("btnNova").addEventListener("click", () => abrirModal());
+
+  el("btnEsperado").addEventListener("click", e => {
+    el("fEsperado").value = DADOS.valorEsperado ?? "";
+    el("esperadoErro").textContent = "";
+    abrirPop(el("popEsperado"), e.currentTarget, { alinhar: "direita" });
+    el("fEsperado").focus();
+  });
+  el("btnEsperadoSalvar").addEventListener("click", async () => {
+    const texto = el("fEsperado").value.trim();
+    try {
+      await pedir("/extrato/entradas/valor-esperado", "PUT",
+                  { valor: texto === "" ? null : Number(texto) });
+      fecharPop();
+      await recarregar();
+    } catch (e) { el("esperadoErro").textContent = e.message; }
+  });
+  el("btnEsperadoRemover").addEventListener("click", async () => {
+    try {
+      await pedir("/extrato/entradas/valor-esperado", "PUT", { valor: null });
+      fecharPop();
+      await recarregar();
+    } catch (e) { el("esperadoErro").textContent = e.message; }
+  });
+  el("btnFechar").addEventListener("click", fecharModal);
+  el("btnCancelar").addEventListener("click", fecharModal);
+  el("btnSalvar").addEventListener("click", salvar);
+  el("mes").addEventListener("change", recarregar);
+  el("modal").addEventListener("click", e => { if (e.target === el("modal")) fecharModal(); });
+
+  el("listaRegras").addEventListener("change", async e => {
+    const alvo = e.target.closest("[data-alterna]");
+    if (!alvo) return;
+    const r = DADOS.regras.find(x => x.id === alvo.dataset.alterna);
+    try {
+      await pedir(`/extrato/entradas/regras/${encodeURIComponent(r.id)}`, "PUT", {
+        nome:r.nome, operador:r.operador, termo:r.termo, ativo:alvo.checked,
+        diaInicio:r.diaInicio, diaFim:r.diaFim, deslocamentoMeses:r.deslocamentoMeses,
+      });
+      await recarregar();
+    } catch (erro) { setEstado("estado", erro.message, "erro"); }
+  });
+
+  el("listaLancamentos").addEventListener("click", async e => {
+    const botao = e.target.closest("[data-alterna-entrada]");
+    if (!botao) return;
+    botao.disabled = true;
+    try {
+      await pedir(`/extrato/entradas/transacoes/${encodeURIComponent(botao.dataset.alternaEntrada)}`,
+        "PUT", {ativa:botao.dataset.ativa !== "1"});
+      await recarregar();
+    } catch (erro) { setEstado("estado", erro.message, "erro"); botao.disabled = false; }
+  });
+
+  el("listaRegras").addEventListener("click", e => {
+    const botao = e.target.closest("[data-menu]");
+    if (!botao) return;
+    regraMenu = DADOS.regras.find(r => r.id === botao.dataset.menu);
+    el("popAcoesLista").innerHTML = `<button class="pop-item" data-acao="editar">✎ Editar</button><div class="pop-sep"></div><button class="pop-item" data-acao="excluir" style="color:var(--vermelho)">Excluir</button>`;
+    abrirPop(el("popAcoes"), botao, { alinhar:"direita" });
+  });
+
+  el("popAcoesLista").addEventListener("click", async e => {
+    const acao = e.target.closest("[data-acao]")?.dataset.acao;
+    if (!acao || !regraMenu) return;
+    fecharPop();
+    if (acao === "editar") return abrirModal(regraMenu);
+    if (!confirm(`Excluir “${regraMenu.nome}”?`)) return;
+    try { await pedir(`/extrato/entradas/regras/${encodeURIComponent(regraMenu.id)}`, "DELETE"); await recarregar(); }
+    catch (erro) { setEstado("estado", erro.message, "erro"); }
+  });
+}
+
+(async function iniciar() {
+  montarNav("entradas.html");
+  ligar();
+  el("mes").value = mesAtual();
+  try { await recarregar(); }
+  catch (e) { setEstado("estado", e.message, "erro"); el("vazioRegras").innerHTML = `<div class="vazio">Não foi possível carregar as entradas.</div>`; }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transações</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+/* Só o que é específico desta tela. O resto vem do tema. */
+.filtros-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.filtros-barra .busca { flex: 1 1 220px; max-width: 340px; }
+.filtro-ativo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--azul-suave); border: 1px solid rgba(74,149,234,.32); color: #8cc0f5; font-size: 12px; font-weight: 550; }
+.filtro-ativo button { min-height: 18px; width: 18px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 14px; line-height: 1; }
+.contador { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
+
+.evolucao-painel { margin-bottom: 14px; padding: 14px 16px 10px; overflow: hidden; }
+.evolucao-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #3a424d transparent; padding-bottom: 5px; }
+.evolucao-scroll::-webkit-scrollbar { height: 6px; }
+.evolucao-scroll::-webkit-scrollbar-track { background: transparent; }
+.evolucao-scroll::-webkit-scrollbar-thumb { background: #3a424d; border-radius: 999px; }
+.evolucao-faixa { position: relative; display: flex; width: 100%; height: 140px; }
+.mes-evolucao { position: relative; z-index: 2; flex: 1 0 112px; width: auto; min-width: 112px; height: 138px; padding: 14px 9px 12px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
+.mes-evolucao + .mes-evolucao { margin-left: 8px; }
+.mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-2); }
+.mes-evolucao.ativo { border-color: rgba(74,149,234,.55); background: rgba(74,149,234,.09); }
+.mes-evolucao.atual:not(.ativo) { border-color: rgba(74,149,234,.22); }
+.mes-evolucao.futuro { border-style: dashed; opacity: .72; }
+/* Mes com entradas projetadas: mesmo desenho normal, so um aviso no canto --
+   o numero e uma estimativa, nao esconde isso mas tambem nao grita. */
+.mes-evolucao.estimado { border-style: dashed; }
+.mes-evolucao .mes-valor.estimado-valor::before { content: "≈ "; opacity: .7; font-weight: 500; }
+.evolucao-stat.com-nota { flex-direction: column; align-items: flex-start; gap: 1px; }
+.evolucao-stat.com-nota > span:first-child { display: flex; gap: 6px; align-items: center; }
+.estimativa-nota { font-size: 10.5px; font-weight: 450; color: var(--text-3); }
+.mes-evolucao .mes-nome { display:block; font-size:12px; white-space:nowrap; }
+.mes-evolucao .mes-valor { position:absolute; left:6px; right:6px; bottom:14px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.evolucao-svg { position:absolute; z-index:3; left:0; top:28px; height:64px; pointer-events:none; overflow:visible; }
+.evolucao-svg path { fill:none; stroke:var(--azul); stroke-width:2.2; vector-effect:non-scaling-stroke; }
+.evolucao-svg circle { fill:var(--surface); stroke:var(--azul); stroke-width:2; vector-effect:non-scaling-stroke; }
+.evolucao-rodape { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:10px 4px 0; border-top:1px solid var(--line); font-size:12.5px; }
+.evolucao-rodape .titulo { margin-right:auto; font-weight:650; color:var(--text); }
+.evolucao-stat { display:flex; gap:6px; align-items:center; color:var(--text-3); }
+.evolucao-stat strong { color:var(--text); font-variant-numeric:tabular-nums; }
+@media (max-width:820px) { .mes-evolucao { width:102px; min-width:102px; } .evolucao-rodape { gap:12px; } }
+
+.dia { padding: 14px 10px 6px; color: var(--text-3); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+tr.ignorada td { opacity: .42; }
+tr.ignorada .num { text-decoration: line-through; }
+.desc { font-weight: 550; }
+.desc small { display: block; margin-top: 1px; color: var(--text-3); font-size: 11.5px; font-weight: 450; }
+.conta-tag { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+
+.cat-lista { display: grid; gap: 10px; }
+.cat-linha { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; cursor: pointer; padding: 5px 6px; margin: -5px -6px; border-radius: 8px; }
+.cat-linha:hover { background: var(--surface-2); }
+.cat-linha.sel { background: var(--azul-suave); }
+.cat-nome { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-valor { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.cat-linha .barra { grid-column: 1 / -1; }
+.edicao-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.edicao-grid .full { grid-column:1 / -1; }
+#editarRestaurar[hidden] { display:none; }
+tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7px; color:#8cc0f5; font-size:9.5px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; }
+@media (max-width:820px) { .edicao-grid { grid-template-columns:1fr; } }
+
+/* Mesmo seletor de emoji com busca da tela de Categorias -- criar categoria
+   daqui usava um grid fixo de sugestões, uma tela diferente da que a pessoa
+   já conhece de Categorias. */
+.cat-modal { width:min(520px,100%); }
+.cat-form { display:grid; gap:14px; }
+.cat-identidade { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; align-items:end; }
+.cat-identidade .campo { min-width:0; }
+.cat-identidade input { width:100%; min-width:0; }
+.cat-emoji-botao { width:64px; height:40px; min-height:40px; padding:0; justify-content:center; font-size:21px; line-height:1; }
+.cat-emoji-botao.vazio { color:var(--text-3); font-size:18px; }
+.cat-emoji-botao:hover, .cat-emoji-botao[aria-expanded="true"] { border-color:var(--azul); background:var(--surface-3); }
+.cat-destino { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:12px; align-items:end; }
+.cat-destino .campo { min-width:0; }
+.cat-destino select, .cat-destino input { width:100%; min-width:0; }
+.cat-cor { height:40px; padding:3px; cursor:pointer; }
+.emoji-pop { z-index:360; width:330px; padding:8px; }
+.emoji-grade { display:grid; grid-template-columns:repeat(8,1fr); gap:5px; max-height:245px; overflow-y:auto; padding:5px; }
+.emoji-opcao { width:32px; height:32px; min-height:32px; padding:0; justify-content:center; border-color:transparent; background:transparent; font-size:17px; }
+.emoji-opcao:hover { border-color:var(--line-forte); background:var(--surface-3); }
+.emoji-opcao.selecionado { border-color:var(--azul); background:var(--azul-suave); }
+.emoji-pop .pop-rodape { justify-content:flex-end; }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Transações</h1>
+      <p id="statusImport" hidden>—</p>
+    </div>
+    <span id="estado" hidden>Carregando…</span>
+  </header>
+
+  <div class="filtros-barra">
+    <button id="btnFiltros" data-abre-pop><span>⚙</span> Filtros</button>
+    <span class="segmentado" id="modoVisao" title="Fatura: agrupa cartão pelo mês em que a fatura vence. Mês: agrupa pela data em que a compra foi feita.">
+      <button type="button" data-modo="fatura">Fatura</button>
+      <button type="button" data-modo="mes">Mês</button>
+    </span>
+    <span id="filtrosAtivos" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <input class="busca" id="busca" type="search" placeholder="Buscar na descrição" autocomplete="off" />
+    <span class="contador" id="contador">—</span>
+  </div>
+
+  <section class="painel evolucao-painel" id="metricas"></section>
+
+  <section class="grid grid-2-1">
+    <article class="painel">
+      <div class="painel-tit">
+        <h2>Lançamentos</h2>
+        <button class="sutil" id="btnLimpar">Limpar filtros</button>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <tbody id="linhas"></tbody>
+        </table>
+      </div>
+      <div id="vazio"></div>
+      <div style="display:flex;justify-content:center;margin-top:14px">
+        <button id="btnMais" hidden>Carregar mais</button>
+      </div>
+    </article>
+
+    <article class="painel">
+      <div class="painel-tit">
+        <h2>Gastos por categoria</h2>
+        <span class="muted" style="font-size:12px">Filtro atual</span>
+      </div>
+      <div id="categorias"></div>
+    </article>
+  </section>
+</main>
+
+<!-- caixinha de categoria: abre no clique do chip -->
+<div class="pop" id="popCategoria" hidden>
+  <div class="pop-busca"><input type="search" id="popCatBusca" placeholder="Buscar categoria…" autocomplete="off" /></div>
+  <div class="pop-lista" id="popCatLista"></div>
+  <div class="pop-rodape" style="justify-content:stretch">
+    <button class="sutil" id="popCatNovo" style="width:100%;justify-content:center">+ Nova categoria</button>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modalCat" hidden>
+  <div class="modal cat-modal">
+    <div class="modal-tit">
+      <h2>Nova categoria</h2>
+      <button class="icone" id="catFechar" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="cat-form">
+      <div class="cat-identidade">
+        <div class="campo"><span>Emoji</span>
+          <input id="catEmoji" type="hidden" />
+          <button class="cat-emoji-botao vazio" id="catEmojiBotao" type="button" data-abre-pop
+            aria-label="Escolher emoji" aria-haspopup="dialog" aria-expanded="false">
+            <span id="catEmojiPreview">＋</span>
+          </button>
+        </div>
+        <label class="campo"><span>Nome</span>
+          <input id="catNome" type="text" placeholder="ex.: Presentes" autocomplete="off" /></label>
+      </div>
+
+      <div class="cat-destino">
+        <label class="campo"><span>Dentro de</span><select id="catPai"></select></label>
+        <label class="campo"><span>Cor</span>
+          <input class="cat-cor" id="catCor" type="color" value="#4a95ea" /></label>
+      </div>
+    </div>
+
+    <p class="estado erro" id="catErro" style="margin:10px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="catCancelar">Cancelar</button>
+      <button class="primario" id="catSalvar">Criar e aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher emoji" hidden>
+  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar emoji..." autocomplete="off" /></div>
+  <div class="emoji-grade" id="emojiGrade"></div>
+  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem emoji</button></div>
+</div>
+
+<!-- menu de ações da transação -->
+<div class="pop" id="popAcoes" hidden style="min-width:250px">
+  <div class="pop-lista" id="popAcoesLista"></div>
+</div>
+
+<!-- edição local completa; o registro original da Pluggy permanece intacto -->
+<div class="modal-fundo" id="modalEditar" hidden>
+  <div class="modal" style="width:min(760px,100%)">
+    <div class="modal-tit">
+      <h2>Editar transação</h2>
+      <button class="icone" id="editarFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="edicao-grid">
+      <label class="campo"><span>Data</span><input id="eData" type="date" /></label>
+      <label class="campo"><span>Conta</span><select id="eConta"></select></label>
+      <label class="campo full"><span>Descrição</span><input id="eDescricao" type="text" autocomplete="off" /></label>
+      <label class="campo"><span>Valor</span><input id="eValor" type="text" inputmode="decimal" autocomplete="off" /></label>
+      <label class="campo"><span>Tipo</span><select id="eTipo"><option value="DEBIT">Saída</option><option value="CREDIT">Entrada</option></select></label>
+      <label class="campo"><span>Categoria</span><select id="eCategoria"></select></label>
+      <label class="campo"><span>Situação</span><select id="eStatus"><option value="POSTED">Efetivada</option><option value="PENDING">Pendente</option></select></label>
+      <label class="campo"><span>Parcela atual</span><input id="eParcelaNumero" type="text" inputmode="numeric" /></label>
+      <label class="campo"><span>Total de parcelas</span><input id="eParcelaTotal" type="text" inputmode="numeric" /></label>
+      <label class="campo full"><span>Participação nos cálculos</span><select id="eCalculo"><option value="true">Incluir</option><option value="false">Não incluir</option></select></label>
+    </div>
+    <p class="estado erro" id="editarErro" style="margin:10px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="perigo" id="editarRestaurar" style="margin-right:auto">Restaurar original</button>
+      <button class="sutil" id="editarCancelar">Cancelar</button>
+      <button class="primario" id="editarSalvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- janela de filtros -->
+<div class="pop" id="popFiltros" hidden style="min-width:270px">
+  <div class="pop-rotulo">Filtrar por</div>
+  <div style="display:grid;gap:9px;padding:5px 8px 8px">
+    <label class="campo"><span>Mês</span><select id="fMes"></select></label>
+    <label class="campo"><span>Conta</span><select id="fConta"></select></label>
+    <label class="campo"><span>Cartão de crédito</span><select id="fCartao"></select></label>
+    <label class="campo"><span>Tipo</span>
+      <select id="fTipo">
+        <option value="">Todos</option>
+        <option value="DEBIT">Saídas</option>
+        <option value="CREDIT">Entradas</option>
+      </select></label>
+    <label class="campo"><span>Categoria</span><select id="fCategoria"></select></label>
+    <label class="campo"><span>Situação</span>
+      <select id="fSituacao">
+        <option value="">Todas</option>
+        <option value="POSTED">Efetivadas</option>
+        <option value="PENDING">Pendentes</option>
+      </select></label>
+  </div>
+  <div class="pop-rodape">
+    <button class="sutil" id="fLimpar">Limpar tudo</button>
+    <button class="primario" id="fAplicar">Aplicar</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+const PAGE = 60;
+
+// O mes de cartao e sempre o vencimento da fatura, nao a data da compra --
+// ver competencia_fatura em extrato_camada.py. Nao existe opcao para trocar.
+let filtros = { month: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura" };
+let CATEGORIAS = [], CONTAS = [], CARTOES = [], CONTAS_EDICAO = [], EMOJIS = [], MES_ATUAL = "";
+let EMOJI_CATALOGO = [], EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
+let TRANSACOES = new Map();
+let offset = 0, buscaTimer = null, requisicao = 0;
+let txAberta = null;   // id da transação cujo popover de categoria está aberto
+function completarAteFimDoAno(meses, referencia) {
+  const todos = new Set(Array.isArray(meses) ? meses : []);
+  const ano = String(referencia || "").slice(0, 4);
+  if (/^\d{4}$/.test(ano)) {
+    for (let numero = 1; numero <= 12; numero += 1) {
+      todos.add(`${ano}-${String(numero).padStart(2, "0")}`);
+    }
+  }
+  return [...todos].sort().reverse();
+}
+
+/* --------------------------------------------------------------- filtros */
+
+function qs() {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtros)) if (v) p.set(k, v);
+  p.set("limit", String(PAGE));
+  p.set("offset", String(offset));
+  return p.toString();
+}
+
+function renderFiltrosAtivos() {
+  const rotulos = {
+    account: () => CONTAS.find(c => c.id === filtros.account)?.nome,
+    card: () => `Cartão ${CARTOES.find(c => c.id === filtros.card)?.nome || filtros.card}`,
+    type: () => filtros.type === "DEBIT" ? "Saídas" : "Entradas",
+    category: () => CATEGORIAS.find(c => c.id === filtros.category)?.nome,
+    status: () => filtros.status === "POSTED" ? "Efetivadas" : "Pendentes",
+  };
+  const ativos = Object.entries(rotulos)
+    .filter(([k]) => filtros[k])
+    .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button data-tira="${k}">×</button></span>`);
+  document.getElementById("filtrosAtivos").innerHTML = ativos.join("");
+}
+
+/* ------------------------------------------------------------ categorias */
+
+function corDe(id) { return CATEGORIAS.find(c => c.id === id)?.cor || "#9ba1ab"; }
+
+/** Marca visual da categoria: emoji quando houver, bolinha colorida quando não.
+ * A cor sozinha nunca identifica — o nome vem sempre ao lado. */
+function marcaCategoria(cat, tamanho = 13) {
+  return cat.emoji
+    ? `<span style="font-size:${tamanho}px;line-height:1">${esc(cat.emoji)}</span>`
+    : `<span class="ponto" style="background:${esc(cat.cor || "#9ba1ab")}"></span>`;
+}
+
+function chipCategoria(tx) {
+  if (tx.projetada) {
+    return `<span class="chip" style="opacity:.7;cursor:default" title="Projeção: parcela futura ainda não lançada pelo banco, categoria herdada da compra original">
+      ${marcaCategoria(tx.categoria)}${esc(tx.categoria.nome)}
+    </span>`;
+  }
+  const manual = tx.origemCategorizacao === "manual";
+  const dica = `Original: ${tx.categoriaOriginal || "(vazia)"} · origem: ${tx.origemCategorizacao}`;
+  return `<button class="chip" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}"
+            style="${manual ? "border-color:rgba(74,149,234,.45)" : ""}">
+    ${marcaCategoria(tx.categoria)}${esc(tx.categoria.nome)}
+  </button>`;
+}
+
+function renderPopCategorias(termo = "") {
+  const t = termo.trim().toLowerCase();
+  const casa = c => !t || c.nome.toLowerCase().includes(t);
+  // Pai entra se ele casa ou se algum filho casa — senão o filho apareceria solto.
+  const visiveis = CATEGORIAS.filter(c =>
+    casa(c) || (!c.paiId && CATEGORIAS.some(f => f.paiId === c.id && casa(f))));
+
+  const lista = document.getElementById("popCatLista");
+  lista.innerHTML = visiveis.length
+    ? `<button class="pop-item" data-cat="">↺ Voltar ao automático</button>
+       <div class="pop-sep"></div>` +
+      visiveis.map(c => `
+        <button class="pop-item ${c.paiId ? "filho" : ""}" data-cat="${esc(c.id)}">
+          ${marcaCategoria(c)}${esc(c.nome)}
+        </button>`).join("")
+    : `<div class="pop-vazio">Nenhuma categoria com “${esc(termo)}”.</div>`;
+
+  // O termo digitado vira o nome sugerido: buscar algo que não existe é
+  // justamente quando dá vontade de criar.
+  document.getElementById("popCatNovo").textContent =
+    termo.trim() ? `+ Criar “${termo.trim()}”` : "+ Nova categoria";
+}
+
+/* ------------------------------------------------------------ transações */
+
+function linha(tx) {
+  const det = [];
+  if (tx.parcelaTotal > 1) det.push(`parcela ${tx.parcelaNumero}/${tx.parcelaTotal}`);
+  if (!tx.incluidaNosCalculos) det.push(tx.motivoExclusao || "fora dos cálculos");
+  if (tx.projetada) det.push("projetado");
+  const acoes = tx.projetada
+    ? `<span class="icone" style="opacity:.5;cursor:default" title="Projeção: parcela futura ainda não lançada pelo banco, não editável">≈</span>`
+    : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
+  return `
+    <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""}">
+      <td class="data" style="width:62px">${fmtData(tx.data)}</td>
+      <td class="desc">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
+      <td style="width:1%">${chipCategoria(tx)}</td>
+      <td class="conta-tag" style="width:1%">${esc(tx.contaNome)}</td>
+      <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
+      <td style="width:34px">${acoes}</td>
+    </tr>`;
+}
+
+// "manual" é o valor esperado cadastrado em Entradas, e tem prioridade sobre
+// a média -- ver ENTRADAS_ESPERADAS_POR_MES no backend. O aviso muda de texto
+// pra não dizer "média" quando na verdade veio do número que a pessoa digitou.
+function origemEntradasTexto(origem) {
+  return origem === "manual" ? "pelo valor esperado cadastrado em Entradas" : "pela média do ano";
+}
+
+function renderMetricas(r, serie = []) {
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const mapa = new Map(serie.map(i => [i.mes, i]));
+  const ano = String(MES_ATUAL || new Date().getFullYear()).slice(0, 4);
+  for (let numero = 1; numero <= 12; numero += 1) {
+    const mes = `${ano}-${String(numero).padStart(2, "0")}`;
+    if (!mapa.has(mes)) mapa.set(mes, { mes, entradas:0, saidas:0, resultado:0, quantidade:0 });
+  }
+  const itens = [...mapa.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+  const comDados = itens.filter(i => i.quantidade || i.entradas || i.saidas);
+  const valores = comDados.map(i => Number(i.resultado || 0));
+  const minimo = Math.min(0, ...valores), maximo = Math.max(0, ...valores);
+  const amplitude = Math.max(1, maximo - minimo);
+  const passo = 120, largura = Math.max(1, itens.length * passo - 8);
+  const pontos = itens.map((i, indice) => {
+    const x = indice * passo + 56;
+    const y = 56 - ((Number(i.resultado || 0) - minimo) / amplitude * 48);
+    return { x, y, temDados: !!(i.quantidade || i.entradas || i.saidas) };
+  });
+  const caminho = pontos.filter(p => p.temDados).map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+  document.getElementById("metricas").innerHTML = `
+    <div class="evolucao-scroll"><div class="evolucao-faixa" style="min-width:${largura}px">
+      ${itens.map(i => {
+        const dados = i.quantidade || i.entradas || i.saidas;
+        const cls = !dados ? "futuro" : i.resultado >= 0 ? "positivo" : "negativo";
+        // Entradas ou saídas estimadas: entradas quando as 4 do mês ainda não
+        // chegaram todas (ENTRADAS_ESPERADAS_POR_MES); saídas quando o mês
+        // não tem transação real nenhuma, mas tem fatura de cartão projetada
+        // (parcelamento em aberto -- ver cartoes_payload). O "≈" avisa que é
+        // estimativa; o valor de verdade continua disponível no tooltip.
+        const estimado = i.entradasEstimativa || i.saidasEstimativa;
+        const avisos = [];
+        if (i.entradasEstimativa) avisos.push(`entradas projetadas ${origemEntradasTexto(i.entradasOrigem)} (recebido até agora: ${fmtBRL(i.entradasRecebidas)})`);
+        if (i.saidasEstimativa) avisos.push("saídas projetadas pela fatura de cartão em aberto");
+        const titulo = avisos.length ? avisos.join(" · ") : "";
+        return `<button class="mes-evolucao ${filtros.month === i.mes ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
+                data-mes-evolucao="${i.mes}" ${titulo ? `title="${esc(titulo)}"` : ""}>
+          <span class="mes-nome">${esc(labelMes(i.mes).replace(` ${ano}`, ""))}</span>
+          <span class="mes-valor ${cls} ${estimado ? "estimado-valor" : ""}">${dados ? fmtBRLCurto(i.resultado) : "—"}</span>
+        </button>`;
+      }).join("")}
+      <svg class="evolucao-svg" width="100%" viewBox="0 0 ${largura} 64" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${caminho}"></path>
+        ${pontos.filter(p => p.temDados).map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5"></circle>`).join("")}
+      </svg>
+    </div></div>
+    <div class="evolucao-rodape">
+      <span class="titulo">Evolução mensal</span>
+      <span class="evolucao-stat">Transações <strong>${Number(r.quantidade || 0).toLocaleString("pt-BR")}</strong></span>
+      <span class="evolucao-stat ${r.entradasEstimativa ? "com-nota" : ""}">
+        <span>Entradas <strong class="positivo">${fmtBRL(r.entradas)}</strong></span>
+        ${r.entradasEstimativa
+          ? `<span class="estimativa-nota" title="Projeção ${esc(origemEntradasTexto(r.entradasOrigem))}">≈ projetado · recebido ${fmtBRL(r.entradasRecebidas)}</span>` : ""}
+      </span>
+      <span class="evolucao-stat ${r.saidasEstimativa ? "com-nota" : ""}">
+        <span>Saídas <strong class="negativo">${fmtBRL(r.saidas)}</strong></span>
+        ${r.saidasEstimativa
+          ? `<span class="estimativa-nota" title="Fatura de cartão ainda em aberto">≈ projetado pela fatura em aberto</span>` : ""}
+      </span>
+      <span class="evolucao-stat">Resultado <strong class="${r.resultado >= 0 ? "positivo" : "negativo"}">${fmtSinal(r.resultado)}</strong></span>
+    </div>`;
+
+  requestAnimationFrame(() => {
+    const faixa = document.querySelector(".evolucao-scroll");
+    const alvo = document.querySelector(`[data-mes-evolucao="${filtros.month || mesAtual}"]`);
+    if (faixa && alvo) faixa.scrollLeft = Math.max(0, alvo.offsetLeft - (faixa.clientWidth - alvo.clientWidth) / 2);
+  });
+}
+
+function renderCategorias(itens) {
+  const alvo = document.getElementById("categorias");
+  if (!itens.length) { alvo.innerHTML = `<div class="vazio">Nenhuma saída no filtro atual.</div>`; return; }
+  // Sem teto na quantidade nem na altura: o corte em 12 escondia categoria
+  // com gasto de verdade, e a pessoa nao tinha como saber que faltava algo.
+  const maior = Math.max(...itens.map(i => i.total));
+  alvo.innerHTML = `<div class="cat-lista">${itens.map(i => `
+    <div class="cat-linha ${filtros.category === i.categoriaId ? "sel" : ""}" data-categoria="${esc(i.categoriaId || "")}"
+         title="${i.quantidade} transação(ões) · clique para filtrar">
+      <span class="cat-nome">${marcaCategoria({ emoji: i.emoji, cor: i.cor }, 12)}${esc(i.categoria)}</span>
+      <span class="cat-valor">${fmtBRLCurto(i.total)}</span>
+      <span class="barra"><span style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor)}"></span></span>
+    </div>`).join("")}</div>`;
+}
+
+async function carregar({ mais = false } = {}) {
+  const token = ++requisicao;
+  setEstado("estado", "Carregando…");
+  const p = await pedir(`/extrato?${qs()}`);
+  if (token !== requisicao) return;   // resposta obsoleta: o filtro já mudou
+
+  const corpo = document.getElementById("linhas");
+  if (!mais) TRANSACOES.clear();
+  p.transacoes.forEach(tx => TRANSACOES.set(tx.id, tx));
+  const html = p.transacoes.map(linha).join("");
+  if (mais) corpo.insertAdjacentHTML("beforeend", html); else corpo.innerHTML = html;
+
+  renderMetricas(p.resumo, p.evolucaoMensal);
+  renderCategorias(p.porCategoria);
+  renderFiltrosAtivos();
+
+  const n = corpo.querySelectorAll("tr").length;
+  document.getElementById("contador").textContent = `${n} de ${p.totalFiltrado}`;
+  document.getElementById("vazio").innerHTML = p.totalFiltrado
+    ? "" : `<div class="vazio">Nenhuma transação com esses filtros.</div>`;
+  const btn = document.getElementById("btnMais");
+  btn.hidden = !p.temMais; btn.disabled = false;
+
+  setEstado("estado", `${p.total} no banco`, "ok");
+}
+
+async function recarregar() {
+  offset = 0;
+  try { await carregar(); } catch (e) { setEstado("estado", e.message, "erro"); }
+}
+
+/* ------------------------------------------------- criar categoria nova */
+
+const EMOJI_BUSCA = {
+  "🍽️":"alimentacao comida refeicao restaurante", "🛒":"compras supermercado carrinho",
+  "🍴":"alimentacao restaurante talheres", "👠":"roupa calcado moda", "⌚":"relogio acessorio",
+  "🍺":"bebida cerveja bar", "🚌":"onibus transporte", "🚗":"carro automovel transporte",
+  "⛽":"combustivel gasolina posto", "🔧":"manutencao ferramenta", "🅿️":"estacionamento carro",
+  "🏖️":"viagem ferias praia", "💡":"energia luz casa", "💧":"agua conta casa",
+  "🛡️":"seguro protecao", "🎉":"festa lazer", "✈️":"viagem aviao", "🎁":"presente",
+  "🎮":"jogo game lazer", "🎵":"musica streaming", "🏠":"casa moradia", "💊":"saude remedio farmacia",
+  "🏋️":"academia exercicio", "🧘":"saude yoga", "💻":"computador tecnologia trabalho",
+  "🎬":"cinema filme streaming", "💳":"cartao pagamento", "👤":"pessoa pessoal",
+  "📈":"investimento grafico", "💰":"dinheiro receita salario", "⭐":"favorito estrela"
+};
+
+function normalizarBusca(valor) {
+  return String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function renderEmojiPicker(filtro = "") {
+  const termo = normalizarBusca(filtro.trim());
+  const catalogo = EMOJI_CATALOGO.length
+    ? EMOJI_CATALOGO
+    : EMOJIS.map(emoji => ({ emoji, nome: "", grupo: "" }));
+  EMOJI_FILTRADOS = catalogo.filter(item => !termo ||
+    normalizarBusca(`${item.emoji} ${item.nome} ${item.grupo} ${EMOJI_BUSCA[item.emoji] || ""}`).includes(termo));
+  EMOJI_RENDERIZADOS = 0;
+  document.getElementById("emojiGrade").innerHTML = EMOJI_FILTRADOS.length
+    ? ""
+    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum emoji encontrado.</div>';
+  renderMaisEmojis();
+}
+
+function renderMaisEmojis() {
+  const grade = document.getElementById("emojiGrade");
+  const lote = EMOJI_FILTRADOS.slice(EMOJI_RENDERIZADOS, EMOJI_RENDERIZADOS + 240);
+  if (!lote.length) return;
+  grade.insertAdjacentHTML("beforeend", lote.map(item =>
+    `<button class="emoji-opcao" type="button" data-emoji="${esc(item.emoji)}"
+      aria-label="Usar ${esc(item.emoji)} — ${esc(item.nome)}" title="${esc(item.nome)}">${esc(item.emoji)}</button>`).join(""));
+  EMOJI_RENDERIZADOS += lote.length;
+  marcarEmojiSelecionado();
+}
+
+function marcarEmojiSelecionado() {
+  const atual = document.getElementById("catEmoji").value.trim();
+  const botao = document.getElementById("catEmojiBotao");
+  document.getElementById("catEmojiPreview").textContent = atual || "＋";
+  botao.classList.toggle("vazio", !atual);
+  document.querySelectorAll("#emojiGrade [data-emoji]").forEach(botao => {
+    botao.classList.toggle("selecionado", botao.dataset.emoji === atual);
+  });
+}
+
+/** Só subcategoria tem emoji. Sem "Dentro de" selecionado, isto é uma
+ *  categoria-pai: o botão de emoji trava e qualquer emoji já escolhido
+ *  é descartado, pra não ficar um valor invisível esperando pra ser salvo. */
+function atualizarDisponibilidadeEmoji() {
+  const ehSubcategoria = !!document.getElementById("catPai").value;
+  const botao = document.getElementById("catEmojiBotao");
+  botao.disabled = !ehSubcategoria;
+  botao.title = ehSubcategoria ? "" : "Só subcategorias têm emoji";
+  if (!ehSubcategoria) document.getElementById("catEmoji").value = "";
+  marcarEmojiSelecionado();
+}
+
+async function carregarCatalogoEmojis() {
+  try {
+    const arquivos = Array.from({ length:16 }, (_, i) =>
+      `assets/emojis/emoji-${String(i).padStart(2, "0")}.json`);
+    const respostas = await Promise.all(arquivos.map(caminho => fetch(caminho)));
+    if (respostas.some(resposta => !resposta.ok)) throw new Error("Catálogo incompleto");
+    EMOJI_CATALOGO = (await Promise.all(respostas.map(resposta => resposta.json()))).flat();
+  } catch {
+    // O conjunto curto vindo da API continua sendo um fallback seguro caso
+    // algum arquivo estático não esteja disponível.
+    EMOJI_CATALOGO = [];
+  }
+}
+
+function abrirModalCategoria(nomeSugerido = "") {
+  const m = document.getElementById("modalCat");
+  document.getElementById("catNome").value = nomeSugerido;
+  document.getElementById("catEmoji").value = "";
+  document.getElementById("catCor").value = "#4a95ea";
+  document.getElementById("catErro").textContent = "";
+
+  // Só categorias pai podem receber filhos: a hierarquia tem dois níveis.
+  document.getElementById("catPai").innerHTML =
+    ['<option value="">Nenhuma (categoria principal)</option>']
+      .concat(CATEGORIAS.filter(c => !c.paiId).map(c =>
+        `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+
+  atualizarDisponibilidadeEmoji();
+  m.hidden = false;
+  document.getElementById("catNome").focus();
+}
+
+function fecharModalCategoria() {
+  fecharPop();
+  document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+  document.getElementById("modalCat").hidden = true;
+}
+
+async function salvarCategoria() {
+  const btn = document.getElementById("catSalvar");
+  const erro = document.getElementById("catErro");
+  const dados = {
+    nome: document.getElementById("catNome").value.trim(),
+    emoji: document.getElementById("catEmoji").value.trim(),
+    cor: document.getElementById("catCor").value,
+    paiId: document.getElementById("catPai").value || null,
+  };
+  if (!dados.nome) { erro.textContent = "Informe o nome da categoria."; return; }
+
+  btn.disabled = true;
+  try {
+    const nova = await pedir("/extrato/categorias", "POST", dados);
+    // Criar a categoria a partir de uma transação implica querer aplicá-la ali.
+    if (txAberta) {
+      await pedir(`/extrato/transacoes/${encodeURIComponent(txAberta)}`, "PUT",
+                  { categoriaId: nova.id });
+    }
+    fecharModalCategoria();
+    await carregarFiltros();
+    await recarregar();
+  } catch (e) {
+    erro.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------------------------------------------------- edição da transação */
+
+function numeroDigitado(texto) {
+  const limpo = String(texto || "").trim().replace(/\s/g, "");
+  const normalizado = limpo.includes(",")
+    ? limpo.replace(/\./g, "").replace(",", ".")
+    : limpo;
+  return Number(normalizado);
+}
+
+function abrirModalEdicao(tx) {
+  if (!tx) return;
+  txAberta = tx.id;
+  document.getElementById("editarErro").textContent = "";
+  document.getElementById("eData").value = tx.data;
+  document.getElementById("eDescricao").value = tx.descricao;
+  document.getElementById("eValor").value = Math.abs(Number(tx.valor || 0))
+    .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById("eTipo").value = tx.tipo;
+  document.getElementById("eStatus").value = tx.status;
+  document.getElementById("eParcelaNumero").value = tx.parcelaNumero || 1;
+  document.getElementById("eParcelaTotal").value = tx.parcelaTotal || 1;
+  document.getElementById("eCalculo").value = String(!!tx.incluidaNosCalculos);
+
+  const contas = CONTAS_EDICAO.some(c => c.id === tx.contaId)
+    ? CONTAS_EDICAO
+    : [{ id: tx.contaId, nome: tx.contaNome }, ...CONTAS_EDICAO];
+  document.getElementById("eConta").innerHTML = contas.map(c =>
+    `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+  document.getElementById("eConta").value = tx.contaId;
+
+  document.getElementById("eCategoria").innerHTML = CATEGORIAS.map(c =>
+    `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.emoji)} ${esc(c.nome)}</option>`).join("");
+  document.getElementById("eCategoria").value = tx.categoria.id;
+  document.getElementById("editarRestaurar").hidden = !tx.editadaManualmente;
+  document.getElementById("modalEditar").hidden = false;
+  document.getElementById("eDescricao").focus();
+}
+
+function fecharModalEdicao() { document.getElementById("modalEditar").hidden = true; }
+
+async function salvarEdicao() {
+  const erro = document.getElementById("editarErro");
+  const valor = numeroDigitado(document.getElementById("eValor").value);
+  const dados = {
+    data: document.getElementById("eData").value,
+    descricao: document.getElementById("eDescricao").value.trim(),
+    valor,
+    tipo: document.getElementById("eTipo").value,
+    status: document.getElementById("eStatus").value,
+    contaId: document.getElementById("eConta").value,
+    categoriaId: document.getElementById("eCategoria").value,
+    parcelaNumero: Number(document.getElementById("eParcelaNumero").value),
+    parcelaTotal: Number(document.getElementById("eParcelaTotal").value),
+    incluidaNosCalculos: document.getElementById("eCalculo").value === "true",
+  };
+  if (!dados.data || !dados.descricao || !Number.isFinite(valor) || valor < 0) {
+    erro.textContent = "Preencha data, descrição e valor corretamente.";
+    return;
+  }
+  const botao = document.getElementById("editarSalvar");
+  botao.disabled = true;
+  try {
+    await pedir(`/extrato/transacoes/${encodeURIComponent(txAberta)}`, "PUT", dados);
+    fecharModalEdicao();
+    await carregarFiltros();
+    await recarregar();
+  } catch (e) { erro.textContent = e.message; }
+  finally { botao.disabled = false; }
+}
+
+async function restaurarOriginal() {
+  const tx = TRANSACOES.get(txAberta);
+  if (!tx || !confirm(`Restaurar todos os campos originais de “${tx.descricao}”?`)) return;
+  const botao = document.getElementById("editarRestaurar");
+  botao.disabled = true;
+  try {
+    await pedir(`/extrato/transacoes/${encodeURIComponent(txAberta)}`, "PUT", { restaurarTudo:true });
+    fecharModalEdicao();
+    await carregarFiltros();
+    await recarregar();
+  } catch (e) { document.getElementById("editarErro").textContent = e.message; }
+  finally { botao.disabled = false; }
+}
+
+/* ----------------------------------------------------------------- carga */
+
+async function carregarFiltros() {
+  // Cache: pinta com a última resposta e revalida em segundo plano. Se algo
+  // mudou (categoria nova, conta nova), repinta os seletores sozinho. A lista
+  // de meses depende do modo (fatura x mês real), então entra na chave.
+  const caminho = `/extrato/filtros?modo=${filtros.modo}`;
+  const p = await pedirCache(caminho, frescos => {
+    aplicarFiltros(frescos);
+    renderPopCategorias(document.getElementById("popCatBusca").value);
+  });
+  aplicarFiltros(p);
+}
+
+function aplicarFiltros(p) {
+  CATEGORIAS = p.categorias || [];
+  CONTAS = p.contas || [];
+  CARTOES = p.cartoes || [];
+  CONTAS_EDICAO = p.contasEdicao || [];
+  MES_ATUAL = p.mesAtual || "";
+
+  const meses = completarAteFimDoAno(p.meses, MES_ATUAL);
+  document.getElementById("fMes").innerHTML =
+    ['<option value="">Todos os meses</option>']
+      .concat(meses.map(m => `<option value="${m}">${labelMes(m)}</option>`)).join("");
+  document.getElementById("fConta").innerHTML =
+    ['<option value="">Todas as contas</option>']
+      .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+  document.getElementById("fCartao").innerHTML =
+    ['<option value="">Todos os cartões</option>']
+      .concat(CARTOES.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+  document.getElementById("fCategoria").innerHTML =
+    ['<option value="">Todas as categorias</option>']
+      .concat(CATEGORIAS.map(c =>
+        `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.emoji)} ${esc(c.nome)}</option>`)).join("");
+
+  renderPopCategorias();
+  renderUltimaImportacao(p.ultimaImportacao);
+}
+
+function renderUltimaImportacao(ultima) {
+  const partes = [];
+  if (ultima) {
+    partes.push(`Atualizado em ${new Date(ultima.executadoEm).toLocaleString("pt-BR")}`);
+  }
+  document.getElementById("statusImport").textContent = partes.join(" · ") || "—";
+}
+
+/** Estado da sincronização: informativo e fora do caminho crítico, então roda
+ * depois que a tela já pintou. */
+async function carregarStatusSync() {
+  try {
+    const st = await pedir("/pluggy-status");
+    const extra = st.emAndamento ? "sincronizando…"
+      : st.ultimoResultado === "erro" ? "falha na última sincronização"
+      : st.ultimoResultado === "ok_parcial" ? "uma conexão antiga não respondeu"
+      : "";
+    if (!extra) return;
+    const el = document.getElementById("statusImport");
+    el.textContent = el.textContent === "—" ? extra : `${el.textContent} · ${extra}`;
+  } catch { /* informativo */ }
+}
+
+/* --------------------------------------------------------------- eventos */
+
+function sincronizarSelects() {
+  document.getElementById("fMes").value = filtros.month;
+  document.getElementById("fConta").value = filtros.account;
+  document.getElementById("fCartao").value = filtros.card;
+  document.getElementById("fTipo").value = filtros.type;
+  document.getElementById("fCategoria").value = filtros.category;
+  document.getElementById("fSituacao").value = filtros.status;
+}
+
+function sincronizarModo() {
+  for (const b of document.querySelectorAll("#modoVisao button")) {
+    b.classList.toggle("ativo", b.dataset.modo === filtros.modo);
+  }
+}
+
+function ligar() {
+  document.getElementById("metricas").addEventListener("click", e => {
+    const mes = e.target.closest("[data-mes-evolucao]")?.dataset.mesEvolucao;
+    if (!mes) return;
+    // Clicar no mês já selecionado desmarca -- senão o único jeito de voltar
+    // a "todos os meses" era abrir Filtros e limpar o campo por lá.
+    filtros.month = filtros.month === mes ? "" : mes;
+    recarregar();
+  });
+
+  document.getElementById("btnFiltros").addEventListener("click", e => {
+    sincronizarSelects();
+    abrirPop(document.getElementById("popFiltros"), e.currentTarget);
+  });
+
+  document.getElementById("modoVisao").addEventListener("click", e => {
+    const modo = e.target.closest("[data-modo]")?.dataset.modo;
+    if (!modo || modo === filtros.modo) return;
+    filtros.modo = modo;
+    sincronizarModo();
+    // O mês selecionado é relativo ao modo anterior (fatura x mês real) --
+    // manter o valor trocaria de mês sem avisar, então volta pra "todos".
+    filtros.month = "";
+    carregarFiltros();
+    recarregar();
+  });
+
+  document.getElementById("fAplicar").addEventListener("click", () => {
+    filtros.month = document.getElementById("fMes").value;
+    filtros.account = document.getElementById("fConta").value;
+    filtros.card = document.getElementById("fCartao").value;
+    filtros.type = document.getElementById("fTipo").value;
+    filtros.category = document.getElementById("fCategoria").value;
+    filtros.status = document.getElementById("fSituacao").value;
+    fecharPop();
+    recarregar();
+  });
+
+  // O estado padrão desta tela é o histórico inteiro. O modo de visão
+  // (fatura/mês) não é um "filtro" que se limpa junto -- é a forma como a
+  // tela inteira agrupa, então "Limpar tudo" o preserva.
+  const limpar = () => {
+    filtros = { month: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo };
+    document.getElementById("busca").value = "";
+    sincronizarSelects();
+    fecharPop();
+    recarregar();
+  };
+  document.getElementById("fLimpar").addEventListener("click", limpar);
+  document.getElementById("btnLimpar").addEventListener("click", limpar);
+
+  document.getElementById("filtrosAtivos").addEventListener("click", e => {
+    const b = e.target.closest("[data-tira]");
+    if (!b) return;
+    filtros[b.dataset.tira] = "";
+    recarregar();
+  });
+
+  document.getElementById("busca").addEventListener("input", e => {
+    clearTimeout(buscaTimer);
+    const v = e.target.value.trim();
+    buscaTimer = setTimeout(() => { filtros.q = v; recarregar(); }, 300);
+  });
+
+  document.getElementById("btnMais").addEventListener("click", async () => {
+    const b = document.getElementById("btnMais");
+    b.disabled = true;
+    offset += PAGE;
+    try { await carregar({ mais: true }); }
+    catch (e) { setEstado("estado", e.message, "erro"); b.disabled = false; }
+  });
+
+  document.getElementById("categorias").addEventListener("click", e => {
+    const l = e.target.closest("[data-categoria]");
+    if (!l) return;
+    const c = l.dataset.categoria;
+    filtros.category = filtros.category === c ? "" : c;   // clicar de novo recolhe
+    recarregar();
+  });
+
+  // Chip abre a caixinha de categoria; ⋯ abre o menu de ações.
+  document.getElementById("linhas").addEventListener("click", e => {
+    const chip = e.target.closest("[data-cat-de]");
+    if (chip) {
+      txAberta = chip.dataset.catDe;
+      renderPopCategorias();
+      abrirPop(document.getElementById("popCategoria"), chip);
+      return;
+    }
+    const acoes = e.target.closest("[data-acoes-de]");
+    if (acoes) {
+      txAberta = acoes.dataset.acoesDe;
+      const tr = acoes.closest("tr");
+      const ignorada = tr.classList.contains("ignorada");
+      document.getElementById("popAcoesLista").innerHTML = `
+        <button class="pop-item" data-acao="editar">✎  Editar transação</button>
+        <div class="pop-sep"></div>
+        <button class="pop-item" data-acao="calculo">${ignorada ? "↺  Voltar para os cálculos" : "🚫  Ignorar essa transação"}</button>
+        <div class="pop-sep"></div>
+        <div class="pop-rotulo">Automações</div>
+        <button class="pop-item" data-acao="regra-cat">✎  Recategorizar transações como essa</button>
+        <button class="pop-item" data-acao="regra-ign">🚫  Ignorar transações como essa</button>`;
+      abrirPop(document.getElementById("popAcoes"), acoes, { alinhar: "direita" });
+    }
+  });
+
+  document.getElementById("popCatBusca").addEventListener("input", e =>
+    renderPopCategorias(e.target.value));
+
+  /* --- criar categoria sem sair da tela --- */
+
+  document.getElementById("popCatNovo").addEventListener("click", () => {
+    const sugerido = document.getElementById("popCatBusca").value.trim();
+    fecharPop();
+    abrirModalCategoria(sugerido);
+  });
+
+  document.getElementById("catFechar").addEventListener("click", fecharModalCategoria);
+  document.getElementById("catCancelar").addEventListener("click", fecharModalCategoria);
+  document.getElementById("modalCat").addEventListener("click", e => {
+    if (e.target.id === "modalCat") fecharModalCategoria();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !document.getElementById("modalCat").hidden) fecharModalCategoria();
+    if (e.key === "Escape" && !document.getElementById("modalEditar").hidden) fecharModalEdicao();
+  });
+
+  document.getElementById("catPai").addEventListener("change", atualizarDisponibilidadeEmoji);
+  document.getElementById("catEmojiBotao").addEventListener("click", e => {
+    const abriu = abrirPop(document.getElementById("popEmoji"), e.currentTarget);
+    e.currentTarget.setAttribute("aria-expanded", String(abriu));
+  });
+  document.getElementById("emojiBusca").addEventListener("input", e => renderEmojiPicker(e.target.value));
+  document.getElementById("emojiGrade").addEventListener("scroll", e => {
+    if (e.currentTarget.scrollTop + e.currentTarget.clientHeight >= e.currentTarget.scrollHeight - 80) {
+      renderMaisEmojis();
+    }
+  });
+  document.getElementById("emojiGrade").addEventListener("click", e => {
+    const b = e.target.closest("[data-emoji]");
+    if (b) {
+      document.getElementById("catEmoji").value = b.dataset.emoji;
+      marcarEmojiSelecionado();
+      fecharPop();
+      document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+    }
+  });
+  document.getElementById("emojiLimpar").addEventListener("click", () => {
+    document.getElementById("catEmoji").value = "";
+    marcarEmojiSelecionado();
+    fecharPop();
+    document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+  });
+
+  document.getElementById("catSalvar").addEventListener("click", salvarCategoria);
+
+  document.getElementById("editarFechar").addEventListener("click", fecharModalEdicao);
+  document.getElementById("editarCancelar").addEventListener("click", fecharModalEdicao);
+  document.getElementById("editarSalvar").addEventListener("click", salvarEdicao);
+  document.getElementById("editarRestaurar").addEventListener("click", restaurarOriginal);
+  document.getElementById("modalEditar").addEventListener("click", e => {
+    if (e.target.id === "modalEditar") fecharModalEdicao();
+  });
+
+  document.getElementById("popCatLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-cat]");
+    if (!b || !txAberta) return;
+    fecharPop();
+    try {
+      await pedir(`/extrato/transacoes/${encodeURIComponent(txAberta)}`, "PUT",
+                  { categoriaId: b.dataset.cat || null });
+      await recarregar();
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+
+  document.getElementById("popAcoesLista").addEventListener("click", async e => {
+    const b = e.target.closest("[data-acao]");
+    if (!b || !txAberta) return;
+    const id = txAberta;
+    const tr = document.querySelector(`tr[data-tx="${CSS.escape(id)}"]`);
+    fecharPop();
+
+    try {
+      if (b.dataset.acao === "editar") {
+        abrirModalEdicao(TRANSACOES.get(id));
+        return;
+      }
+      if (b.dataset.acao === "calculo") {
+        const ignorada = tr?.classList.contains("ignorada");
+        await pedir(`/extrato/transacoes/${encodeURIComponent(id)}`, "PUT",
+                    { incluidaNosCalculos: ignorada ? null : false });
+        await recarregar();
+        return;
+      }
+      // As duas automações levam para a tela de regras já preenchida com a
+      // descrição desta transação — criar regra ali é onde ela pode ser
+      // revisada antes de valer para o histórico inteiro.
+      const desc = tr?.querySelector(".desc")?.childNodes[0]?.textContent?.trim() || "";
+      const modo = b.dataset.acao === "regra-ign" ? "ignorar" : "categoria";
+      location.href = `extrato_regras.html?nova=1&termo=${encodeURIComponent(desc)}&modo=${modo}`;
+    } catch (err) { setEstado("estado", err.message, "erro"); }
+  });
+}
+
+(async function iniciar() {
+  montarNav("transacoes.html");
+  ligar();
+  try {
+    await carregarFiltros();
+    filtros.month = "";
+
+    // Deep link vindo da tela de Categorias.
+    const url = new URLSearchParams(location.search);
+    for (const chave of ["month", "account", "card", "type", "category", "status", "q", "modo"]) {
+      if (url.has(chave)) filtros[chave] = url.get(chave);
+    }
+    if (filtros.q) document.getElementById("busca").value = filtros.q;
+    sincronizarModo();
+
+    await carregar();
+
+    // Depois da tela pintada: nada aqui bloqueia a primeira renderização.
+    carregarStatusSync();
+    carregarCatalogoEmojis();
+    pedirCache("/extrato/categorias").then(p => { EMOJIS = p.emojisSugeridos || []; })
+      .catch(() => { EMOJIS = []; });
+  } catch (e) {
+    setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
+    document.getElementById("vazio").innerHTML =
+      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+  }
+})();
+</script>
+</body>
+</html>

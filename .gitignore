@@ -1,0 +1,24 @@
+# Segredos locais (.env.example é template e fica versionado)
+.env
+.env.*
+!.env.example
+
+# Banco local e backups com dados financeiros sensíveis
+pluggy.db
+pluggy.db-*
+backups/
+
+# Extratos baixados da Pluggy e a página de conexão gerada
+data/
+connect.html
+
+# Arquivos temporários/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Sistema/editores
+.DS_Store
+Thumbs.db
+.vscode/

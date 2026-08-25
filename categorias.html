@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Categorias</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+/* Uma única coluna de valor (número + barra juntos, sem % separado) e a
+   mesma grade para pai e filho -- indentar o filho por cima da grade foi o
+   que descarrilava o alinhamento entre categorias com e sem subcategoria. A
+   diferença de nível vem só do tamanho do ícone e do peso da fonte. */
+/* A linha em si não tem borda -- quem separa é o grupo (categoria + as
+   subcategorias abertas dela), então a régua só aparece entre uma categoria e
+   a próxima, nunca entre a categoria e o filho dela nem entre um filho e o
+   irmão ao lado. */
+.linha-cat { display: grid; grid-template-columns: 20px 28px 1fr 200px 24px; gap: 10px; align-items: center; padding: 9px 6px; }
+.linha-cat:hover { background: var(--surface-2); }
+.grupo-cat { border-bottom: 1px solid var(--line); }
+.grupo-cat:last-child { border-bottom: 0; }
+/* Mesmo tamanho de ícone e de texto para categoria e subcategoria -- só o
+   peso e a cor do nome marcam a diferença de nível, não o tamanho. */
+.linha-cat.filho .nome { color: var(--text-2); font-weight: 450; }
+
+.expandir { width: 20px; min-height: 20px; padding: 0; border: 0; background: transparent; color: var(--text-3); font-size: 10px; cursor: pointer; transition: transform .12s ease; }
+.expandir.aberto { transform: rotate(90deg); }
+.expandir:disabled { opacity: 0; cursor: default; }
+
+.icone-cat { width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; flex: none; }
+.icone-cat.inicial { color: #fff; font-weight: 700; font-size: 13px; text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+.linha-cat [data-editar] { opacity: 0; }
+.linha-cat:hover [data-editar] { opacity: 1; }
+.nome { font-size: 14px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qtd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 7px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+.gastos-cel { display: flex; align-items: center; gap: 10px; }
+.gastos-cel .valor { min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; flex: none; }
+.gastos-cel .valor.muted { font-weight: 450; }
+.gastos-cel .barra { flex: 1; min-width: 48px; }
+.cabec { display: grid; grid-template-columns: 20px 28px 1fr 200px 24px; gap: 10px; padding: 0 6px 8px; color: var(--text-3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.cabec .r { text-align: right; }
+.cat-modal { width:min(520px,100%); }
+.cat-form { display:grid; gap:14px; }
+.cat-identidade { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; align-items:end; }
+.cat-identidade .campo { min-width:0; }
+.cat-identidade input { width:100%; min-width:0; }
+.cat-emoji-botao { width:64px; height:40px; min-height:40px; padding:0; justify-content:center; font-size:21px; line-height:1; }
+.cat-emoji-botao.vazio { color:var(--text-3); font-size:18px; }
+.cat-emoji-botao:hover, .cat-emoji-botao[aria-expanded="true"] { border-color:var(--azul); background:var(--surface-3); }
+.cat-destino { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:12px; align-items:end; }
+.cat-destino .campo { min-width:0; }
+.cat-destino select, .cat-destino input { width:100%; min-width:0; }
+.cat-cor { height:40px; padding:3px; cursor:pointer; }
+.emoji-pop { z-index:360; width:330px; padding:8px; }
+.emoji-grade { display:grid; grid-template-columns:repeat(8,1fr); gap:5px; max-height:245px; overflow-y:auto; padding:5px; }
+.emoji-opcao { width:32px; height:32px; min-height:32px; padding:0; justify-content:center; border-color:transparent; background:transparent; font-size:17px; }
+.emoji-opcao:hover { border-color:var(--line-forte); background:var(--surface-3); }
+.emoji-opcao.selecionado { border-color:var(--azul); background:var(--azul-suave); }
+.emoji-pop .pop-rodape { justify-content:flex-end; }
+.cat-lista-modal { width:min(720px,100%); overflow:hidden; }
+.cat-lista { max-height:min(58vh,560px); overflow-y:auto; margin:0 -8px; padding:0 8px; }
+/* Mesma régua da árvore principal: separa um grupo (categoria + as
+   subcategorias dela) do próximo, nunca a categoria da subcategoria. */
+.cat-lista-linha { display:grid; grid-template-columns:32px minmax(0,1fr) auto auto; gap:10px; align-items:center; min-height:54px; padding:8px 4px; }
+.cat-lista-grupo { border-bottom:1px solid var(--line); }
+.cat-lista-grupo:last-child { border-bottom:0; }
+/* Mesmo alinhamento pra categoria e subcategoria -- só o peso/cor do nome
+   marca o nível, sem empurrar a linha pra dentro (é o que quebrava o
+   alinhamento entre ícone de pai e de filho). */
+.cat-lista-info { min-width:0; }
+.cat-lista-nome { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; }
+.cat-lista-linha.filha .cat-lista-nome { font-weight:450; color:var(--text-2); }
+.cat-lista-pai { margin-top:2px; color:var(--text-3); font-size:11.5px; }
+.cat-lista-acao { min-width:68px; }
+.cat-lista-acao:disabled { opacity:.35; cursor:not-allowed; }
+.cat-lista-vazia { padding:28px; color:var(--text-3); text-align:center; }
+.modal-rodape [hidden] { display:none !important; }
+@media (max-width: 900px) {
+  /* Valor + barra já são uma célula só, então a tela estreita so precisa
+     encolher essa coluna -- sem quebrar a grade em outra contagem de trilhas. */
+  .linha-cat, .cabec { grid-template-columns: 20px 28px 1fr 84px 24px; }
+  .gastos-cel .barra { display: none; }
+  .cat-lista-linha { grid-template-columns:28px minmax(0,1fr) 34px 34px; gap:6px; }
+  .cat-lista-acao { min-width:34px; width:34px; padding:0; }
+  .cat-lista-acao .acao-texto { display:none; }
+}
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Categorias</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="estado" hidden>Carregando…</span>
+      <button class="primario" id="btnListar">Listar categorias</button>
+    </div>
+  </header>
+
+  <div class="filtros-barra" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+    <button id="btnFiltros" data-abre-pop>⚙ Filtros</button>
+    <span id="resumoFiltro" class="muted" style="font-size:12.5px"></span>
+    <label class="check" style="margin-left:auto"><input type="checkbox" id="chkTodas" /> Mostrar sem gasto</label>
+    <span id="totalGeral" hidden></span>
+  </div>
+
+  <section class="painel">
+    <div class="cabec">
+      <span></span><span></span><span>Categoria</span>
+      <span class="r">Gastos</span><span></span>
+    </div>
+    <div id="arvore"></div>
+    <div id="vazio"></div>
+  </section>
+</main>
+
+<div class="pop" id="popFiltros" hidden style="min-width:250px">
+  <div class="pop-rotulo">Filtrar por</div>
+  <div style="display:grid;gap:9px;padding:5px 8px 8px">
+    <label class="campo"><span>Mês</span><select id="fMes"></select></label>
+    <label class="campo"><span>Conta</span><select id="fConta"></select></label>
+  </div>
+  <div class="pop-rodape">
+    <button class="sutil" id="fLimpar">Limpar</button>
+    <button class="primario" id="fAplicar">Aplicar</button>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modalListaCat" hidden>
+  <div class="modal cat-lista-modal">
+    <div class="modal-tit">
+      <div>
+        <h2>Categorias</h2>
+        <p class="muted" style="margin:3px 0 0;font-size:12.5px">Edite a organização, o nome, o ícone e a cor.</p>
+      </div>
+      <button class="icone" id="listaCatFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="cat-lista" id="listaCategorias"></div>
+    <p class="estado erro" id="listaCatErro" style="margin:10px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="primario" id="listaCatNova">+ Nova categoria</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-fundo" id="modalCat" hidden>
+  <div class="modal cat-modal">
+    <div class="modal-tit">
+      <h2 id="catTitulo">Nova categoria</h2>
+      <button class="icone" id="catFechar" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="cat-form">
+      <div class="cat-identidade">
+        <div class="campo"><span>Emoji</span>
+          <input id="catEmoji" type="hidden" />
+          <button class="cat-emoji-botao vazio" id="catEmojiBotao" type="button" data-abre-pop
+            aria-label="Escolher emoji" aria-haspopup="dialog" aria-expanded="false">
+            <span id="catEmojiPreview">＋</span>
+          </button>
+        </div>
+        <label class="campo"><span>Nome</span>
+          <input id="catNome" type="text" placeholder="ex.: Presentes" autocomplete="off" /></label>
+      </div>
+
+      <div class="cat-destino">
+        <label class="campo"><span>Dentro de</span><select id="catPai"></select></label>
+        <label class="campo"><span>Cor</span>
+          <input class="cat-cor" id="catCor" type="color" value="#4a95ea" /></label>
+      </div>
+    </div>
+
+    <p class="estado erro" id="catErro" style="margin:10px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="perigo" id="catExcluir" hidden style="margin-right:auto">Excluir</button>
+      <button class="sutil" id="catCancelar">Cancelar</button>
+      <button class="primario" id="catSalvar">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher emoji" hidden>
+  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar emoji..." autocomplete="off" /></div>
+  <div class="emoji-grade" id="emojiGrade"></div>
+  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem emoji</button></div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let filtros = { month: "", account: "" };
+let MES_ATUAL = "", CONTAS = [], CATEGORIAS = [], EMOJIS = [], EMOJI_CATALOGO = [];
+let EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
+let abertas = new Set();
+// Uma vez por carregamento de tela: os pais que tem subcategoria com gasto
+// comecam abertos. Colapsado por padrao, "Livraria e educacao" simplesmente
+// nao existia para quem abria a tela -- o gasto estava somado dentro de
+// "Compras" e nada dizia que havia detalhe ali.
+let expandiuPadrao = false;
+let editandoCat = null;
+let voltarParaLista = false;
+const CHAVE_ULTIMO_MES = "financeiroPluggy.categorias.ultimoMes";
+function ultimoMesSalvo() {
+  try {
+    const mes = localStorage.getItem(CHAVE_ULTIMO_MES) || "";
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : "";
+  } catch { return ""; }
+}
+function salvarUltimoMes(mes) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return;
+  try { localStorage.setItem(CHAVE_ULTIMO_MES, mes); } catch { /* opcional */ }
+}
+
+/** Ícone da categoria: o emoji escolhido, sobre um fundo tingido com a cor
+ * dela. Sem emoji, a própria cor preenche o quadrado. */
+function iconeCat(cat) {
+  if (cat.emoji) {
+    return `<span class="icone-cat" style="background:${esc(cat.cor)}22;border:1px solid ${esc(cat.cor)}55">${esc(cat.emoji)}</span>`;
+  }
+  // Categoria-pai não tem emoji -- a inicial do nome no quadrado colorido
+  // ocupa o lugar dele, em vez de deixar o quadrado vazio.
+  const inicial = esc((cat.nome || "?").trim().charAt(0).toUpperCase() || "?");
+  return `<span class="icone-cat inicial" style="background:${esc(cat.cor)}">${inicial}</span>`;
+}
+
+function linhaCat(cat, total, ehFilho = false) {
+  const share = total ? (cat.total / total * 100) : 0;
+  // filhos já chega filtrado pelo render; length basta e funciona no modo
+  // "mostrar sem gasto", onde os filhos podem estar todos zerados.
+  const temFilhos = (cat.filhos || []).length > 0;
+  const aberta = abertas.has(cat.id);
+  return `
+    <div class="linha-cat ${ehFilho ? "filho" : ""}" data-cat="${esc(cat.id)}">
+      <button class="expandir ${aberta ? "aberto" : ""}" data-expandir="${esc(cat.id)}"
+              ${temFilhos ? "" : "disabled"} aria-label="Expandir">▶</button>
+      ${iconeCat(cat)}
+      <span class="nome">${esc(cat.nome)}${cat.quantidade
+        ? `<span class="qtd" style="background:${esc(cat.cor)}22;color:${esc(cat.cor)}">${cat.quantidade}</span>` : ""}</span>
+      <div class="gastos-cel" title="${cat.total ? share.toFixed(1) + "% do total" : "Sem gasto no filtro atual"}">
+        <span class="valor ${cat.total ? "" : "muted"}">${cat.total ? fmtBRL(cat.total) : "—"}</span>
+        <span class="barra"><span style="width:${Math.max(share, cat.total ? 2 : 0)}%;background:${esc(cat.cor)}"></span></span>
+      </div>
+      <button class="icone" data-editar="${esc(cat.id)}" aria-label="Editar categoria">✎</button>
+    </div>`;
+}
+
+function render(p) {
+  const alvo = document.getElementById("arvore");
+  const todas = document.getElementById("chkTodas").checked;
+  const visiveis = todas ? p.categorias : p.categorias.filter(c => c.total > 0);
+
+  if (!expandiuPadrao) {
+    expandiuPadrao = true;
+    for (const cat of p.categorias) {
+      if ((cat.filhos || []).some(f => f.total > 0)) abertas.add(cat.id);
+    }
+  }
+
+  if (!visiveis.length) {
+    alvo.innerHTML = "";
+    document.getElementById("vazio").innerHTML =
+      `<div class="vazio">Nenhum gasto no filtro atual.</div>`;
+    return;
+  }
+  document.getElementById("vazio").innerHTML = "";
+
+  alvo.innerHTML = visiveis.map(cat => {
+    const filhos = todas ? (cat.filhos || []) : (cat.filhos || []).filter(f => f.total > 0);
+    const corpo = abertas.has(cat.id)
+      ? filhos.map(f => linhaCat({ ...f, filhos: [] }, p.total, true)).join("")
+      : "";
+    // A régua vem do grupo, não da linha: assim ela separa uma categoria da
+    // próxima, mas não aparece entre a categoria e as subcategorias dela.
+    return `<div class="grupo-cat">${linhaCat({ ...cat, filhos }, p.total)}${corpo}</div>`;
+  }).join("");
+
+  document.getElementById("totalGeral").textContent = `Total ${fmtBRL(p.total)}`;
+}
+
+async function carregar() {
+  setEstado("estado", "Carregando…");
+  const q = new URLSearchParams();
+  if (filtros.month) q.set("month", filtros.month);
+  if (filtros.account) q.set("account", filtros.account);
+  const p = await pedir(`/extrato/categorias-resumo?${q}`);
+  render(p);
+
+  const conta = CONTAS.find(c => c.id === filtros.account)?.nome;
+  document.getElementById("resumoFiltro").textContent =
+    [filtros.month ? labelMes(filtros.month) : "Todos os meses", conta].filter(Boolean).join(" · ");
+  setEstado("estado", `${p.categorias.filter(c => c.total > 0).length} categorias com gasto`, "ok");
+}
+
+/* --------------------------------------------------- criar / editar */
+
+function linhaListaCat(cat) {
+  return `
+    <div class="cat-lista-linha ${cat.paiId ? "filha" : ""}">
+      ${iconeCat(cat)}
+      <div class="cat-lista-info">
+        <div class="cat-lista-nome">${esc(cat.nome)}</div>
+        <div class="cat-lista-pai">${cat.paiId ? `Dentro de ${esc(cat.paiNome || "categoria principal")}` : "Categoria principal"}${cat.padrao ? " · padrão" : ""}</div>
+      </div>
+      <button class="sutil cat-lista-acao" data-cat-editar="${esc(cat.id)}" aria-label="Editar ${esc(cat.nome)}">
+        <span aria-hidden="true">✎</span><span class="acao-texto">Editar</span></button>
+      <button class="perigo cat-lista-acao" data-cat-excluir="${esc(cat.id)}"
+        aria-label="Excluir ${esc(cat.nome)}" ${cat.padrao ? 'disabled title="Categoria padrão não pode ser excluída"' : ""}>
+        <span aria-hidden="true">×</span><span class="acao-texto">Excluir</span></button>
+    </div>`;
+}
+
+function renderListaCategorias() {
+  const alvo = document.getElementById("listaCategorias");
+  document.getElementById("listaCatErro").textContent = "";
+  if (!CATEGORIAS.length) {
+    alvo.innerHTML = '<div class="cat-lista-vazia">Nenhuma categoria cadastrada.</div>';
+    return;
+  }
+  // CATEGORIAS já chega da API com a categoria-pai seguida das próprias
+  // subcategorias; agrupar aqui só significa cortar a lista toda vez que uma
+  // linha sem pai começa um grupo novo.
+  const grupos = [];
+  for (const cat of CATEGORIAS) {
+    if (!cat.paiId || !grupos.length) grupos.push([cat]);
+    else grupos[grupos.length - 1].push(cat);
+  }
+  alvo.innerHTML = grupos
+    .map(grupo => `<div class="cat-lista-grupo">${grupo.map(linhaListaCat).join("")}</div>`)
+    .join("");
+}
+
+function abrirListaCategorias() {
+  renderListaCategorias();
+  document.getElementById("modalListaCat").hidden = false;
+}
+
+function fecharListaCategorias() {
+  document.getElementById("modalListaCat").hidden = true;
+}
+
+const EMOJI_BUSCA = {
+  "🍽️":"alimentacao comida refeicao restaurante", "🛒":"compras supermercado carrinho",
+  "🍴":"alimentacao restaurante talheres", "👠":"roupa calcado moda", "⌚":"relogio acessorio",
+  "🍺":"bebida cerveja bar", "🚌":"onibus transporte", "🚗":"carro automovel transporte",
+  "⛽":"combustivel gasolina posto", "🔧":"manutencao ferramenta", "🅿️":"estacionamento carro",
+  "🏖️":"viagem ferias praia", "💡":"energia luz casa", "💧":"agua conta casa",
+  "🛡️":"seguro protecao", "🎉":"festa lazer", "✈️":"viagem aviao", "🎁":"presente",
+  "🎮":"jogo game lazer", "🎵":"musica streaming", "🏠":"casa moradia", "💊":"saude remedio farmacia",
+  "🏋️":"academia exercicio", "🧘":"saude yoga", "💻":"computador tecnologia trabalho",
+  "🎬":"cinema filme streaming", "💳":"cartao pagamento", "👤":"pessoa pessoal",
+  "📈":"investimento grafico", "💰":"dinheiro receita salario", "⭐":"favorito estrela"
+};
+
+function normalizarBusca(valor) {
+  return String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function renderEmojiPicker(filtro = "") {
+  const termo = normalizarBusca(filtro.trim());
+  const catalogo = EMOJI_CATALOGO.length
+    ? EMOJI_CATALOGO
+    : EMOJIS.map(emoji => ({ emoji, nome: "", grupo: "" }));
+  EMOJI_FILTRADOS = catalogo.filter(item => !termo ||
+    normalizarBusca(`${item.emoji} ${item.nome} ${item.grupo} ${EMOJI_BUSCA[item.emoji] || ""}`).includes(termo));
+  EMOJI_RENDERIZADOS = 0;
+  document.getElementById("emojiGrade").innerHTML = EMOJI_FILTRADOS.length
+    ? ""
+    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum emoji encontrado.</div>';
+  renderMaisEmojis();
+}
+
+function renderMaisEmojis() {
+  const grade = document.getElementById("emojiGrade");
+  const lote = EMOJI_FILTRADOS.slice(EMOJI_RENDERIZADOS, EMOJI_RENDERIZADOS + 240);
+  if (!lote.length) return;
+  grade.insertAdjacentHTML("beforeend", lote.map(item =>
+    `<button class="emoji-opcao" type="button" data-emoji="${esc(item.emoji)}"
+      aria-label="Usar ${esc(item.emoji)} — ${esc(item.nome)}" title="${esc(item.nome)}">${esc(item.emoji)}</button>`).join(""));
+  EMOJI_RENDERIZADOS += lote.length;
+  marcarEmojiSelecionado();
+}
+
+function marcarEmojiSelecionado() {
+  const atual = document.getElementById("catEmoji").value.trim();
+  const botao = document.getElementById("catEmojiBotao");
+  document.getElementById("catEmojiPreview").textContent = atual || "＋";
+  botao.classList.toggle("vazio", !atual);
+  document.querySelectorAll("#emojiGrade [data-emoji]").forEach(botao => {
+    botao.classList.toggle("selecionado", botao.dataset.emoji === atual);
+  });
+}
+
+/** Só subcategoria tem emoji. Sem "Dentro de" selecionado, isto é uma
+ *  categoria-pai: o botão de emoji trava e qualquer emoji já escolhido
+ *  é descartado, pra não ficar um valor invisível esperando pra ser salvo. */
+function atualizarDisponibilidadeEmoji() {
+  const ehSubcategoria = !!document.getElementById("catPai").value;
+  const botao = document.getElementById("catEmojiBotao");
+  botao.disabled = !ehSubcategoria;
+  botao.title = ehSubcategoria ? "" : "Só subcategorias têm emoji";
+  if (!ehSubcategoria) document.getElementById("catEmoji").value = "";
+  marcarEmojiSelecionado();
+}
+
+function abrirModalCat(cat = null, origemLista = false) {
+  voltarParaLista = origemLista;
+  editandoCat = cat?.id || null;
+  document.getElementById("catTitulo").textContent = cat ? "Editar categoria" : "Nova categoria";
+  document.getElementById("catSalvar").textContent = cat ? "Salvar" : "Criar";
+  document.getElementById("catNome").value = cat?.nome ?? "";
+  document.getElementById("catEmoji").value = cat?.emoji ?? "";
+  document.getElementById("catCor").value = cat?.cor ?? "#4a95ea";
+  document.getElementById("catErro").textContent = "";
+
+  // Só categorias pai podem receber filhos (a hierarquia tem dois níveis), e
+  // uma categoria não pode ser pai dela mesma.
+  const pais = CATEGORIAS.filter(c => !c.paiId && c.id !== cat?.id);
+  document.getElementById("catPai").innerHTML =
+    ['<option value="">Nenhuma (categoria principal)</option>']
+      .concat(pais.map(c =>
+        `<option value="${esc(c.id)}" ${c.id === cat?.paiId ? "selected" : ""}>${esc(c.nome)}</option>`)).join("");
+
+  atualizarDisponibilidadeEmoji();
+
+  // Só faz sentido excluir o que o usuário criou; padrão do sistema volta no
+  // próximo seed de qualquer jeito.
+  document.getElementById("catExcluir").hidden = !cat || cat.padrao;
+
+  document.getElementById("modalCat").hidden = false;
+  document.getElementById("catNome").focus();
+}
+
+function fecharModalCat(reabrirLista = true) {
+  const deveReabrir = voltarParaLista && reabrirLista;
+  fecharPop();
+  document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+  document.getElementById("modalCat").hidden = true;
+  editandoCat = null;
+  voltarParaLista = false;
+  if (deveReabrir) abrirListaCategorias();
+}
+
+async function salvarCat() {
+  const btn = document.getElementById("catSalvar");
+  const erro = document.getElementById("catErro");
+  const dados = {
+    nome: document.getElementById("catNome").value.trim(),
+    emoji: document.getElementById("catEmoji").value.trim(),
+    cor: document.getElementById("catCor").value,
+    paiId: document.getElementById("catPai").value || null,
+  };
+  if (!dados.nome) { erro.textContent = "Informe o nome da categoria."; return; }
+
+  btn.disabled = true;
+  try {
+    if (editandoCat) await pedir(`/extrato/categorias/${encodeURIComponent(editandoCat)}`, "PUT", dados);
+    else await pedir("/extrato/categorias", "POST", dados);
+    const retornar = voltarParaLista;
+    fecharModalCat(false);
+    await carregarCategorias();
+    await carregar();
+    if (retornar) abrirListaCategorias();
+  } catch (e) { erro.textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+
+async function excluirCat() {
+  const cat = CATEGORIAS.find(c => c.id === editandoCat);
+  if (!cat || !window.confirm(`Excluir a categoria “${cat.nome}”?`)) return;
+  try {
+    await pedir(`/extrato/categorias/${encodeURIComponent(editandoCat)}`, "DELETE");
+    const retornar = voltarParaLista;
+    fecharModalCat(false);
+    await carregarCategorias();
+    await carregar();
+    if (retornar) abrirListaCategorias();
+  } catch (e) { document.getElementById("catErro").textContent = e.message; }
+}
+
+async function excluirCategoriaDaLista(cat) {
+  if (!cat || cat.padrao || !window.confirm(`Excluir a categoria “${cat.nome}”?`)) return;
+  document.getElementById("listaCatErro").textContent = "";
+  try {
+    await pedir(`/extrato/categorias/${encodeURIComponent(cat.id)}`, "DELETE");
+    await carregarCategorias();
+    await carregar();
+    renderListaCategorias();
+  } catch (e) {
+    document.getElementById("listaCatErro").textContent = e.message;
+  }
+}
+
+async function carregarCategorias() {
+  const p = await pedirCache("/extrato/categorias", frescos => {
+    CATEGORIAS = frescos.categorias || [];
+    EMOJIS = frescos.emojisSugeridos || [];
+  });
+  CATEGORIAS = p.categorias || [];
+  EMOJIS = p.emojisSugeridos || [];
+}
+
+async function carregarCatalogoEmojis() {
+  try {
+    const arquivos = Array.from({ length:16 }, (_, i) =>
+      `assets/emojis/emoji-${String(i).padStart(2, "0")}.json`);
+    const respostas = await Promise.all(arquivos.map(caminho => fetch(caminho)));
+    if (respostas.some(resposta => !resposta.ok)) throw new Error("Catálogo incompleto");
+    EMOJI_CATALOGO = (await Promise.all(respostas.map(resposta => resposta.json()))).flat();
+  } catch {
+    // O conjunto curto vindo da API continua sendo um fallback seguro caso
+    // algum arquivo estático não esteja disponível.
+    EMOJI_CATALOGO = [];
+  }
+}
+
+async function carregarFiltros() {
+  const p = await pedirCache("/extrato/filtros");
+  CONTAS = p.contas || [];
+  MES_ATUAL = p.mesAtual || "";
+  const meses = p.meses.includes(MES_ATUAL) || !MES_ATUAL ? p.meses : [MES_ATUAL, ...p.meses];
+  document.getElementById("fMes").innerHTML =
+    ['<option value="">Todos os meses</option>']
+      .concat(meses.map(m => `<option value="${m}">${labelMes(m)}</option>`)).join("");
+  document.getElementById("fConta").innerHTML =
+    ['<option value="">Todas as contas</option>']
+      .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+}
+
+function ligar() {
+  document.getElementById("btnFiltros").addEventListener("click", e => {
+    document.getElementById("fMes").value = filtros.month;
+    document.getElementById("fConta").value = filtros.account;
+    abrirPop(document.getElementById("popFiltros"), e.currentTarget);
+  });
+  document.getElementById("fAplicar").addEventListener("click", () => {
+    filtros.month = document.getElementById("fMes").value;
+    filtros.account = document.getElementById("fConta").value;
+    salvarUltimoMes(filtros.month);
+    fecharPop();
+    carregar().catch(e => setEstado("estado", e.message, "erro"));
+  });
+  document.getElementById("fLimpar").addEventListener("click", () => {
+    filtros = { month: MES_ATUAL, account: "" };
+    salvarUltimoMes(filtros.month);
+    fecharPop();
+    carregar().catch(e => setEstado("estado", e.message, "erro"));
+  });
+
+  document.getElementById("chkTodas").addEventListener("change", () =>
+    carregar().catch(e => setEstado("estado", e.message, "erro")));
+
+  document.getElementById("btnListar").addEventListener("click", abrirListaCategorias);
+  document.getElementById("listaCatFechar").addEventListener("click", fecharListaCategorias);
+  document.getElementById("listaCatNova").addEventListener("click", () => {
+    fecharListaCategorias();
+    abrirModalCat(null, true);
+  });
+  document.getElementById("modalListaCat").addEventListener("click", e => {
+    if (e.target.id === "modalListaCat") fecharListaCategorias();
+  });
+  document.getElementById("listaCategorias").addEventListener("click", e => {
+    const editar = e.target.closest("[data-cat-editar]");
+    if (editar) {
+      fecharListaCategorias();
+      abrirModalCat(CATEGORIAS.find(c => c.id === editar.dataset.catEditar), true);
+      return;
+    }
+    const excluir = e.target.closest("[data-cat-excluir]");
+    if (excluir && !excluir.disabled) {
+      excluirCategoriaDaLista(CATEGORIAS.find(c => c.id === excluir.dataset.catExcluir));
+    }
+  });
+  document.getElementById("catFechar").addEventListener("click", fecharModalCat);
+  document.getElementById("catCancelar").addEventListener("click", fecharModalCat);
+  document.getElementById("catSalvar").addEventListener("click", salvarCat);
+  document.getElementById("catExcluir").addEventListener("click", excluirCat);
+  document.getElementById("modalCat").addEventListener("click", e => {
+    if (e.target.id === "modalCat") fecharModalCat();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (!document.getElementById("modalCat").hidden) fecharModalCat();
+    else if (!document.getElementById("modalListaCat").hidden) fecharListaCategorias();
+  });
+  document.getElementById("catPai").addEventListener("change", atualizarDisponibilidadeEmoji);
+  document.getElementById("catEmojiBotao").addEventListener("click", e => {
+    const abriu = abrirPop(document.getElementById("popEmoji"), e.currentTarget);
+    e.currentTarget.setAttribute("aria-expanded", String(abriu));
+  });
+  document.getElementById("emojiBusca").addEventListener("input", e => renderEmojiPicker(e.target.value));
+  document.getElementById("emojiGrade").addEventListener("scroll", e => {
+    if (e.currentTarget.scrollTop + e.currentTarget.clientHeight >= e.currentTarget.scrollHeight - 80) {
+      renderMaisEmojis();
+    }
+  });
+  document.getElementById("emojiGrade").addEventListener("click", e => {
+    const b = e.target.closest("[data-emoji]");
+    if (b) {
+      document.getElementById("catEmoji").value = b.dataset.emoji;
+      marcarEmojiSelecionado();
+      fecharPop();
+      document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+    }
+  });
+  document.getElementById("emojiLimpar").addEventListener("click", () => {
+    document.getElementById("catEmoji").value = "";
+    marcarEmojiSelecionado();
+    fecharPop();
+    document.getElementById("catEmojiBotao").setAttribute("aria-expanded", "false");
+  });
+
+  document.getElementById("arvore").addEventListener("click", e => {
+    const ed = e.target.closest("[data-editar]");
+    if (ed) {
+      abrirModalCat(CATEGORIAS.find(c => c.id === ed.dataset.editar));
+      return;
+    }
+    const b = e.target.closest("[data-expandir]");
+    if (b) {
+      const id = b.dataset.expandir;
+      abertas.has(id) ? abertas.delete(id) : abertas.add(id);
+      carregar().catch(err => setEstado("estado", err.message, "erro"));
+      return;
+    }
+    // Clicar na linha leva para as transações daquela categoria.
+    const linha = e.target.closest("[data-cat]");
+    if (linha) {
+      const q = new URLSearchParams({ category: linha.dataset.cat });
+      if (filtros.month) q.set("month", filtros.month);
+      location.href = `transacoes.html?${q}`;
+    }
+  });
+}
+
+(async function iniciar() {
+  montarNav("categorias.html");
+  ligar();
+  try {
+    await carregarCategorias();
+    await carregarCatalogoEmojis();
+    await carregarFiltros();
+    filtros.month = ultimoMesSalvo() || MES_ATUAL;
+    salvarUltimoMes(filtros.month);
+    await carregar();
+  } catch (e) {
+    setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
+    document.getElementById("vazio").innerHTML =
+      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+  }
+})();
+</script>
+</body>
+</html>

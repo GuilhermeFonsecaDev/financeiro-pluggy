@@ -80,6 +80,24 @@ CREATE TABLE IF NOT EXISTS pluggy_transacoes (
   FOREIGN KEY (conta_id) REFERENCES pluggy_contas (conta_id) ON DELETE CASCADE
 );
 
+-- Faturas fechadas de cartao, como o banco emitiu. O fatura_id e o mesmo
+-- billId que ja vem em pluggy_transacoes.fatura_id, entao da para casar 1:1
+-- sem heuristica. So faturas FECHADAS existem aqui: a do ciclo corrente nao
+-- e entregue pela API (ver list_bills em pluggy_sync.py).
+CREATE TABLE IF NOT EXISTS pluggy_faturas (
+  fatura_id TEXT PRIMARY KEY,
+  conta_id TEXT NOT NULL,
+  vencimento TEXT NOT NULL DEFAULT '',
+  fechamento TEXT NOT NULL DEFAULT '',
+  competencia TEXT NOT NULL DEFAULT '',
+  valor_total REAL NOT NULL DEFAULT 0,
+  moeda TEXT NOT NULL DEFAULT 'BRL',
+  pagamento_minimo REAL,
+  importado_em TEXT NOT NULL,
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (conta_id) REFERENCES pluggy_contas (conta_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS pluggy_sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   executado_em TEXT NOT NULL,
@@ -92,6 +110,8 @@ CREATE TABLE IF NOT EXISTS pluggy_sync_log (
   data_max TEXT NOT NULL DEFAULT ''
 );
 
+CREATE INDEX IF NOT EXISTS idx_pluggy_faturas_conta
+  ON pluggy_faturas (conta_id, competencia);
 CREATE INDEX IF NOT EXISTS idx_pluggy_tx_mes ON pluggy_transacoes (mes_ref);
 CREATE INDEX IF NOT EXISTS idx_pluggy_tx_conta_data ON pluggy_transacoes (conta_id, data);
 CREATE INDEX IF NOT EXISTS idx_pluggy_tx_categoria ON pluggy_transacoes (categoria);
@@ -209,6 +229,30 @@ def linha_transacao(tx: dict[str, Any], agora: str,
     )
 
 
+def linha_fatura(bill: dict[str, Any], conta_id: str, agora: str) -> tuple:
+    """Uma fatura fechada. O conta_id vem de fora: a resposta de /bills nao
+    traz accountId, quem sabe a conta e o nome do arquivo (bills_<id>.json).
+
+    A competencia e o mes do VENCIMENTO, que e como a fatura chega para pagar
+    e como o resto do projeto ja datava o ciclo (ver _COMPETENCIA_FATURA em
+    extrato_camada.py: mes seguinte ao ultimo lancamento). Os dois coincidiram
+    em todas as faturas conferidas.
+    """
+    vencimento = texto(bill.get("dueDate"))
+    return (
+        texto(bill.get("id")),
+        conta_id,
+        vencimento,
+        texto(bill.get("billClosingDate")),
+        vencimento[:7],
+        numero(bill.get("totalAmount")),
+        texto(bill.get("totalAmountCurrencyCode")) or "BRL",
+        opcional_numero(bill.get("minimumPaymentAmount")),
+        agora,
+        json.dumps(bill, ensure_ascii=False),
+    )
+
+
 SQL_CONTA = """
 INSERT INTO pluggy_contas (
   conta_id, item_id, tipo, subtipo, nome, numero, titular, saldo, moeda,
@@ -246,6 +290,35 @@ ON CONFLICT(transacao_id) DO UPDATE SET
   importado_em = excluded.importado_em, raw_json = excluded.raw_json
 """
 
+SQL_FATURA = """
+INSERT INTO pluggy_faturas (
+  fatura_id, conta_id, vencimento, fechamento, competencia, valor_total,
+  moeda, pagamento_minimo, importado_em, raw_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(fatura_id) DO UPDATE SET
+  conta_id = excluded.conta_id, vencimento = excluded.vencimento,
+  fechamento = excluded.fechamento, competencia = excluded.competencia,
+  valor_total = excluded.valor_total, moeda = excluded.moeda,
+  pagamento_minimo = excluded.pagamento_minimo,
+  importado_em = excluded.importado_em, raw_json = excluded.raw_json
+"""
+
+
+def carregar_faturas(data_dir: Path) -> list[tuple[dict[str, Any], str]]:
+    """Le os bills_<contaId>.json e devolve (fatura, conta_id).
+
+    O conta_id sai do nome do arquivo porque a resposta de /bills nao o traz.
+    Se um dia a Pluggy passar a mandar accountId, ele tem precedencia.
+    """
+    pares: list[tuple[dict[str, Any], str]] = []
+    for arquivo in sorted(data_dir.glob("bills_*.json")):
+        conta_do_arquivo = arquivo.stem[len("bills_"):]
+        for bill in carregar_json(arquivo):
+            conta_id = texto(bill.get("accountId")) or conta_do_arquivo
+            if texto(bill.get("id")) and conta_id:
+                pares.append((bill, conta_id))
+    return pares
+
 
 def importar(data_dir: Path, dry_run: bool = False) -> int:
     caminho_contas = data_dir / "accounts.json"
@@ -259,11 +332,12 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
     transacoes: list[dict[str, Any]] = []
     for arquivo in arquivos_tx:
         transacoes.extend(carregar_json(arquivo))
+    faturas = carregar_faturas(data_dir)
 
     print(f"Origem  : {data_dir}")
     print(f"Destino : {fin.DATABASE_PATH}")
     print(f"Lidos   : {len(contas)} conta(s), {len(transacoes)} transacao(oes) "
-          f"em {len(arquivos_tx)} arquivo(s)\n")
+          f"em {len(arquivos_tx)} arquivo(s), {len(faturas)} fatura(s)\n")
 
     # Sem contas, toda transacao vira orfa e o import "passa" sem gravar nada.
     # Isso e sintoma de accounts.json corrompido, nao de importacao legitima.
@@ -281,8 +355,8 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
             existentes = tabelas_pluggy_existem(conn)
         print("DRY-RUN: nada foi gravado.")
         print(f"  tabelas pluggy_* ja existem? {'sim' if existentes else 'nao'}")
-        print(f"  seriam gravadas {len(contas)} conta(s) e "
-              f"{len(transacoes)} transacao(oes).")
+        print(f"  seriam gravadas {len(contas)} conta(s), "
+              f"{len(transacoes)} transacao(oes) e {len(faturas)} fatura(s).")
         return 0
 
     backup = fin.create_database_backup("importar_pluggy", min_interval_seconds=0)
@@ -322,6 +396,14 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
             [linha_transacao(t, agora, moedas_conta) for t in validas],
         )
 
+        # Mesma regra de orfa das transacoes: fatura de conta que nao existe
+        # mais (cartao trocado por reconexao) fica de fora.
+        faturas_validas = [(b, c) for b, c in faturas if c in conhecidas]
+        conn.executemany(
+            SQL_FATURA,
+            [linha_fatura(b, c, agora) for b, c in faturas_validas],
+        )
+
         contas_novas = len({texto(c.get("id")) for c in contas} - contas_antes)
         tx_ids = {texto(t.get("id")) for t in validas}
         tx_novas = len(tx_ids - tx_antes)
@@ -342,6 +424,10 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
               f"{len(contas) - contas_novas} atualizada(s)")
         print(f"  transacoes  : {tx_novas} nova(s), "
               f"{len(validas) - tx_novas} atualizada(s)")
+        print(f"  faturas     : {len(faturas_validas)} gravada(s)")
+        if len(faturas) != len(faturas_validas):
+            print(f"  IGNORADAS   : {len(faturas) - len(faturas_validas)} fatura(s) "
+                  "de conta que nao existe mais")
         if orfas:
             print(f"  IGNORADAS   : {len(orfas)} transacao(oes) sem conta "
                   "correspondente em accounts.json")
@@ -349,7 +435,8 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
             print(f"  periodo     : {datas[0]} a {datas[-1]}")
 
         print("\nTotais no banco:")
-        for tabela in ("pluggy_itens", "pluggy_contas", "pluggy_transacoes"):
+        for tabela in ("pluggy_itens", "pluggy_contas", "pluggy_transacoes",
+                       "pluggy_faturas"):
             total = conn.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
             print(f"  {tabela:<20} {total}")
 

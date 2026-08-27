@@ -14,12 +14,42 @@
 .contador { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
 
 .evolucao-painel { margin-bottom: 14px; padding: 14px 16px 10px; overflow: hidden; }
-.evolucao-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #3a424d transparent; padding-bottom: 5px; }
+/* A tira vive dentro de um trilho relativo para as setas ancorarem nas
+   bordas sem entrar no fluxo do scroll. */
+.evolucao-trilho { position: relative; }
+/* A barra de rolagem só aparece no hover: a tira é para ser lida de relance,
+   e barra sempre acesa disputa atenção com os números. As setas continuam à
+   vista, que é o controle principal. */
+.evolucao-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; padding-bottom: 5px; scroll-behavior: smooth; transition: scrollbar-color .18s ease; }
+.evolucao-trilho:hover .evolucao-scroll { scrollbar-color: #3a424d transparent; }
 .evolucao-scroll::-webkit-scrollbar { height: 6px; }
 .evolucao-scroll::-webkit-scrollbar-track { background: transparent; }
-.evolucao-scroll::-webkit-scrollbar-thumb { background: #3a424d; border-radius: 999px; }
+.evolucao-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; transition: background .18s ease; }
+.evolucao-trilho:hover .evolucao-scroll::-webkit-scrollbar-thumb { background: #3a424d; }
+
+/* A seta fica sempre à vista quando há para onde rolar (.visivel, posto pelo
+   JS) e desaparece ao chegar na ponta -- seta que não faz nada é pior que
+   seta ausente. */
+.evolucao-seta {
+  position: absolute; top: 50%; z-index: 5; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; min-height: 0; padding: 0;
+  border-radius: 999px; border-color: var(--line-forte);
+  background: var(--surface-2); color: var(--text);
+  font-size: 15px; line-height: 1; box-shadow: var(--sombra);
+  opacity: 0; visibility: hidden;
+  transition: opacity .18s ease, visibility .18s ease, background .12s ease;
+}
+.evolucao-seta.visivel { opacity: .92; visibility: visible; }
+.evolucao-seta.visivel:hover { opacity: 1; background: var(--surface-3); }
+.evolucao-seta.esquerda { left: -6px; }
+.evolucao-seta.direita { right: -6px; }
+
 .evolucao-faixa { position: relative; display: flex; width: 100%; height: 140px; }
-.mes-evolucao { position: relative; z-index: 2; flex: 1 0 112px; width: auto; min-width: 112px; height: 138px; padding: 14px 9px 12px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
+/* flex-column com justify-content no topo: o <button> centraliza o conteúdo
+   verticalmente por conta própria (caixa anônima do user-agent), e só um
+   contexto de layout explícito desliga isso. */
+.mes-evolucao { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; flex: 1 0 112px; width: auto; min-width: 112px; height: 138px; padding: 12px 9px 12px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
 .mes-evolucao + .mes-evolucao { margin-left: 8px; }
 .mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-2); }
 .mes-evolucao.ativo { border-color: rgba(74,149,234,.55); background: rgba(74,149,234,.09); }
@@ -32,9 +62,12 @@
 .evolucao-stat.com-nota { flex-direction: column; align-items: flex-start; gap: 1px; }
 .evolucao-stat.com-nota > span:first-child { display: flex; gap: 6px; align-items: center; }
 .estimativa-nota { font-size: 10.5px; font-weight: 450; color: var(--text-3); }
-.mes-evolucao .mes-nome { display:block; font-size:12px; white-space:nowrap; }
+/* Nome no topo do card, centralizado; a linha desenha abaixo dele e o valor
+   ancora no rodapé. Sem "display:block" no botão o flex do tema centralizava
+   o nome no meio do card. */
+.mes-evolucao .mes-nome { display:block; font-size:12px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
 .mes-evolucao .mes-valor { position:absolute; left:6px; right:6px; bottom:14px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
-.evolucao-svg { position:absolute; z-index:3; left:0; top:28px; height:64px; pointer-events:none; overflow:visible; }
+.evolucao-svg { position:absolute; z-index:3; left:0; top:44px; height:56px; pointer-events:none; overflow:visible; }
 .evolucao-svg path { fill:none; stroke:var(--azul); stroke-width:2.2; vector-effect:non-scaling-stroke; }
 .evolucao-svg circle { fill:var(--surface); stroke:var(--azul); stroke-width:2; vector-effect:non-scaling-stroke; }
 .evolucao-rodape { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:10px 4px 0; border-top:1px solid var(--line); font-size:12.5px; }
@@ -225,7 +258,22 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 <div class="pop" id="popFiltros" hidden style="min-width:270px">
   <div class="pop-rotulo">Filtrar por</div>
   <div style="display:grid;gap:9px;padding:5px 8px 8px">
-    <label class="campo"><span>Mês</span><select id="fMes"></select></label>
+    <label class="campo"><span>Período</span>
+      <select id="fPeriodo">
+        <option value="">Todo período</option>
+        <option value="mes-atual">Este mês</option>
+        <option value="mes-passado">Mês passado</option>
+        <option value="ultimos-3">Últimos 3 meses</option>
+        <option value="ultimos-6">Últimos 6 meses</option>
+        <option value="ultimos-12">Últimos 12 meses</option>
+        <option value="ano-atual">Este ano</option>
+        <option value="ano-passado">Ano passado</option>
+        <option value="custom">Escolher meses…</option>
+      </select></label>
+    <div id="fPeriodoCustom" style="display:none;grid-template-columns:1fr 1fr;gap:9px">
+      <label class="campo"><span>De</span><select id="fMesDe"></select></label>
+      <label class="campo"><span>Até</span><select id="fMesAte"></select></label>
+    </div>
     <label class="campo"><span>Conta</span><select id="fConta"></select></label>
     <label class="campo"><span>Cartão de crédito</span><select id="fCartao"></select></label>
     <label class="campo"><span>Tipo</span>
@@ -254,7 +302,11 @@ const PAGE = 60;
 
 // O mes de cartao e sempre o vencimento da fatura, nao a data da compra --
 // ver competencia_fatura em extrato_camada.py. Nao existe opcao para trocar.
-let filtros = { month: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura" };
+// O período é um intervalo de meses (from/to em "YYYY-MM"), não de dias: a
+// competência de um gasto de cartão é o mês da fatura, então "18 a 29 de
+// agosto" não teria significado — a fatura vence num dia só. Mês único é
+// from === to, que é o que clicar na tira de evolução produz.
+let filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura" };
 let CATEGORIAS = [], CONTAS = [], CARTOES = [], CONTAS_EDICAO = [], EMOJIS = [], MES_ATUAL = "";
 let EMOJI_CATALOGO = [], EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
 let TRANSACOES = new Map();
@@ -269,6 +321,68 @@ function completarAteFimDoAno(meses, referencia) {
     }
   }
   return [...todos].sort().reverse();
+}
+
+/* ---------------------------------------------------------------- período */
+
+/** Soma meses a um "YYYY-MM". Usa Date só para não reimplementar virada de
+ *  ano; o dia 1 evita o problema clássico de 31 de janeiro + 1 mês. */
+function somaMeses(mesRef, n) {
+  const [ano, mes] = String(mesRef).split("-").map(Number);
+  const d = new Date(ano, mes - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function mesDeHoje() {
+  return MES_ATUAL || new Date().toISOString().slice(0, 7);
+}
+
+/** Presets em intervalo de meses. "Últimos N" terminam no mês corrente. */
+const PRESETS_PERIODO = {
+  "": () => ({ from: "", to: "" }),
+  "mes-atual": () => ({ from: mesDeHoje(), to: mesDeHoje() }),
+  "mes-passado": () => {
+    const m = somaMeses(mesDeHoje(), -1);
+    return { from: m, to: m };
+  },
+  "ultimos-3": () => ({ from: somaMeses(mesDeHoje(), -2), to: mesDeHoje() }),
+  "ultimos-6": () => ({ from: somaMeses(mesDeHoje(), -5), to: mesDeHoje() }),
+  "ultimos-12": () => ({ from: somaMeses(mesDeHoje(), -11), to: mesDeHoje() }),
+  "ano-atual": () => {
+    const ano = mesDeHoje().slice(0, 4);
+    return { from: `${ano}-01`, to: `${ano}-12` };
+  },
+  "ano-passado": () => {
+    const ano = Number(mesDeHoje().slice(0, 4)) - 1;
+    return { from: `${ano}-01`, to: `${ano}-12` };
+  },
+};
+
+/** Qual preset descreve o intervalo atual — "custom" quando nenhum bate.
+ *  Serve para reabrir o painel de filtros já mostrando o que está valendo. */
+function presetAtual() {
+  for (const [id, resolver] of Object.entries(PRESETS_PERIODO)) {
+    const p = resolver();
+    if (p.from === filtros.from && p.to === filtros.to) return id;
+  }
+  return "custom";
+}
+
+/** Um mês está dentro do período selecionado? Com "todo período" nenhum fica
+ *  destacado — destacar os 12 não diria nada. */
+function mesNoPeriodo(mes) {
+  if (!filtros.from && !filtros.to) return false;
+  if (filtros.from && mes < filtros.from) return false;
+  if (filtros.to && mes > filtros.to) return false;
+  return true;
+}
+
+function rotuloPeriodo() {
+  const { from, to } = filtros;
+  if (!from && !to) return "";
+  if (from && from === to) return labelMes(from);
+  if (from && to) return `${labelMes(from)} – ${labelMes(to)}`;
+  return from ? `de ${labelMes(from)}` : `até ${labelMes(to)}`;
 }
 
 /* --------------------------------------------------------------- filtros */
@@ -292,6 +406,13 @@ function renderFiltrosAtivos() {
   const ativos = Object.entries(rotulos)
     .filter(([k]) => filtros[k])
     .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button data-tira="${k}">×</button></span>`);
+  // O período ganha chip próprio: ele é o filtro que mais muda e o único que
+  // some da tira de evolução (que sempre mostra o ano inteiro).
+  const periodo = rotuloPeriodo();
+  if (periodo) {
+    ativos.unshift(
+      `<span class="filtro-ativo">${esc(periodo)}<button data-tira="periodo">×</button></span>`);
+  }
   document.getElementById("filtrosAtivos").innerHTML = ativos.join("");
 }
 
@@ -372,6 +493,61 @@ function origemEntradasTexto(origem) {
   return origem === "manual" ? "pelo valor esperado cadastrado em Entradas" : "pela média do ano";
 }
 
+/** Nome curto para o card: o ano corrente fica implícito (só "Agosto"), os
+ *  outros ganham sufixo curto ("Agosto '25") — a tira agora atravessa anos,
+ *  e sem isso dois "Janeiro" ficariam indistinguíveis. */
+function nomeMesCard(mesRef, anoCorrente) {
+  const nome = labelMes(mesRef);
+  const ano = mesRef.slice(0, 4);
+  return ano === String(anoCorrente) ? nome.replace(` ${ano}`, "") : nome.replace(` ${ano}`, ` '${ano.slice(2)}`);
+}
+
+/** Garante que todo mês da série exista nos seletores De/Até, preservando a
+ *  escolha atual. Ordem decrescente, igual ao resto da tela. */
+function garantirMesesNosSelects(serie = []) {
+  const doSelect = [...document.getElementById("fMesDe").options].map(o => o.value);
+  const todos = new Set([...doSelect, ...serie.map(i => i.mes)]);
+  if (todos.size === doSelect.length) return;
+  const ordenados = [...todos].filter(Boolean).sort().reverse();
+  const html = ordenados.map(m => `<option value="${m}">${labelMes(m)}</option>`).join("");
+  for (const id of ["fMesDe", "fMesAte"]) {
+    const sel = document.getElementById(id);
+    const valor = sel.value;
+    sel.innerHTML = html;
+    if (valor) sel.value = valor;
+  }
+}
+
+/** Setas só existem quando há o que rolar, e cada uma só quando há para onde
+ *  ir naquela direção. */
+function atualizarSetasEvolucao() {
+  const scroll = document.querySelector(".evolucao-scroll");
+  if (!scroll) return;
+  const folga = 4;   // arredondamento de subpixel não deve manter seta acesa
+  const podeEsquerda = scroll.scrollLeft > folga;
+  const podeDireita = scroll.scrollLeft + scroll.clientWidth < scroll.scrollWidth - folga;
+  document.querySelector(".evolucao-seta.esquerda")?.classList.toggle("visivel", podeEsquerda);
+  document.querySelector(".evolucao-seta.direita")?.classList.toggle("visivel", podeDireita);
+}
+
+// A tira é recriada a cada carga e o layout dela só fica pronto depois do
+// primeiro paint -- ler largura no requestAnimationFrame seguinte à inserção
+// dava 0 e as setas nasciam escondidas. O observer dispara quando a medida
+// realmente muda, o que cobre render, resize e troca de filtro de uma vez.
+let observadorEvolucao = null;
+function observarEvolucao() {
+  const scroll = document.querySelector(".evolucao-scroll");
+  if (!scroll) return;
+  // Direto no elemento que rola: "scroll" não borbulha, e a tira é recriada a
+  // cada carga -- o listener antigo vai embora com o elemento antigo.
+  scroll.addEventListener("scroll", atualizarSetasEvolucao, { passive: true });
+  if (typeof ResizeObserver === "undefined") return;
+  observadorEvolucao?.disconnect();
+  observadorEvolucao = new ResizeObserver(atualizarSetasEvolucao);
+  observadorEvolucao.observe(scroll);
+  observadorEvolucao.observe(scroll.firstElementChild);
+}
+
 function renderMetricas(r, serie = []) {
   const mesAtual = new Date().toISOString().slice(0, 7);
   const mapa = new Map(serie.map(i => [i.mes, i]));
@@ -385,14 +561,20 @@ function renderMetricas(r, serie = []) {
   const valores = comDados.map(i => Number(i.resultado || 0));
   const minimo = Math.min(0, ...valores), maximo = Math.max(0, ...valores);
   const amplitude = Math.max(1, maximo - minimo);
+  // A altura do viewBox acompanha .evolucao-svg no CSS; os 8px de folga em
+  // cima e embaixo evitam o ponto colar na borda do desenho.
+  const alturaSvg = 56;
   const passo = 120, largura = Math.max(1, itens.length * passo - 8);
   const pontos = itens.map((i, indice) => {
     const x = indice * passo + 56;
-    const y = 56 - ((Number(i.resultado || 0) - minimo) / amplitude * 48);
+    const y = (alturaSvg - 8) - ((Number(i.resultado || 0) - minimo) / amplitude * (alturaSvg - 16));
     return { x, y, temDados: !!(i.quantidade || i.entradas || i.saidas) };
   });
   const caminho = pontos.filter(p => p.temDados).map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
   document.getElementById("metricas").innerHTML = `
+    <div class="evolucao-trilho">
+    <button class="evolucao-seta esquerda" data-rolar="-1" aria-label="Meses anteriores">‹</button>
+    <button class="evolucao-seta direita" data-rolar="1" aria-label="Meses seguintes">›</button>
     <div class="evolucao-scroll"><div class="evolucao-faixa" style="min-width:${largura}px">
       ${itens.map(i => {
         const dados = i.quantidade || i.entradas || i.saidas;
@@ -407,17 +589,17 @@ function renderMetricas(r, serie = []) {
         if (i.entradasEstimativa) avisos.push(`entradas projetadas ${origemEntradasTexto(i.entradasOrigem)} (recebido até agora: ${fmtBRL(i.entradasRecebidas)})`);
         if (i.saidasEstimativa) avisos.push("saídas projetadas pela fatura de cartão em aberto");
         const titulo = avisos.length ? avisos.join(" · ") : "";
-        return `<button class="mes-evolucao ${filtros.month === i.mes ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
+        return `<button class="mes-evolucao ${mesNoPeriodo(i.mes) ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
                 data-mes-evolucao="${i.mes}" ${titulo ? `title="${esc(titulo)}"` : ""}>
-          <span class="mes-nome">${esc(labelMes(i.mes).replace(` ${ano}`, ""))}</span>
+          <span class="mes-nome">${esc(nomeMesCard(i.mes, ano))}</span>
           <span class="mes-valor ${cls} ${estimado ? "estimado-valor" : ""}">${dados ? fmtBRLCurto(i.resultado) : "—"}</span>
         </button>`;
       }).join("")}
-      <svg class="evolucao-svg" width="100%" viewBox="0 0 ${largura} 64" preserveAspectRatio="none" aria-hidden="true">
+      <svg class="evolucao-svg" width="100%" viewBox="0 0 ${largura} ${alturaSvg}" preserveAspectRatio="none" aria-hidden="true">
         <path d="${caminho}"></path>
         ${pontos.filter(p => p.temDados).map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5"></circle>`).join("")}
       </svg>
-    </div></div>
+    </div></div></div>
     <div class="evolucao-rodape">
       <span class="titulo">Evolução mensal</span>
       <span class="evolucao-stat">Transações <strong>${Number(r.quantidade || 0).toLocaleString("pt-BR")}</strong></span>
@@ -434,10 +616,25 @@ function renderMetricas(r, serie = []) {
       <span class="evolucao-stat">Resultado <strong class="${r.resultado >= 0 ? "positivo" : "negativo"}">${fmtSinal(r.resultado)}</strong></span>
     </div>`;
 
+  // Fora do requestAnimationFrame: em aba de fundo o rAF não dispara, e as
+  // setas ficariam escondidas até a pessoa mexer na janela. O observer mede
+  // por conta própria assim que o layout existe.
+  observarEvolucao();
+  atualizarSetasEvolucao();
+
   requestAnimationFrame(() => {
     const faixa = document.querySelector(".evolucao-scroll");
-    const alvo = document.querySelector(`[data-mes-evolucao="${filtros.month || mesAtual}"]`);
-    if (faixa && alvo) faixa.scrollLeft = Math.max(0, alvo.offsetLeft - (faixa.clientWidth - alvo.clientWidth) / 2);
+    const alvo = document.querySelector(`[data-mes-evolucao="${filtros.from || mesAtual}"]`);
+    if (faixa && alvo) {
+      // "instant": o CSS tem scroll-behavior smooth para as setas, mas o
+      // posicionamento inicial não deve aparecer como uma animação a cada
+      // recarga da lista.
+      faixa.scrollTo({
+        left: Math.max(0, alvo.offsetLeft - (faixa.clientWidth - alvo.clientWidth) / 2),
+        behavior: "instant",
+      });
+    }
+    atualizarSetasEvolucao();
   });
 }
 
@@ -470,6 +667,10 @@ async function carregar({ mais = false } = {}) {
 
   renderMetricas(p.resumo, p.evolucaoMensal);
   renderCategorias(p.porCategoria);
+  // A série pode passar do ano corrente (parcelamento longo projeta fatura em
+  // 2027). Os seletores De/Até vêm de /extrato/filtros, que só conhece o que
+  // está no banco -- sem isso, um mês visível na tira não seria filtrável.
+  garantirMesesNosSelects(p.evolucaoMensal);
   renderFiltrosAtivos();
 
   const n = corpo.querySelectorAll("tr").length;
@@ -727,9 +928,11 @@ function aplicarFiltros(p) {
   MES_ATUAL = p.mesAtual || "";
 
   const meses = completarAteFimDoAno(p.meses, MES_ATUAL);
-  document.getElementById("fMes").innerHTML =
-    ['<option value="">Todos os meses</option>']
-      .concat(meses.map(m => `<option value="${m}">${labelMes(m)}</option>`)).join("");
+  const opcoesMes = meses.map(m => `<option value="${m}">${labelMes(m)}</option>`).join("");
+  // Sem opção vazia: o "De"/"Até" só aparece no modo personalizado, e ali um
+  // dos dois em branco viraria intervalo aberto sem o usuário pedir.
+  document.getElementById("fMesDe").innerHTML = opcoesMes;
+  document.getElementById("fMesAte").innerHTML = opcoesMes;
   document.getElementById("fConta").innerHTML =
     ['<option value="">Todas as contas</option>']
       .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
@@ -771,12 +974,23 @@ async function carregarStatusSync() {
 /* --------------------------------------------------------------- eventos */
 
 function sincronizarSelects() {
-  document.getElementById("fMes").value = filtros.month;
+  const preset = presetAtual();
+  document.getElementById("fPeriodo").value = preset;
+  // O "De/Até" vem preenchido com o intervalo atual mesmo quando o preset é
+  // outro: se a pessoa trocar para personalizado, começa de onde estava.
+  const mesRef = filtros.from || filtros.to || mesDeHoje();
+  document.getElementById("fMesDe").value = filtros.from || mesRef;
+  document.getElementById("fMesAte").value = filtros.to || mesRef;
+  mostrarPeriodoCustom(preset === "custom");
   document.getElementById("fConta").value = filtros.account;
   document.getElementById("fCartao").value = filtros.card;
   document.getElementById("fTipo").value = filtros.type;
   document.getElementById("fCategoria").value = filtros.category;
   document.getElementById("fSituacao").value = filtros.status;
+}
+
+function mostrarPeriodoCustom(mostrar) {
+  document.getElementById("fPeriodoCustom").style.display = mostrar ? "grid" : "none";
 }
 
 function sincronizarModo() {
@@ -786,14 +1000,29 @@ function sincronizarModo() {
 }
 
 function ligar() {
+  // Delegado no painel porque a tira é recriada a cada carga.
   document.getElementById("metricas").addEventListener("click", e => {
+    const seta = e.target.closest("[data-rolar]");
+    if (seta) {
+      const scroll = document.querySelector(".evolucao-scroll");
+      // Rola quase uma tela cheia, mantendo um card de contexto à vista.
+      const salto = Math.max(120, scroll.clientWidth - 120);
+      scroll.scrollBy({ left: Number(seta.dataset.rolar) * salto, behavior: "smooth" });
+      return;
+    }
     const mes = e.target.closest("[data-mes-evolucao]")?.dataset.mesEvolucao;
     if (!mes) return;
-    // Clicar no mês já selecionado desmarca -- senão o único jeito de voltar
-    // a "todos os meses" era abrir Filtros e limpar o campo por lá.
-    filtros.month = filtros.month === mes ? "" : mes;
+    // Clicar na tira sempre seleciona UM mês (from === to). Clicar no mês já
+    // selecionado desmarca -- senão o único jeito de voltar a "todo período"
+    // era abrir Filtros e limpar por lá.
+    const unico = filtros.from === mes && filtros.to === mes;
+    filtros.from = filtros.to = unico ? "" : mes;
     recarregar();
   });
+
+  // Redimensionar a janela muda quais setas fazem sentido; o scroll da tira
+  // é observado em observarEvolucao(), no próprio elemento que rola.
+  window.addEventListener("resize", atualizarSetasEvolucao);
 
   document.getElementById("btnFiltros").addEventListener("click", e => {
     sincronizarSelects();
@@ -805,15 +1034,36 @@ function ligar() {
     if (!modo || modo === filtros.modo) return;
     filtros.modo = modo;
     sincronizarModo();
-    // O mês selecionado é relativo ao modo anterior (fatura x mês real) --
-    // manter o valor trocaria de mês sem avisar, então volta pra "todos".
-    filtros.month = "";
+    // O período é relativo ao modo anterior (fatura x mês real) -- manter o
+    // valor trocaria de mês sem avisar, então volta pra "todo período".
+    filtros.from = filtros.to = "";
     carregarFiltros();
     recarregar();
   });
 
+  document.getElementById("fPeriodo").addEventListener("change", e => {
+    const preset = e.target.value;
+    mostrarPeriodoCustom(preset === "custom");
+    if (preset !== "custom") {
+      const p = PRESETS_PERIODO[preset]();
+      document.getElementById("fMesDe").value = p.from || mesDeHoje();
+      document.getElementById("fMesAte").value = p.to || mesDeHoje();
+    }
+  });
+
   document.getElementById("fAplicar").addEventListener("click", () => {
-    filtros.month = document.getElementById("fMes").value;
+    const preset = document.getElementById("fPeriodo").value;
+    if (preset === "custom") {
+      let de = document.getElementById("fMesDe").value;
+      let ate = document.getElementById("fMesAte").value;
+      if (de && ate && de > ate) [de, ate] = [ate, de];   // invertido: corrige
+      filtros.from = de;
+      filtros.to = ate;
+    } else {
+      const p = PRESETS_PERIODO[preset]();
+      filtros.from = p.from;
+      filtros.to = p.to;
+    }
     filtros.account = document.getElementById("fConta").value;
     filtros.card = document.getElementById("fCartao").value;
     filtros.type = document.getElementById("fTipo").value;
@@ -827,7 +1077,7 @@ function ligar() {
   // (fatura/mês) não é um "filtro" que se limpa junto -- é a forma como a
   // tela inteira agrupa, então "Limpar tudo" o preserva.
   const limpar = () => {
-    filtros = { month: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo };
+    filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo };
     document.getElementById("busca").value = "";
     sincronizarSelects();
     fecharPop();
@@ -839,7 +1089,11 @@ function ligar() {
   document.getElementById("filtrosAtivos").addEventListener("click", e => {
     const b = e.target.closest("[data-tira]");
     if (!b) return;
-    filtros[b.dataset.tira] = "";
+    if (b.dataset.tira === "periodo") {
+      filtros.from = filtros.to = "";   // um chip, duas chaves
+    } else {
+      filtros[b.dataset.tira] = "";
+    }
     recarregar();
   });
 
@@ -994,13 +1248,14 @@ function ligar() {
   ligar();
   try {
     await carregarFiltros();
-    filtros.month = "";
 
     // Deep link vindo da tela de Categorias.
     const url = new URLSearchParams(location.search);
-    for (const chave of ["month", "account", "card", "type", "category", "status", "q", "modo"]) {
+    for (const chave of ["from", "to", "account", "card", "type", "category", "status", "q", "modo"]) {
       if (url.has(chave)) filtros[chave] = url.get(chave);
     }
+    // "month" (mês único) é o que as outras telas ainda mandam.
+    if (url.has("month")) filtros.from = filtros.to = url.get("month");
     if (filtros.q) document.getElementById("busca").value = filtros.q;
     sincronizarModo();
 

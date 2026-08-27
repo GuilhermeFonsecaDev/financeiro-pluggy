@@ -564,6 +564,23 @@ def list_transactions(api_key: str, account_id: str, date_from: str, date_to: st
     )
 
 
+def list_bills(api_key: str, account_id: str) -> list[dict]:
+    """Faturas FECHADAS de um cartao, com o totalAmount que o banco emitiu.
+
+    Vale so para contas CREDIT_CARD -- em conta corrente a API responde 404.
+
+    A fatura ainda EM ABERTO nao vem aqui: ela so passa a existir quando o
+    banco fecha o ciclo e atribui um billId (as transacoes do ciclo corrente
+    tem creditCardMetadata.billId = null). Nao ha filtro nem endpoint que a
+    entregue -- por isso o mes corrente continua sendo estimado em
+    _completar_faturas_abertas_e_parcelas (pluggy_extrato.py).
+
+    O endpoint responde mesmo sem "BILLS" na lista de products do conector:
+    as faturas chegam dentro do produto CREDIT_CARDS.
+    """
+    return _paginated_get(api_key, "/bills", {"accountId": account_id})
+
+
 def _tem_conteudo(path: str) -> bool:
     """True se o arquivo ja existe e guarda pelo menos um registro."""
     if not os.path.exists(path):
@@ -650,6 +667,35 @@ def cmd_sync(item_id: str, date_from: str, date_to: str) -> None:
         _save_json(transactions, json_path)
         _save_csv(transactions, os.path.join(DATA_DIR, f"transactions_{account_id}.csv"))
         print(f"  {len(transactions)} transacao(oes) salva(s)")
+
+    # Faturas: loop separado do de transacoes de proposito -- aquele usa
+    # "continue" para preservar arquivo bom, e isso pularia o download das
+    # faturas do mesmo cartao.
+    cartoes = [a for a in accounts if a.get("subtype") == "CREDIT_CARD"]
+    for account in cartoes:
+        account_id = account["id"]
+        name = account.get("name", account_id)
+        print(f"Baixando faturas de '{name}' ...")
+        try:
+            bills = list_bills(api_key, account_id)
+        except requests.RequestException as exc:
+            # Fatura e complemento, nao base: um cartao sem o produto (ou uma
+            # conta substituida por reconexao, que responde 404) nao pode
+            # derrubar um sync que ja baixou contas e transacoes.
+            status = getattr(getattr(exc, "response", None), "status_code", "?")
+            print(f"  sem faturas para este cartao (HTTP {status}) - seguindo")
+            continue
+
+        json_path = os.path.join(DATA_DIR, f"bills_{account_id}.json")
+        if not bills and _tem_conteudo(json_path):
+            print("  AVISO: a API nao retornou faturas agora, mas ja existe "
+                  "arquivo com dados.")
+            print("  Mantive o arquivo anterior em vez de sobrescrever com vazio.")
+            continue
+
+        _save_json(bills, json_path)
+        _save_csv(bills, os.path.join(DATA_DIR, f"bills_{account_id}.csv"))
+        print(f"  {len(bills)} fatura(s) salva(s)")
 
     print("\nConcluido. Dados em:", DATA_DIR)
 

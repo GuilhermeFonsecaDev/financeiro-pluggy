@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dinheiro emprestado</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+.emp-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; align-items:start; }
+@media (max-width:1080px) { .emp-layout { grid-template-columns:minmax(0,1fr); } }
+
+.emp-linha { display:grid; gap:12px; align-items:center; padding:12px 10px; border-bottom:1px solid var(--line); }
+.emp-linha:last-child { border-bottom:0; }
+.emp-linha:hover { background:var(--surface-2); }
+/* Emprestado: item | valor | data | ações */
+.emp-linha.emprestado { grid-template-columns:minmax(0,1fr) 130px 96px 34px; }
+/* Pagamento: data | valor | ações */
+.emp-linha.pagamento { grid-template-columns:minmax(0,1fr) 130px 34px; }
+/* Pego: item | período | valor | status | ações */
+.emp-linha.pego { grid-template-columns:minmax(0,1fr) 150px 120px 34px; }
+
+.emp-nome { font-size:14px; font-weight:650; overflow-wrap:anywhere; }
+.emp-nome.sem-nome { color:var(--text-3); font-weight:500; font-style:italic; }
+.emp-sub { margin-top:3px; color:var(--text-3); font-size:12px; }
+.emp-valor { text-align:right; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+.emp-data { color:var(--text-2); font-size:12.5px; font-variant-numeric:tabular-nums; text-align:right; }
+.emp-data.vazia { color:var(--text-3); font-style:italic; }
+
+.emp-status { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; }
+.emp-status.aberto { background:rgba(232,149,74,.14); color:var(--laranja); }
+.emp-status.quitado { background:rgba(63,191,127,.13); color:var(--verde); }
+
+/* Parcelas ficam ao lado do status, na mesma linha de apoio. */
+.emp-parcelas { margin-left:8px; color:var(--text-3); font-size:12px; font-variant-numeric:tabular-nums; }
+.emp-parcelas b { color:var(--text-2); font-weight:650; }
+.emp-falta { display:block; margin-top:2px; color:var(--text-3); font-size:11.5px; font-weight:500; }
+
+/* Barra de progresso do quanto já voltou. */
+.emp-progresso { margin-top:10px; }
+.emp-progresso .trilha { height:8px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
+.emp-progresso .trilha span { display:block; height:100%; border-radius:999px; background:var(--verde); transition:width .3s ease; }
+.emp-progresso .legenda { display:flex; justify-content:space-between; margin-top:6px; color:var(--text-3); font-size:12px; }
+
+.vazio { padding:22px 10px; color:var(--text-3); font-size:13px; text-align:center; }
+.emp-form { display:grid; gap:10px; padding:12px; }
+.emp-form .dupla { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <h1>Dinheiro emprestado</h1>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="estado" id="estado">Carregando…</span>
+      <!-- "Emprestado" e "Empréstimo" ficam parecidos e significam lados
+           opostos, então cada botão leva um title dizendo qual é qual. -->
+      <button class="primario" id="btnNovoEmprestado"
+              title="Dinheiro que saiu daqui">+ Emprestado</button>
+      <button id="btnNovoPagamento"
+              title="Dinheiro que voltou para cá">+ Recebido</button>
+      <button id="btnNovoPego"
+              title="Dinheiro que peguei emprestado">+ Empréstimo</button>
+    </div>
+  </header>
+
+  <section class="grid grid-3" style="margin-bottom:14px">
+    <article class="metrica">
+      <span class="rotulo">Emprestado</span>
+      <div class="valor" id="mEmprestado">R$ 0,00</div>
+      <div class="nota" id="nEmprestado">—</div>
+    </article>
+    <article class="metrica">
+      <span class="rotulo">Recebido</span>
+      <div class="valor positivo" id="mRecebido">R$ 0,00</div>
+      <div class="nota" id="nRecebido">—</div>
+    </article>
+    <article class="metrica">
+      <span class="rotulo">Restante</span>
+      <div class="valor" id="mAReceber">R$ 0,00</div>
+      <div class="nota" id="nAReceber">—</div>
+    </article>
+  </section>
+
+  <section class="painel" style="margin-bottom:14px">
+    <div class="painel-tit"><h2>Percentual recebido</h2></div>
+    <div class="emp-progresso">
+      <div class="trilha"><span id="barraRecebido" style="width:0%"></span></div>
+      <div class="legenda">
+        <span id="legendaRecebido">—</span>
+        <span id="legendaPercentual">0%</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="emp-layout">
+    <article class="painel">
+      <div class="painel-tit">
+        <h2>Emprestado</h2>
+        <span class="muted" style="font-size:12px" id="contadorEmprestado"></span>
+      </div>
+      <div id="listaEmprestado"></div>
+    </article>
+
+    <div style="display:grid;gap:14px">
+      <article class="painel">
+        <div class="painel-tit">
+          <h2>Recebido</h2>
+          <span class="muted" style="font-size:12px" id="contadorPagamentos"></span>
+        </div>
+        <div id="listaPagamentos"></div>
+      </article>
+
+      <article class="painel">
+        <div class="painel-tit">
+          <h2>Empréstimos</h2>
+          <span class="muted" style="font-size:12px" id="contadorPegos"></span>
+        </div>
+        <div id="listaPegos"></div>
+      </article>
+    </div>
+  </section>
+</main>
+
+<div class="pop" id="popAcoes" hidden style="min-width:190px">
+  <div class="pop-lista" id="popAcoesLista"></div>
+</div>
+
+<div class="modal-fundo" id="modal" hidden>
+  <div class="modal" style="width:min(560px,100%)">
+    <div class="modal-tit">
+      <h2 id="modalTitulo">Novo registro</h2>
+      <button class="icone" id="modalFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="emp-form" id="modalCampos"></div>
+    <p class="estado erro" id="modalErro" style="margin:0 12px"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="modalCancelar">Cancelar</button>
+      <button class="primario" id="modalSalvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let DADOS = { emprestado: [], pagamentos: [], pegos: [], totais: {} };
+let edicao = null;   // { tipo, id } quando editando; { tipo } quando criando
+
+const ROTULO_TIPO = {
+  emprestado: "empréstimo feito",
+  pagamento: "pagamento recebido",
+  emprestimo_pego: "empréstimo que peguei",
+};
+
+/* ------------------------------------------------------------- render */
+
+function fmtDataCurta(iso) {
+  return iso ? fmtData(iso) : "";
+}
+
+function linhaEmprestado(item) {
+  return `
+    <div class="emp-linha emprestado" data-id="${esc(item.id)}">
+      <div>
+        <div class="emp-nome ${item.item ? "" : "sem-nome"}">${esc(item.item || "sem descrição")}</div>
+        ${item.observacao ? `<div class="emp-sub">${esc(item.observacao)}</div>` : ""}
+      </div>
+      <div class="emp-valor">${fmtBRL(item.valor)}</div>
+      <div class="emp-data ${item.data ? "" : "vazia"}">${item.data ? esc(fmtDataCurta(item.data)) : "sem data"}</div>
+      <div><button class="icone" data-abre-pop data-acoes="${esc(item.id)}" title="Ações">⋯</button></div>
+    </div>`;
+}
+
+function linhaPagamento(item) {
+  return `
+    <div class="emp-linha pagamento" data-id="${esc(item.id)}">
+      <div>
+        <div class="emp-nome ${item.item ? "" : "sem-nome"}">${esc(item.item || fmtDataCurta(item.data) || "sem data")}</div>
+        ${item.item && item.data ? `<div class="emp-sub">${esc(fmtDataCurta(item.data))}</div>` : ""}
+      </div>
+      <div class="emp-valor positivo">${fmtBRL(item.valor)}</div>
+      <div><button class="icone" data-abre-pop data-acoes="${esc(item.id)}" title="Ações">⋯</button></div>
+    </div>`;
+}
+
+function linhaPego(item) {
+  const quitado = item.status === "finalizado";
+  const periodo = [item.dataInicio, item.dataFinal].filter(Boolean).map(fmtDataCurta).join(" → ");
+  const p = item.parcelas;
+  // Sem as duas datas o backend não calcula parcela, e aí a linha só mostra
+  // o status -- inventar "1x" seria pior que não dizer nada.
+  const parcelas = p ? `
+        <span class="emp-parcelas">
+          <b>${p.pagas}</b> de ${p.total} pagas
+          ${p.restantes ? `· <b>${p.restantes}</b> ${p.restantes === 1 ? "restante" : "restantes"}` : ""}
+          · ${fmtBRL(p.valorParcela)}/mês
+        </span>` : "";
+  return `
+    <div class="emp-linha pego" data-id="${esc(item.id)}">
+      <div>
+        <div class="emp-nome ${item.item ? "" : "sem-nome"}">${esc(item.item || "sem descrição")}</div>
+        <div class="emp-sub">
+          <span class="emp-status ${quitado ? "quitado" : "aberto"}">${quitado ? "Quitado" : "Em andamento"}</span>
+          ${parcelas}
+        </div>
+      </div>
+      <div class="emp-data ${periodo ? "" : "vazia"}">${esc(periodo || "sem período")}</div>
+      <div class="emp-valor">
+        ${fmtBRL(item.valor)}
+        ${p && p.restantes ? `<span class="emp-falta">falta ${fmtBRL(p.valorRestante)}</span>` : ""}
+      </div>
+      <div><button class="icone" data-abre-pop data-acoes="${esc(item.id)}" title="Ações">⋯</button></div>
+    </div>`;
+}
+
+function renderLista(alvoId, itens, montar, vazio) {
+  const el = document.getElementById(alvoId);
+  el.innerHTML = itens.length ? itens.map(montar).join("") : `<div class="vazio">${vazio}</div>`;
+}
+
+function plural(n, singular, pluralPalavra) {
+  return `${n} ${n === 1 ? singular : pluralPalavra}`;
+}
+
+function render() {
+  const t = DADOS.totais || {};
+
+  document.getElementById("mEmprestado").textContent = fmtBRL(t.emprestado);
+  document.getElementById("nEmprestado").textContent =
+    plural(DADOS.emprestado.length, "registro", "registros");
+
+  document.getElementById("mRecebido").textContent = fmtBRL(t.recebido);
+  document.getElementById("nRecebido").textContent =
+    plural(DADOS.pagamentos.length, "pagamento", "pagamentos");
+
+  // Falta receber vermelho quando ainda há saldo, verde quando zerou (ou
+  // passou) -- é o número que a tela existe para responder.
+  const aReceber = Number(t.aReceber || 0);
+  const elAReceber = document.getElementById("mAReceber");
+  elAReceber.textContent = fmtBRL(aReceber);
+  elAReceber.className = `valor ${aReceber > 0 ? "negativo" : "positivo"}`;
+  document.getElementById("nAReceber").textContent = aReceber > 0
+    ? "ainda em aberto"
+    : aReceber < 0 ? "recebi mais do que o cadastrado" : "tudo quitado";
+
+  // Progresso: sem nada emprestado a barra não significa nada, então fica
+  // em zero em vez de dividir por zero.
+  const percentual = t.emprestado > 0
+    ? Math.min(100, Math.max(0, (t.recebido / t.emprestado) * 100)) : 0;
+  document.getElementById("barraRecebido").style.width = `${percentual}%`;
+  document.getElementById("legendaPercentual").textContent = `${percentual.toFixed(percentual < 10 ? 1 : 0)}%`;
+  document.getElementById("legendaRecebido").textContent =
+    t.emprestado > 0 ? `${fmtBRL(t.recebido)} de ${fmtBRL(t.emprestado)}` : "nada emprestado ainda";
+
+  renderLista("listaEmprestado", DADOS.emprestado, linhaEmprestado,
+    "Nada emprestado ainda. Use “+ Emprestei” para registrar.");
+  renderLista("listaPagamentos", DADOS.pagamentos, linhaPagamento,
+    "Nenhum pagamento recebido ainda.");
+  renderLista("listaPegos", DADOS.pegos, linhaPego,
+    "Nenhum empréstimo pego cadastrado.");
+
+  document.getElementById("contadorEmprestado").textContent = fmtBRL(t.emprestado);
+  document.getElementById("contadorPagamentos").textContent = fmtBRL(t.recebido);
+  document.getElementById("contadorPegos").textContent = fmtBRL(t.pego);
+}
+
+/* -------------------------------------------------------------- modal */
+
+function campo(rotulo, html) {
+  return `<label class="campo"><span>${rotulo}</span>${html}</label>`;
+}
+
+function camposDoTipo(tipo, item = {}) {
+  const valor = item.valor ? String(item.valor).replace(".", ",") : "";
+  const dinheiro = `<input id="fValor" type="text" inputmode="decimal" value="${esc(valor)}" placeholder="0,00" />`;
+  if (tipo === "pagamento") {
+    return campo("Valor recebido", dinheiro)
+      + campo("Data", `<input id="fData" type="date" value="${esc(item.data || "")}" />`)
+      + campo("De quem / referente a (opcional)",
+              `<input id="fItem" type="text" value="${esc(item.item || "")}" placeholder="ex.: quem pagou" />`);
+  }
+  if (tipo === "emprestimo_pego") {
+    return campo("Onde peguei", `<input id="fItem" type="text" value="${esc(item.item || "")}" placeholder="ex.: banco ou pessoa" />`)
+      + campo("Valor", dinheiro)
+      + `<div class="dupla">
+           ${campo("Início", `<input id="fDataInicio" type="date" value="${esc(item.dataInicio || "")}" />`)}
+           ${campo("Fim", `<input id="fDataFinal" type="date" value="${esc(item.dataFinal || "")}" />`)}
+         </div>`
+      + campo("Situação", `<select id="fStatus">
+            <option value="em_andamento" ${item.status !== "finalizado" ? "selected" : ""}>Em andamento</option>
+            <option value="finalizado" ${item.status === "finalizado" ? "selected" : ""}>Quitado</option>
+          </select>`);
+  }
+  return campo("Para quem / referente a", `<input id="fItem" type="text" value="${esc(item.item || "")}" placeholder="ex.: para quem foi" />`)
+    + campo("Valor", dinheiro)
+    + campo("Data", `<input id="fData" type="date" value="${esc(item.data || "")}" />`);
+}
+
+function abrirModal(tipo, item = null) {
+  edicao = { tipo, id: item?.id || null };
+  document.getElementById("modalTitulo").textContent =
+    `${item ? "Editar" : "Novo"} ${ROTULO_TIPO[tipo]}`;
+  document.getElementById("modalCampos").innerHTML = camposDoTipo(tipo, item || {});
+  document.getElementById("modalErro").textContent = "";
+  document.getElementById("modal").hidden = false;
+  document.querySelector("#modalCampos input")?.focus();
+}
+
+function fecharModal() {
+  document.getElementById("modal").hidden = true;
+  edicao = null;
+}
+
+function valorCampo(id) {
+  return document.getElementById(id)?.value ?? "";
+}
+
+async function salvar() {
+  if (!edicao) return;
+  const corpo = {
+    tipo: edicao.tipo,
+    item: valorCampo("fItem"),
+    valor: valorCampo("fValor"),
+    data: valorCampo("fData"),
+    dataInicio: valorCampo("fDataInicio"),
+    dataFinal: valorCampo("fDataFinal"),
+    status: valorCampo("fStatus"),
+  };
+  const botao = document.getElementById("modalSalvar");
+  botao.disabled = true;
+  try {
+    const resposta = edicao.id
+      ? await pedir(`/emprestimos/${encodeURIComponent(edicao.id)}`, "PUT", corpo)
+      : await pedir("/emprestimos", "POST", corpo);
+    DADOS = resposta;
+    render();
+    fecharModal();
+    setEstado("estado", "Salvo", "ok");
+  } catch (e) {
+    document.getElementById("modalErro").textContent = e.message;
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+function itemPorId(id) {
+  return [...DADOS.emprestado, ...DADOS.pagamentos, ...DADOS.pegos]
+    .find(i => i.id === id) || null;
+}
+
+async function remover(id) {
+  const item = itemPorId(id);
+  if (!item) return;
+  const nome = item.item || fmtBRL(item.valor);
+  if (!confirm(`Remover “${nome}”? Isso não pode ser desfeito.`)) return;
+  try {
+    DADOS = await pedir(`/emprestimos/${encodeURIComponent(id)}`, "DELETE");
+    render();
+    setEstado("estado", "Removido", "ok");
+  } catch (e) { setEstado("estado", e.message, "erro"); }
+}
+
+/* ------------------------------------------------------------ eventos */
+
+function ligar() {
+  document.getElementById("btnNovoEmprestado").addEventListener("click", () => abrirModal("emprestado"));
+  document.getElementById("btnNovoPagamento").addEventListener("click", () => abrirModal("pagamento"));
+  document.getElementById("btnNovoPego").addEventListener("click", () => abrirModal("emprestimo_pego"));
+
+  document.getElementById("modalFechar").addEventListener("click", fecharModal);
+  document.getElementById("modalCancelar").addEventListener("click", fecharModal);
+  document.getElementById("modalSalvar").addEventListener("click", salvar);
+  document.getElementById("modal").addEventListener("click", e => {
+    if (e.target.id === "modal") fecharModal();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !document.getElementById("modal").hidden) fecharModal();
+  });
+
+  // Um listener para as três listas: elas são recriadas a cada render.
+  document.querySelector("main").addEventListener("click", e => {
+    const botao = e.target.closest("[data-acoes]");
+    if (!botao) return;
+    const id = botao.dataset.acoes;
+    document.getElementById("popAcoesLista").innerHTML = `
+      <button class="pop-item" data-acao="editar">✎  Editar</button>
+      <div class="pop-sep"></div>
+      <button class="pop-item" data-acao="remover">🗑  Remover</button>`;
+    abrirPop(document.getElementById("popAcoes"), botao, { alinhar: "direita" });
+    document.getElementById("popAcoes").dataset.alvo = id;
+  });
+
+  document.getElementById("popAcoesLista").addEventListener("click", e => {
+    const acao = e.target.closest("[data-acao]")?.dataset.acao;
+    if (!acao) return;
+    const id = document.getElementById("popAcoes").dataset.alvo;
+    fecharPop();
+    if (acao === "remover") { remover(id); return; }
+    const item = itemPorId(id);
+    if (item) abrirModal(item.tipo, item);
+  });
+}
+
+/* --------------------------------------------------------------- carga */
+
+(async function iniciar() {
+  montarNav("emprestimos.html");
+  ligar();
+  try {
+    DADOS = await pedir("/emprestimos");
+    render();
+    setEstado("estado", "");
+  } catch (e) {
+    setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
+    document.getElementById("listaEmprestado").innerHTML =
+      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+  }
+})();
+</script>
+</body>
+</html>

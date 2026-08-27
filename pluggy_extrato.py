@@ -42,6 +42,12 @@ VALOR_NORMALIZADO = (
 LIMITE_PADRAO = 200
 LIMITE_MAXIMO = 2000
 
+# Quantos anos a frente a tira de evolucao pode ir enquanto houver fatura
+# projetada. A varredura para sozinha no primeiro ano vazio; o cap so existe
+# para o loop nunca depender de o dado ser bem-comportado. 3 anos cobre o
+# parcelamento mais longo que os bancos daqui oferecem (24x).
+ANOS_PROJECAO_MAX = 3
+
 garantir_extrato_materializado = cam.garantir_extrato_materializado
 
 
@@ -352,6 +358,29 @@ def _serie_com_projecao(evolucao: dict[str, dict], projetar) -> list[dict[str, A
     return saida
 
 
+def _periodo(filtros: dict[str, Any]) -> tuple[str, str]:
+    """(mes inicial, mes final) do filtro, em 'YYYY-MM'.
+
+    O periodo e um intervalo de meses, nao de dias: a competencia de um gasto
+    de cartao e o mes da fatura, entao "18 a 29 de agosto" nao teria
+    significado -- a fatura vence num dia so. Presets como "ultimos 6 meses"
+    viram intervalo de mes na tela e chegam aqui ja resolvidos.
+
+    Aceita 'mes' (mes unico) como atalho, que e como os links vindos de outras
+    telas ainda mandam.
+    """
+    mes_unico = str(filtros.get("mes") or "").strip()
+    if mes_unico:
+        return mes_unico, mes_unico
+    de = str(filtros.get("mesDe") or "").strip()
+    ate = str(filtros.get("mesAte") or "").strip()
+    # Invertido pela tela (Ate anterior ao De): trata como intervalo valido em
+    # vez de devolver lista vazia sem explicacao.
+    if de and ate and de > ate:
+        de, ate = ate, de
+    return de, ate
+
+
 def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
           grupos: dict[str, set[str]] | None = None,
           grupos_cartoes: dict[str, set[str]] | None = None,
@@ -366,7 +395,8 @@ def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
         clausulas.append(f"t.conta_id IN ({marcadores})")
         params.extend(sorted(ativas))
 
-    if filtros.get("mes"):
+    mes_de, mes_ate = _periodo(filtros)
+    if mes_de or mes_ate:
         # O mes de um gasto de cartao pode ser o mes em que a FATURA vence
         # (modo "fatura", o default) ou o mes da propria data da compra
         # (modo "mes", ver extrato_payload) -- o chamador decide via
@@ -377,8 +407,14 @@ def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
             # Pagamento de fatura nao e gasto da fatura: sem isto ele apareceria
             # como lancamento do mes em que a fatura vence.
             clausulas.append(f"NOT {EH_PAGAMENTO_FATURA}")
-        clausulas.append(f"t.{campo} = ?")
-        params.append(filtros["mes"])
+        # Intervalo aberta de um lado e valido: "de setembro em diante" ou
+        # "ate dezembro". Mes unico chega como de == ate.
+        if mes_de:
+            clausulas.append(f"t.{campo} >= ?")
+            params.append(mes_de)
+        if mes_ate:
+            clausulas.append(f"t.{campo} <= ?")
+            params.append(mes_ate)
     if filtros.get("conta"):
         conta = filtros["conta"]
         ids_grupo = grupos.get(conta, set()) if grupos else set()
@@ -1091,6 +1127,78 @@ def _preencher_itau_historico_por_pagamento_principal(
         origens[id_consolidado][indice] = "pagamento"
 
 
+def _aplicar_faturas_oficiais(
+    conn: sqlite3.Connection,
+    ano: int,
+    valores: dict[str, list[float]],
+    quantidades: dict[str, list[int]],
+    origens: dict[str, list[str]],
+    previstas: dict[str, list[int]],
+    itens: dict[str, list[dict[str, Any]]],
+    contas_do_cartao: dict[str, set[str]],
+) -> None:
+    """Sobrescreve os meses de fatura FECHADA com o total que o banco emitiu.
+
+    pluggy_faturas.valor_total vem de GET /bills -- e o proprio valor da
+    fatura, nao uma soma reconstruida das transacoes. Por isso roda por
+    ultimo: e a autoridade final para todo mes que tem fatura fechada.
+
+    Somar transacoes acerta quando a base esta completa (conferido: bate ao
+    centavo nas 16 faturas de 2026 do Inter e do Nubank), mas erra nas
+    bordas -- no primeiro mes importado faltam as compras anteriores ao
+    inicio do sync, e nos cartoes Itau o conector nem trouxe o historico de
+    compras. Nesses casos a fatura oficial e a unica fonte correta.
+
+    Fica de fora somente quando valor_total = 0: nos cartoes Itau varios
+    ciclos vem zerados pela Pluggy mesmo tendo tido gasto, e zero e ambiguo
+    ("nao coletei" x "nao gastou nada"), entao ali o calculo por
+    transacao/pagamento continua valendo. Valor negativo, ao contrario, e
+    dado real (fatura com saldo credor) e entra normalmente.
+
+    A fatura AINDA EM ABERTO nunca chega aqui -- ela nao existe na API
+    enquanto o banco nao fecha o ciclo (ver list_bills em pluggy_sync.py),
+    e por isso o mes corrente segue estimado pelas outras funcoes.
+    """
+    por_cartao_mes: dict[tuple[str, int], float] = {}
+    for linha in conn.execute(
+        """
+        SELECT conta_id, competencia, SUM(valor_total) AS total
+        FROM pluggy_faturas
+        WHERE competencia LIKE ? AND valor_total <> 0
+        GROUP BY conta_id, competencia
+        """,
+        (f"{ano}-%",),
+    ):
+        try:
+            indice = int(str(linha["competencia"])[5:7]) - 1
+        except ValueError:
+            continue
+        if not 0 <= indice < 12:
+            continue
+        conta_id = linha["conta_id"]
+        # Um cartao da grade pode representar varias contas (os Itau
+        # consolidados), entao a fatura entra na coluna que contem a conta.
+        for cartao_id, contas in contas_do_cartao.items():
+            if conta_id in contas:
+                chave = (cartao_id, indice)
+                por_cartao_mes[chave] = (
+                    por_cartao_mes.get(chave, 0.0) + float(linha["total"] or 0)
+                )
+
+    for (cartao_id, indice), total in por_cartao_mes.items():
+        if cartao_id not in valores:
+            continue
+        valores[cartao_id][indice] = round(total, 2)
+        origens[cartao_id][indice] = "oficial"
+        # A fatura fechou: o que havia de previsto para este mes ja esta
+        # dentro do total oficial, entao nao pode continuar contando junto.
+        previstas[cartao_id][indice] = 0
+        if cartao_id in itens:
+            itens[cartao_id] = [
+                item for item in itens[cartao_id] if item["mes"] != indice + 1
+            ]
+
+
 def _aplicar_faturas_confirmadas(
     conn: sqlite3.Connection,
     ano: int,
@@ -1319,6 +1427,15 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             }
             itens = {conta_id: [] for conta_id in ids_cartoes}
 
+        # Quais contas reais cada coluna da grade representa. Normalmente e
+        # 1:1, menos nos Itau, que viram uma coluna consolidada -- e a fatura
+        # oficial precisa saber somar as duas contas naquela coluna.
+        contas_do_cartao = {cartao["id"]: {cartao["id"]} for cartao in cartoes}
+        ids_itau = {
+            cartao["id"] for cartao in cartoes
+            if str(cartao["nome"]).startswith("ITAÚ")
+        }
+
         cartoes = _consolidar_cartoes_itau(
             cartoes,
             valores,
@@ -1327,6 +1444,15 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             quantidades_previstas,
             itens,
         )
+        if any(cartao["id"] == "consolidado:itau" for cartao in cartoes):
+            contas_do_cartao = {
+                cartao["id"]: (
+                    ids_itau if cartao["id"] == "consolidado:itau"
+                    else {cartao["id"]}
+                )
+                for cartao in cartoes
+            }
+
         if agrupamento == "fatura":
             _preencher_itau_historico_por_pagamento_principal(
                 conn,
@@ -1336,6 +1462,18 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                 quantidades,
                 origens,
                 quantidades_previstas,
+            )
+            # Por ultimo: onde existe fatura fechada, o valor emitido pelo
+            # banco vale mais que qualquer reconstrucao nossa.
+            _aplicar_faturas_oficiais(
+                conn,
+                ano,
+                valores,
+                quantidades,
+                origens,
+                quantidades_previstas,
+                itens,
+                contas_do_cartao,
             )
 
     # So um item projetado sobrevive se, depois de todos os ajustes por
@@ -1451,6 +1589,12 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
     # _COMPETENCIA_FATURA em extrato_camada.py).
     modo = filtros.get("modo") if filtros.get("modo") in ("fatura", "mes") else "fatura"
     mes_campo_gasto = "competencia_fatura" if modo == "fatura" else "mes_ref"
+    mes_de, mes_ate = _periodo(filtros)
+    # As projecoes de fatura e de entrada raciocinam sobre UM mes ("este mes
+    # ainda nao recebeu tudo", "esta fatura ainda esta aberta"). Num intervalo
+    # de varios meses isso nao se traduz, entao ali elas ficam desligadas --
+    # a tira de evolucao continua mostrando cada mes projetado.
+    mes_filtro = mes_de if mes_de and mes_de == mes_ate else ""
 
     fin.ensure_database()
     with cam.conectar() as conn:
@@ -1511,10 +1655,10 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         entrada_total = entrada_linha["total"]
         entrada_qtd = int(entrada_linha["qtd"] or 0)
 
-        # Série mensal para o cabeçalho da tela. O mês selecionado não limita
-        # a série; os demais filtros (conta, cartão, categoria etc.) continuam
-        # valendo, para a evolução refletir exatamente o contexto atual.
-        filtros_evolucao = {**filtros, "mes": ""}
+        # Série mensal para o cabeçalho da tela. O período selecionado não
+        # limita a série; os demais filtros (conta, cartão, categoria etc.)
+        # continuam valendo, para a evolução refletir o contexto atual.
+        filtros_evolucao = {**filtros, "mes": "", "mesDe": "", "mesAte": ""}
         onde_evolucao, params_evolucao = _onde(
             filtros_evolucao, ativas, grupos, grupos_cartoes, mes_campo=mes_campo_gasto
         )
@@ -1635,31 +1779,51 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         # vez de duplicar a logica de fatura aberta + parcelamento aqui. So
         # PREENCHE um mes que a view não achou nada; nunca sobrescreve um mes
         # com dado real, mesmo que os dois numeros um dia divirjam.
-        projecao_cartoes = None
+        # Vai ano a ano enquanto houver fatura projetada: um parcelamento em
+        # 12x contratado em dezembro estoura o ano corrente, e a tira precisa
+        # continuar mostrando enquanto existir fatura para mostrar. Para no
+        # primeiro ano sem nada -- e o cap existe para o loop nunca depender
+        # so de dado bem-comportado.
+        projecoes_cartoes: list[dict[str, Any]] = []
         if permite_projecao_cartoes or permite_projecao_busca:
-            try:
-                projecao_cartoes = cartoes_payload(int(mes_atual[:4]), "fatura")
-            except Exception:
-                projecao_cartoes = None
-            if projecao_cartoes and permite_projecao_cartoes:
-                ano_projecao = projecao_cartoes["ano"]
-                # Sem filtro: soma todos os cartoes (totalMes ja vem pronto).
-                # Com filtro de UM cartao, so a fatia dos cartoes daquele
-                # grupo -- mesma resolucao banco->contas que o _onde usa, pra
-                # bater com o que a tela mostra quando filtra por esse cartao.
-                if sem_filtro_estreito:
-                    valores_por_mes = projecao_cartoes["totalMes"]
-                else:
-                    ids_alvo = grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
-                    valores_por_mes = [
-                        sum(
-                            projecao_cartoes["valores"].get(cartao["id"], [0.0] * 12)[indice]
-                            for cartao in projecao_cartoes["cartoes"]
-                            if cartao["id"] in ids_alvo
-                        )
-                        for indice in range(12)
-                    ]
-                for indice, total in enumerate(valores_por_mes):
+            ano_base = int(mes_atual[:4])
+            for ano_projecao in range(ano_base, ano_base + ANOS_PROJECAO_MAX):
+                try:
+                    payload_ano = cartoes_payload(ano_projecao, "fatura")
+                except Exception:
+                    break
+                # O ano corrente entra sempre (tem o historico real); os
+                # seguintes so se de fato sobrou parcela caindo neles.
+                if ano_projecao > ano_base and not any(
+                    total > 0 for total in payload_ano["totalMes"]
+                ):
+                    break
+                projecoes_cartoes.append(payload_ano)
+
+        def _valores_do_ano(payload: dict[str, Any]) -> list[float]:
+            """Fatia da projecao que corresponde ao filtro de cartao atual.
+
+            Sem filtro: soma todos os cartoes (totalMes ja vem pronto). Com
+            filtro de UM cartao, so a fatia dos cartoes daquele grupo -- mesma
+            resolucao banco->contas que o _onde usa, pra bater com o que a
+            tela mostra quando filtra por esse cartao.
+            """
+            if sem_filtro_estreito:
+                return payload["totalMes"]
+            ids_alvo = grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
+            return [
+                sum(
+                    payload["valores"].get(cartao["id"], [0.0] * 12)[indice]
+                    for cartao in payload["cartoes"]
+                    if cartao["id"] in ids_alvo
+                )
+                for indice in range(12)
+            ]
+
+        if permite_projecao_cartoes:
+            for payload_ano in projecoes_cartoes:
+                ano_projecao = payload_ano["ano"]
+                for indice, total in enumerate(_valores_do_ano(payload_ano)):
                     if total <= 0:
                         continue
                     chave = f"{ano_projecao}-{indice + 1:02d}"
@@ -1725,44 +1889,47 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         ).fetchall()
 
         # Itens projetados (parcelas futuras de cartao) que caem no filtro
-        # atual, so nos meses/mes que nao tem nenhuma transacao real -- nunca
+        # atual, so nos meses que nao tem nenhuma transacao real -- nunca
         # some ou substitui dado real, so preenche o vazio, igual a projecao
-        # acima. Sem mes selecionado (ex.: busca por texto "Olympikus" em
-        # Ano: Todos) varre os 12 meses; com mes selecionado, so aquele mes.
+        # acima. Sem periodo selecionado (ex.: busca por texto "Olympikus" em
+        # Todo periodo) varre os 12 meses; com periodo, so o que cai dentro.
         transacoes_extra: list[dict[str, Any]] = []
         por_categoria_extra: list[dict[str, Any]] = []
-        mes_filtro_atual = filtros.get("mes") or ""
+        pares = []
         if (
             (permite_projecao_cartoes or permite_projecao_busca)
-            and projecao_cartoes and offset == 0
+            and projecoes_cartoes and offset == 0
         ):
-            if filtros.get("cartao"):
-                ids_alvo_itens = (
-                    grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
-                )
-            else:
-                ids_alvo_itens = {
-                    cartao["id"] for cartao in projecao_cartoes["cartoes"]
-                }
-            ano_projecao_itens = projecao_cartoes["ano"]
-            pares = []
-            for cartao in projecao_cartoes["cartoes"]:
-                if cartao["id"] not in ids_alvo_itens:
-                    continue
-                for item in projecao_cartoes["itens"].get(cartao["id"], []):
-                    mes_ref_item = f"{ano_projecao_itens}-{item['mes']:02d}"
-                    if mes_filtro_atual and mes_ref_item != mes_filtro_atual:
+            for payload_ano in projecoes_cartoes:
+                if filtros.get("cartao"):
+                    ids_alvo_itens = (
+                        grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
+                    )
+                else:
+                    ids_alvo_itens = {
+                        cartao["id"] for cartao in payload_ano["cartoes"]
+                    }
+                ano_projecao_itens = payload_ano["ano"]
+                for cartao in payload_ano["cartoes"]:
+                    if cartao["id"] not in ids_alvo_itens:
                         continue
-                    if busca_termo and busca_termo not in item["descricao"].casefold():
-                        continue
-                    # Mes com transacao real (mesmo filtro de busca/cartao
-                    # aplicado na tira de evolucao) ja mostra os itens de
-                    # verdade -- nao injeta projecao por cima.
-                    existente = evolucao.get(mes_ref_item)
-                    if existente and existente.get("quantidade"):
-                        continue
-                    pares.append((cartao, item, mes_ref_item))
+                    for item in payload_ano["itens"].get(cartao["id"], []):
+                        mes_ref_item = f"{ano_projecao_itens}-{item['mes']:02d}"
+                        if mes_de and mes_ref_item < mes_de:
+                            continue
+                        if mes_ate and mes_ref_item > mes_ate:
+                            continue
+                        if busca_termo and busca_termo not in item["descricao"].casefold():
+                            continue
+                        # Mes com transacao real (mesmo filtro de busca/cartao
+                        # aplicado na tira de evolucao) ja mostra os itens de
+                        # verdade -- nao injeta projecao por cima.
+                        existente = evolucao.get(mes_ref_item)
+                        if existente and existente.get("quantidade"):
+                            continue
+                        pares.append((cartao, item, mes_ref_item))
 
+        if pares:
             base_ids = sorted({item["transacaoBaseId"] for _, item, _ in pares})
             categorias_base: dict[str, dict[str, Any]] = {}
             if base_ids:
@@ -1904,13 +2071,12 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         )
 
     saidas = float(resumo["saidas"])
-    mes_filtro = filtros.get("mes") or ""
     saidas_estimativa = False
     if transacoes_extra and not mes_filtro:
-        # Busca sem mes selecionado: os itens projetados que caem em meses
-        # futuros (sem transacao real ainda) somam por cima do que a consulta
-        # real ja contou -- cada um so entrou porque aquele mes especifico
-        # estava vazio, ver o filtro de "evolucao" acima.
+        # Periodo com mais de um mes (ou nenhum): os itens projetados que caem
+        # em meses futuros (sem transacao real ainda) somam por cima do que a
+        # consulta real ja contou -- cada um so entrou porque aquele mes
+        # especifico estava vazio, ver o filtro de "evolucao" acima.
         saidas += sum(item["valor"] for item in transacoes_extra)
         saidas_estimativa = True
     # Mesma projecao de fatura de cartao da serie, para o mes unico

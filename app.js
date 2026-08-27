@@ -164,6 +164,7 @@ const PAGINAS = [
   { href: "investimentos.html", ic: "↗", nome: "Investimentos" },
   { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
   { href: "entradas.html", ic: "↑", nome: "Entradas" },
+  { href: "emprestimos.html", ic: "⇄", nome: "Emprestado" },
   { href: "conexoes_pluggy.html", ic: "⇋", nome: "Conexões" },
 ];
 

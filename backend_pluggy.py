@@ -38,6 +38,7 @@ from extrato_camada import (
     remover_regra_entrada,
     remover_regra,
 )
+import emprestimos
 import fixas
 import investimentos
 from pluggy_conexoes import criar_connect_token
@@ -117,6 +118,10 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             if fixa:
                 self.send_json(fixas.remover(fixa.group(1)))
                 return
+            emprestimo = re.fullmatch(r"/api/emprestimos/([\w-]+)", parsed.path)
+            if emprestimo:
+                self.send_json(emprestimos.remover(emprestimo.group(1)))
+                return
             self.send_error_json("Endpoint não encontrado.", HTTPStatus.NOT_FOUND)
         except ValueError as exc:
             self.send_error_json(str(exc), HTTPStatus.BAD_REQUEST)
@@ -154,13 +159,25 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 return padrao
 
-        mes = texto("month")
-        if mes and not re.fullmatch(r"\d{4}-\d{2}", mes):
-            raise ValueError("Parâmetro month deve estar no formato YYYY-MM.")
+        # O periodo e um intervalo de meses (from/to). "month" continua aceito
+        # como atalho de mes unico -- e o que os links de outras telas mandam.
+        def mes_valido(chave: str) -> str:
+            valor = texto(chave)
+            if valor and not re.fullmatch(r"\d{4}-\d{2}", valor):
+                raise ValueError(
+                    f"Parâmetro {chave} deve estar no formato YYYY-MM."
+                )
+            return valor
+
+        mes = mes_valido("month")
+        mes_de = mes_valido("from") or mes
+        mes_ate = mes_valido("to") or mes
 
         modo = texto("modo").lower()
         return {
-            "mes": mes,
+            "mes": "",
+            "mesDe": mes_de,
+            "mesAte": mes_ate,
             "conta": texto("account"),
             "cartao": texto("card"),
             "tipo": texto("type").upper(),
@@ -206,6 +223,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(extrato_payload(filtros))
             elif path == "/api/extrato":
                 self.send_json(extrato_payload(self.query_extrato(query)))
+            elif path == "/api/emprestimos":
+                self.send_json(emprestimos.payload())
             elif path == "/api/fixas":
                 self.send_json(fixas.mes_payload(self.query_mes(query)))
             elif path == "/api/fixas/candidatas":
@@ -288,8 +307,14 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             if fixa:
                 self.send_json(fixas.atualizar(fixa.group(1), payload))
                 return
+            emprestimo = re.fullmatch(r"/api/emprestimos/([\w-]+)", parsed.path)
+            if emprestimo:
+                self.send_json(emprestimos.atualizar(emprestimo.group(1), payload))
+                return
 
-            if parsed.path == "/api/fixas":
+            if parsed.path == "/api/emprestimos":
+                self.send_json(emprestimos.criar(payload))
+            elif parsed.path == "/api/fixas":
                 self.send_json(fixas.criar(payload))
             elif parsed.path == "/api/extrato/regras":
                 self.send_json(criar_regra(payload))

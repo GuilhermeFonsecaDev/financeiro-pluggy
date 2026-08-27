@@ -34,6 +34,7 @@ http://127.0.0.1:8766/transacoes.html
 - `contas_fixas.html`: contas recorrentes casadas com as transações reais.
 - `categorias.html`: gastos por categoria pai e subcategoria.
 - `cartoes_pluggy.html`: grade de faturas por cartão e mês.
+- `emprestimos.html`: dinheiro emprestado, recebido de volta e empréstimos pegos.
 - `extrato_regras.html`: gerenciador das regras de categorização.
 - `conexoes_pluggy.html`: conectar bancos e acompanhar o estado das conexões.
 
@@ -88,13 +89,44 @@ vazio mesmo com fatura de setembro fechada — a compra continuava presa em
 agosto, mês em que foi feita.
 
 Conta corrente e poupança não têm essa ambiguidade: a competência cai na
-própria data. Não existe opção para trocar — o mês de cartão sempre é fatura,
-em toda tela que filtra por mês (Transações, Categorias).
+própria data.
 
 A regra vive numa coluna da view (`competencia_fatura`), não repetida em cada
 consulta: ciclo fechado se reconhece pelo `billId` e vence no mês seguinte à
 última compra dele; a fatura aberta ainda não tem `billId` e agrupa os PENDING.
 Pagamento de fatura fica fora — ele quita a fatura, não é gasto dela.
+
+Fatura é o padrão em toda tela que filtra por mês. A tela de Transações tem um
+seletor **Fatura / Mês** para ver pela data da compra quando a pergunta é
+"quanto gastei em agosto?" em vez de "quanto vou pagar em agosto?". No modo Mês
+não há projeção de parcela futura: uma parcela que o banco ainda não cobrou não
+tem data de compra futura para exibir.
+
+### O valor da fatura fechada vem do banco, não da nossa soma
+
+`GET /bills` devolve o `totalAmount` que o banco emitiu, e o `id` da fatura é o
+mesmo `billId` que já vem em cada transação — casa 1:1, sem heurística. Isso é
+gravado em `pluggy_faturas` e aplicado por último em `cartoes_payload()`
+(`_aplicar_faturas_oficiais`), como autoridade final de todo mês fechado.
+
+Somar transação por transação acerta quando a base está completa (conferido:
+bate ao centavo nas 16 faturas de 2026 do Inter e do Nubank), mas erra nas
+bordas — no primeiro mês importado faltam as compras anteriores ao início do
+sync, e nos cartões Itaú o conector não trouxe o histórico de compras. Nesses
+casos a fatura oficial é a única fonte correta.
+
+Duas limitações que mantêm o cálculo próprio vivo:
+
+- **A fatura em aberto não existe na API.** Ela só passa a existir quando o
+  banco fecha o ciclo e atribui um `billId` (as transações do ciclo corrente
+  têm `billId = null`). Não há filtro nem endpoint que a entregue — conferido
+  contra a API, não só na documentação. O mês corrente e as parcelas futuras
+  seguem estimados por `_completar_faturas_abertas_e_parcelas` e pelos ajustes
+  por banco.
+- **Alguns ciclos do Itaú vêm com `totalAmount` zerado** mesmo tendo tido
+  gasto. Zero é ambíguo ("não coletei" x "não gastou nada"), então é ignorado e
+  ali o cálculo por pagamento continua valendo. Valor negativo, ao contrário, é
+  dado real (fatura com saldo credor) e entra normalmente.
 
 ## Contas fixas
 
@@ -245,13 +277,45 @@ sincronizar a cada abertura gastaria chamada sem trazer nada novo.
 | Arquivo | Papel |
 |---|---|
 | `banco.py` | conexão, backup e criação do `pluggy.db` |
-| `pluggy_sync.py` | fala com a API da Pluggy e baixa os extratos para `./data` |
+| `pluggy_sync.py` | fala com a API da Pluggy e baixa extratos e faturas para `./data` |
 | `atualizar_pluggy.py` | orquestra sync + import, guarda o estado |
 | `importar_pluggy.py` | grava os JSON do extrator nas tabelas `pluggy_*` |
 | `pluggy_extrato.py` | leituras do extrato e dos cartões |
 | `extrato_camada.py` | camada local: categorias, regras e ajustes manuais |
 | `pluggy_conexoes.py` | connect token para o widget |
+| `emprestimos.py` | dinheiro emprestado (dado manual) + importador do dashboard antigo |
 | `backend_pluggy.py` | servidor HTTP local |
+
+## Dinheiro emprestado
+
+Dado 100% manual — nada vem da Pluggy. Um Pix para o mecânico é
+indistinguível de qualquer outro Pix no extrato, então quem sabe que aquilo era
+empréstimo é a pessoa, não o banco.
+
+Três tipos na mesma tabela `emprestimos`, separados pela coluna `tipo`: o que
+saiu (`emprestado`), o que voltou (`pagamento`) e o que peguei
+(`emprestimo_pego`). Ficam juntos porque formam um saldo só — "quanto ainda
+tenho para receber" — e a tela mostra os três lado a lado.
+
+Pagamento **não** aponta para qual empréstimo quitou: é assim no dado de
+origem, e o total recebido é global, não por item. Amarrar os dois mudaria o
+significado do número que já existe.
+
+Nos empréstimos pegos, o número de parcelas não é cadastrado — sai dos meses
+entre início e fim, contando as duas pontas (setembro a março é 7x). Quando
+falta uma das datas a tela não mostra parcela nenhuma, em vez de chutar. E
+`status = finalizado` vale mais que a conta pelas datas, para um empréstimo
+liquidado antes do prazo não ficar com parcela fantasma em aberto.
+
+Para trazer os dados do dashboard manual (`ExtratorVisor/financeiro.db`):
+
+```bash
+python emprestimos.py importar ../ExtratorVisor/financeiro.db
+```
+
+Mostra o que faria sem gravar; `--aplicar` grava. É idempotente — o id de lá
+vira o id daqui, então rodar de novo atualiza em vez de duplicar. Registro sem
+descrição e sem valor é descartado (linha criada por engano e nunca preenchida).
 
 ## Camada local sobre as transações
 

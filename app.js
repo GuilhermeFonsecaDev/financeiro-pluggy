@@ -23,6 +23,23 @@ function labelMes(mesRef) {
   return `${MESES[Number(mes) - 1]} ${ano}`;
 }
 
+/* Saldo mensal da carteira reconstruído de trás para frente: a API entrega a
+ * posição de HOJE e o fluxo líquido de cada mês, não o histórico de saldo.
+ *
+ * Fica aqui, e não em cada tela, porque duas telas desenham a mesma curva --
+ * duplicar a reconstrução seria manter duas verdades para o mesmo número.
+ */
+function serieSaldoInvestimentos(dados) {
+  const meses = dados?.meses || [];
+  let saldo = Number(dados?.resumo?.liquido || 0);
+  const serie = new Array(meses.length);
+  for (let i = meses.length - 1; i >= 0; i--) {
+    serie[i] = { mes: meses[i].mes, rotulo: labelMes(meses[i].mes), valor: saldo };
+    saldo -= Number(meses[i].liquido || 0);
+  }
+  return serie;
+}
+
 function fmtData(iso) {
   const [ano, mes, dia] = String(iso ?? "").split("-");
   if (!ano || !mes || !dia) return "—";
@@ -157,6 +174,7 @@ window.addEventListener("resize", fecharPop);
 /* ------------------------------------------------------------ navegação */
 
 const PAGINAS = [
+  { href: "visao_geral.html", ic: "◎", nome: "Visão Geral" },
   { href: "contas_fixas.html", ic: "◫", nome: "Contas Fixas" },
   { href: "transacoes.html", ic: "☰", nome: "Transações" },
   { href: "categorias.html", ic: "◑", nome: "Categorias" },

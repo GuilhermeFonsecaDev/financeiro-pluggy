@@ -77,6 +77,59 @@ def _nome_banco_cartao(linha: sqlite3.Row) -> str:
     return nome
 
 
+def chave_compra(linha: sqlite3.Row | dict) -> tuple[Any, ...]:
+    """Identidade da compra parcelada a que uma transacao pertence.
+
+    Todas as parcelas da mesma compra caem na mesma chave, mesmo tendo
+    transacao_id diferente (cada parcela e uma transacao propria).
+
+    Por que nao usar purchaseDate como id da compra: ele vem igual ao
+    milissegundo entre as parcelas, o que tenta, mas nao serve sozinho --
+    dois itens do mesmo pedido (Mercado Livre) compartilham o timestamp, e
+    algumas compras tem parcelas com timestamp levemente diferente. Medido no
+    dado real: esta chave da 90 grupos sem erro; trocar a data pelo timestamp
+    e tirar a descricao da 92 grupos com 1 compra fundida errada.
+
+    A descricao entra sem o contador de parcela porque varios lojistas o
+    embutem nela ("Olympikus 3/10"), e o valor arredondado ao inteiro porque
+    a primeira parcela costuma diferir em centavos.
+
+    Aceita sqlite3.Row do SELECT de parcelas ou um dict com as mesmas chaves.
+    """
+    descricao = re.sub(r"\d+\s*/\s*\d+", "", str(linha["descricao"] or ""))
+    return (
+        linha["conta_id"],
+        str(linha["compra"] or "")[:10],
+        linha["numero_cartao"],
+        linha["parcela_total"],
+        re.sub(r"\s+", " ", descricao).strip().casefold(),
+        round(float(linha["valor"] or 0)),
+    )
+
+
+def compra_da_transacao(conn: sqlite3.Connection,
+                        transacao_id: str) -> tuple[Any, ...] | None:
+    """chave_compra de uma transacao, buscando os metadados dela.
+
+    Deixa outra tela perguntar "esta transacao e a mesma compra que aquela
+    parcela projetada?" sem repetir a montagem da chave.
+    """
+    linha = conn.execute(
+        """
+        SELECT t.conta_id, t.descricao, t.valor, t.parcela_total,
+               SUBSTR(JSON_EXTRACT(t.raw_json,
+                 '$.creditCardMetadata.purchaseDate'), 1, 10) AS compra,
+               COALESCE(JSON_EXTRACT(t.raw_json,
+                 '$.creditCardMetadata.cardNumber'), '') AS numero_cartao
+        FROM pluggy_transacoes t WHERE t.transacao_id = ?
+        """,
+        (transacao_id,),
+    ).fetchone()
+    if linha is None or not linha["compra"] or not linha["parcela_total"]:
+        return None
+    return chave_compra(linha)
+
+
 def _completar_faturas_abertas_e_parcelas(
     conn: sqlite3.Connection,
     ano: int,
@@ -205,20 +258,7 @@ def _completar_faturas_abertas_e_parcelas(
         """,
         ids_cartoes,
     ):
-        descricao_sem_contador = re.sub(
-            r"\d+\s*/\s*\d+", "", str(linha["descricao"] or "")
-        )
-        descricao_normalizada = re.sub(
-            r"\s+", " ", descricao_sem_contador
-        ).strip().casefold()
-        chave = (
-            linha["conta_id"],
-            linha["compra"],
-            linha["numero_cartao"],
-            linha["parcela_total"],
-            descricao_normalizada,
-            round(float(linha["valor"] or 0)),
-        )
+        chave = chave_compra(linha)
         anterior = series.get(chave)
         ordem = (int(linha["parcela_numero"]), linha["data"])
         if anterior is None or ordem > (
@@ -272,7 +312,12 @@ def _completar_faturas_abertas_e_parcelas(
             ).strip()
             itens[conta_id].append({
                 "mes": numero_mes,
+                # Id da parcela de onde a projecao saiu: muda a cada mes, na
+                # medida em que novas parcelas sao cobradas.
                 "transacaoBaseId": linha["transacao_id"],
+                # Identidade da COMPRA: essa nao muda. Quem precisa saber "e a
+                # mesma compra?" entre meses usa esta, nao o id acima.
+                "compraId": "|".join(str(p) for p in chave_compra(linha)),
                 "descricao": descricao_exibicao,
                 "valor": abs(float(linha["valor"] or 0)),
                 "parcelaAtual": atual + deslocamento,
@@ -428,7 +473,15 @@ def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
     if filtros.get("cartao"):
         cartao = filtros["cartao"]
         ids_cartao = grupos_cartoes.get(cartao, set()) if grupos_cartoes else set()
-        if ids_cartao:
+        if cartao in ("todos", "nenhum"):
+            # "Qualquer cartao" e "fora do cartao" nao sao um cartao especifico,
+            # entao nao existem em grupos_cartoes. Sao as duas perguntas que os
+            # cards da Visao geral fazem ao abrir as transacoes.
+            dentro = "IN" if cartao == "todos" else "NOT IN"
+            clausulas.append(
+                f"t.conta_id {dentro} (SELECT conta_id FROM pluggy_contas "
+                "WHERE subtipo = 'CREDIT_CARD')")
+        elif ids_cartao:
             marcadores = ", ".join("?" for _ in ids_cartao)
             clausulas.append(f"t.conta_id IN ({marcadores})")
             params.extend(sorted(ids_cartao))
@@ -901,11 +954,17 @@ def _ajustar_faturas_nubank(
         pendentes = conn.execute(
             """
             SELECT
-              t.transacao_id, t.descricao, t.valor, t.parcela_numero,
-              t.parcela_total,
+              t.transacao_id, t.conta_id, t.descricao, t.valor,
+              t.parcela_numero, t.parcela_total,
               JSON_EXTRACT(
                 t.raw_json, '$.creditCardMetadata.billForecastDate'
-              ) AS mes_ref_fatura
+              ) AS mes_ref_fatura,
+              SUBSTR(JSON_EXTRACT(
+                t.raw_json, '$.creditCardMetadata.purchaseDate'), 1, 10
+              ) AS compra,
+              COALESCE(JSON_EXTRACT(
+                t.raw_json, '$.creditCardMetadata.cardNumber'), ''
+              ) AS numero_cartao
             FROM pluggy_transacoes t
             WHERE t.conta_id = ? AND t.status = 'PENDING'
               AND t.tipo = 'DEBIT'
@@ -953,6 +1012,7 @@ def _ajustar_faturas_nubank(
                 )
                 itens_por_serial.setdefault(mes_previsto, []).append({
                     "transacaoBaseId": linha["transacao_id"],
+                    "compraId": "|".join(str(p) for p in chave_compra(linha)),
                     "descricao": descricao_exibicao,
                     "valor": valor_parcela,
                     "parcelaAtual": atual + deslocamento,
@@ -1864,6 +1924,47 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 params,
             )
         ]
+
+        # Com uma categoria filtrada, a lista ganha as subcategorias dela
+        # embaixo do pai -- mesmo desenho da tela de Categorias. Sem filtro a
+        # lista segue so com os pais: navegar a arvore inteira aqui e o
+        # trabalho da outra tela.
+        #
+        # O pai vem por COALESCE(pai_id, id) da categoria filtrada, entao
+        # filtrar direto por uma SUBcategoria tambem funciona -- a lista
+        # mostra o pai dela com so aquela subcategoria embaixo, em vez de
+        # ficar com o pai pelado e nenhuma pista de onde voce esta.
+        filhos_por_pai: dict[str, list[dict[str, Any]]] = {}
+        if filtros.get("categoria"):
+            for linha in conn.execute(
+                f"""
+                SELECT filho.id AS categoria_id, filho.nome, filho.cor,
+                       filho.emoji, filho.pai_id,
+                       SUM(ABS(t.valor)) AS total, COUNT(*) AS quantidade
+                FROM extrato_efetivo_cache t
+                JOIN extrato_categorias filho ON filho.id = t.categoria_id{onde}
+                {'AND' if onde else 'WHERE'} t.tipo = 'DEBIT' AND t.incluida = 1
+                  AND filho.pai_id = (
+                      SELECT COALESCE(pai_id, id) FROM extrato_categorias
+                       WHERE id = ?
+                  )
+                GROUP BY filho.id
+                ORDER BY total DESC
+                """,
+                [*params, filtros["categoria"]],
+            ):
+                filhos_por_pai.setdefault(linha["pai_id"], []).append({
+                    "categoriaId": linha["categoria_id"],
+                    "categoria": linha["nome"],
+                    "cor": linha["cor"],
+                    "emoji": linha["emoji"] or "",
+                    "total": linha["total"],
+                    "quantidade": linha["quantidade"],
+                })
+            por_categoria = [
+                {**item, "filhos": filhos_por_pai.get(item["categoriaId"], [])}
+                for item in por_categoria
+            ]
 
         linhas = conn.execute(
             f"""

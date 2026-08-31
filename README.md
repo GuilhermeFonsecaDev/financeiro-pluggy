@@ -30,6 +30,7 @@ http://127.0.0.1:8766/transacoes.html
 
 ## Páginas
 
+- `visao_geral.html`: números do mês, trimestre, semestre ou ano, com o gasto mês a mês.
 - `transacoes.html`: lançamentos com filtros, troca de categoria e exclusão dos cálculos.
 - `contas_fixas.html`: contas recorrentes casadas com as transações reais.
 - `categorias.html`: gastos por categoria pai e subcategoria.
@@ -284,7 +285,41 @@ sincronizar a cada abertura gastaria chamada sem trazer nada novo.
 | `extrato_camada.py` | camada local: categorias, regras e ajustes manuais |
 | `pluggy_conexoes.py` | connect token para o widget |
 | `emprestimos.py` | dinheiro emprestado (dado manual) + importador do dashboard antigo |
+| `visao_geral.py` | agrega os payloads existentes por período (não consulta o banco) |
 | `backend_pluggy.py` | servidor HTTP local |
+
+## Visão geral
+
+Tela de leitura rápida por período de calendário: mês, trimestre, semestre ou
+ano do mês escolhido. O gráfico mostra sempre os 12 meses que terminam no fim
+do período, com os meses do período destacados — assim a leitura é a mesma
+quer o período tenha 1 mês ou 12.
+
+`visao_geral.py` **não consulta o banco**. Ele compõe `extrato_payload`,
+`cartoes_payload` e `categorias_resumo_payload`, que já carregam competência de
+fatura, contas ativas e exclusão dos cálculos. Uma consulta nova ali seria uma
+segunda fonte de verdade para o mesmo número — e a diferença não é pequena: uma
+soma direta na tabela crua responde R$ 0,00 para setembro, porque setembro não
+tem transação *datada* em setembro, tem fatura com *competência* de setembro.
+
+Três decisões que valem conhecer:
+
+**A escala do gráfico corta em 1,8× o segundo maior mês.** Um único lançamento
+atípico (uma transferência de R$ 50 mil, por exemplo) achatava os outros onze
+meses até não dar para comparar nada. A barra que estoura ganha topo serrilhado
+e o valor escrito por cima, e um insight explica de onde veio o pico — a barra
+alta passa a informar em vez de só distorcer.
+
+**Média, maior e menor mês ignoram mês ainda projetado.** Um semestre com três
+meses que só têm parcela futura renderia uma "média mensal" puxada para baixo
+por meses que mal começaram. O total continua somando tudo; o rodapé do card diz
+quanto ainda é projeção.
+
+**Entradas são as recebidas, não as projetadas.** O extrato projeta salário no
+mês corrente (ver *Entradas projetadas*), e somar isso contra gasto real inflava
+o resultado. Aqui o card mostra o recebido e, ao lado, quanto ainda é previsto.
+Por isso o mês corrente diverge de propósito da tela de Transações, que exibe a
+projeção; em qualquer período fechado os dois números coincidem.
 
 ## Dinheiro emprestado
 

@@ -253,6 +253,9 @@ function ligarEventos() {
 
 (function iniciar() {
   montarNav("cartoes_pluggy.html");
+  // Deep link: o card "Cartões" da Visão geral abre o ano que estava na tela.
+  const anoUrl = Number(new URLSearchParams(location.search).get("year"));
+  if (Number.isInteger(anoUrl) && anoUrl >= 2000 && anoUrl <= 2100) selectedYear = anoUrl;
   document.getElementById("yearInput").value = String(selectedYear);
   ligarEventos();
   recarregar();

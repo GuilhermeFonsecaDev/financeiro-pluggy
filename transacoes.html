@@ -84,10 +84,26 @@ tr.ignorada .num { text-decoration: line-through; }
 .conta-tag { color: var(--text-3); font-size: 12px; white-space: nowrap; }
 
 .cat-lista { display: grid; gap: 10px; }
+/* Mesmo espacamento de dentro do grupo e entre grupos: uma categoria sem
+   subcategoria fica identica ao que era antes. */
+.cat-grupo { display: grid; gap: 10px; }
 .cat-linha { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; cursor: pointer; padding: 5px 6px; margin: -5px -6px; border-radius: 8px; }
 .cat-linha:hover { background: var(--surface-2); }
 .cat-linha.sel { background: var(--azul-suave); }
 .cat-nome { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Mesma marcacao de nivel da tela de Categorias: so o peso e a cor do nome
+   separam pai de subcategoria -- sem indentar, que e o que desalinha a
+   coluna do valor. */
+.cat-linha.filho .cat-nome { font-weight: 450; color: var(--text-2); }
+/* Regua entre a categoria e as subcategorias dela, na mesma espessura e cor
+   da tela de Categorias. A classe vem do render, nao de :nth-child: assim a
+   linha nao depende da ordem em que as linhas foram montadas. */
+.cat-linha.primeiro-filho { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 9px; }
+/* Emoji da subcategoria e inicial da categoria ocupam a MESMA caixa: sem
+   isso o ponto colorido do pai (mais estreito que um emoji) fazia o nome
+   dele comecar antes do nome dos filhos. */
+.cat-marca { width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; border-radius: 5px; }
+.cat-ponto { width: 8px; height: 8px; border-radius: 999px; flex: none; }
 .cat-valor { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .cat-linha .barra { grid-column: 1 / -1; }
 .edicao-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -398,7 +414,9 @@ function qs() {
 function renderFiltrosAtivos() {
   const rotulos = {
     account: () => CONTAS.find(c => c.id === filtros.account)?.nome,
-    card: () => `Cartão ${CARTOES.find(c => c.id === filtros.card)?.nome || filtros.card}`,
+    card: () => filtros.card === "todos" ? "Só cartões"
+      : filtros.card === "nenhum" ? "Fora do cartão"
+      : `Cartão ${CARTOES.find(c => c.id === filtros.card)?.nome || filtros.card}`,
     type: () => filtros.type === "DEBIT" ? "Saídas" : "Entradas",
     category: () => CATEGORIAS.find(c => c.id === filtros.category)?.nome,
     status: () => filtros.status === "POSTED" ? "Efetivadas" : "Pendentes",
@@ -638,19 +656,46 @@ function renderMetricas(r, serie = []) {
   });
 }
 
+/* A categoria-pai fica so com a bolinha da cor -- mais limpo que a inicial
+   numa lista de 18 categorias. O que importa pro alinhamento e a caixa de
+   16px em volta, igual pra bolinha e pro emoji da subcategoria. */
+function marcaLinhaCategoria(i) {
+  if (i.emoji) return `<span class="cat-marca">${esc(i.emoji)}</span>`;
+  return `<span class="cat-marca"><span class="cat-ponto" style="background:${
+    esc(i.cor || "#9ba1ab")}"></span></span>`;
+}
+
+function linhaCategoria(i, maior, classes = "") {
+  return `
+    <div class="cat-linha ${classes}${filtros.category === i.categoriaId ? " sel" : ""}"
+         data-categoria="${esc(i.categoriaId || "")}"
+         title="${i.quantidade} transação(ões) · clique para filtrar">
+      <span class="cat-nome">${marcaLinhaCategoria(i)}${esc(i.categoria)}</span>
+      <span class="cat-valor">${fmtBRLCurto(i.total)}</span>
+      <span class="barra"><span style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor)}"></span></span>
+    </div>`;
+}
+
 function renderCategorias(itens) {
   const alvo = document.getElementById("categorias");
   if (!itens.length) { alvo.innerHTML = `<div class="vazio">Nenhuma saída no filtro atual.</div>`; return; }
   // Sem teto na quantidade nem na altura: o corte em 12 escondia categoria
   // com gasto de verdade, e a pessoa nao tinha como saber que faltava algo.
+  //
+  // As subcategorias so chegam quando ha uma categoria filtrada -- e o
+  // backend so as monta nesse caso. Sem filtro a lista segue so com os pais:
+  // a arvore inteira e o trabalho da tela de Categorias.
+  //
+  // A regua de todas as barras continua sendo o maior PAI, entao a barra da
+  // subcategoria mostra o quanto ela ocupa dentro do guarda-chuva.
   const maior = Math.max(...itens.map(i => i.total));
-  alvo.innerHTML = `<div class="cat-lista">${itens.map(i => `
-    <div class="cat-linha ${filtros.category === i.categoriaId ? "sel" : ""}" data-categoria="${esc(i.categoriaId || "")}"
-         title="${i.quantidade} transação(ões) · clique para filtrar">
-      <span class="cat-nome">${marcaCategoria({ emoji: i.emoji, cor: i.cor }, 12)}${esc(i.categoria)}</span>
-      <span class="cat-valor">${fmtBRLCurto(i.total)}</span>
-      <span class="barra"><span style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor)}"></span></span>
-    </div>`).join("")}</div>`;
+  alvo.innerHTML = `<div class="cat-lista">${itens.map(i => {
+    const filhos = (i.filhos || []).filter(f => f.total > 0);
+    return `<div class="cat-grupo">${linhaCategoria(i, maior)}${
+      filhos.map((f, n) => linhaCategoria(
+        f, maior, n === 0 ? "filho primeiro-filho" : "filho"
+      )).join("")}</div>`;
+  }).join("")}</div>`;
 }
 
 async function carregar({ mais = false } = {}) {
@@ -1115,7 +1160,18 @@ function ligar() {
     const l = e.target.closest("[data-categoria]");
     if (!l) return;
     const c = l.dataset.categoria;
-    filtros.category = filtros.category === c ? "" : c;   // clicar de novo recolhe
+    if (filtros.category !== c) {
+      filtros.category = c;
+    } else if (l.classList.contains("filho")) {
+      // Clicar de novo numa subcategoria sobe UM nivel -- volta pra categoria
+      // pai em vez de limpar o filtro inteiro, que jogava a pessoa de volta
+      // pra lista toda so pra sair de "Supermercado".
+      filtros.category =
+        l.closest(".cat-grupo")?.querySelector(".cat-linha:not(.filho)")
+          ?.dataset.categoria || "";
+    } else {
+      filtros.category = "";   // clicar de novo na categoria recolhe
+    }
     recarregar();
   });
 

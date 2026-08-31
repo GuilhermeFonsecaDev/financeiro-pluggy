@@ -169,9 +169,8 @@ function renderGraficos() {
   desenharGrafico("graficoAportes",liquidos,{classe:"aportes",signed:true});
   if(liquidos.length){ el("aportesInicio").textContent=`${liquidos[0].rotulo} · ${fmtBRL(liquidos[0].valor)}`; el("aportesFim").textContent=`${liquidos.at(-1).rotulo} · ${fmtBRL(liquidos.at(-1).valor)}`; }
 
-  let saldo=Number(D.resumo?.liquido||0);
-  const totais=new Array(meses.length);
-  for(let i=meses.length-1;i>=0;i--){ totais[i]={rotulo:labelMes(meses[i].mes),valor:saldo}; saldo-=Number(meses[i].liquido||0); }
+  // A reconstrução mora em app.js: a Visão geral desenha a mesma curva.
+  const totais=serieSaldoInvestimentos(D);
   desenharGrafico("graficoTotal",totais,{zero:false});
   if(totais.length){ el("totalInicio").textContent=`${totais[0].rotulo} · ${fmtBRL(totais[0].valor)}`; el("totalFim").textContent=`${totais.at(-1).rotulo} · ${fmtBRL(totais.at(-1).valor)}`; }
 }

@@ -121,7 +121,13 @@ _COLUNAS_NOVAS = {
                      "forma_pagamento": "TEXT NOT NULL DEFAULT ''",
                      "incluir_calculos": "INTEGER NOT NULL DEFAULT 1"},
     "fixas_mes": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''"},
-    "fixas_descontos": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''"},
+    # transacao_id: o subdesconto é uma cobrança própria, muitas vezes em
+    # outro cartão que a conta-pai. Sem o vínculo dele, ele herdava o "já
+    # lançado" do pai -- e um pai sem termo (que nunca casa) deixava todos os
+    # subdescontos eternamente como previsto, somando na fatura que já os
+    # continha.
+    "fixas_descontos": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''",
+                        "transacao_id": "TEXT"},
 }
 
 # As tags mudaram de nome para bater com o dashboard manual.
@@ -230,18 +236,111 @@ def _candidatas_do_mes(conn: sqlite3.Connection, mes_ref: str) -> list[sqlite3.R
 
     Só DEBIT e só incluída: uma transferência própria ou um estorno nunca é o
     pagamento de uma conta fixa.
+
+    O mês é a COMPETÊNCIA, não a data da transação -- mesma convenção do resto
+    do projeto (ver "Mês do cartão é o mês em que a fatura vence" no README).
+    Para conta corrente as duas são iguais; no cartão, não: o seguro comprado
+    em 12/08 entra na fatura de setembro, e é em setembro que ele é pago.
+
+    Usar a data aqui criava um descasamento com o total da fatura, que sempre
+    foi por competência: a conta casava em agosto (data) e era descontada da
+    fatura de agosto, que não a continha; e em setembro -- a fatura que de
+    fato a continha -- ela aparecia como "ainda não lançada" e era somada de
+    novo. Ou seja, contava duas vezes.
+
+    Só contas ativas, como no resto do projeto (ver _onde em
+    pluggy_extrato.py): uma reconexão cria uma conta nova para o mesmo cartão
+    e a antiga fica com as transações duplicadas. Sem este filtro o vínculo
+    podia casar com a duplicata da conta substituída -- e como a competência
+    da fatura dela é calculada a partir do último lançamento que ela tem, o
+    mês saía deslocado.
     """
+    ativas = sorted(px.contas_ativas(conn))
+    marcadores = ", ".join("?" for _ in ativas) or "NULL"
     return conn.execute(
-        """
+        f"""
         SELECT e.transacao_id, e.descricao, e.data, e.conta_id, e.status,
                e.categoria_original, e.parcela_numero, e.parcela_total,
                e.categoria_id, e.origem_categorizacao, ABS(e.valor) AS valor
         FROM extrato_efetivo_cache e
-        WHERE e.mes_ref = ? AND e.tipo = 'DEBIT' AND e.incluida = 1
+        WHERE e.competencia_fatura = ? AND e.tipo = 'DEBIT' AND e.incluida = 1
+          AND e.conta_id IN ({marcadores})
         ORDER BY e.data
         """,
-        (mes_ref,),
+        (mes_ref, *ativas),
     ).fetchall()
+
+
+def _projecoes_do_mes(mes_ref: str) -> dict[str, list[dict[str, Any]]]:
+    """Parcelas de cartão que a fatura do mês vai cobrar, por banco.
+
+    Existe só para o mês corrente e os futuros -- em mês passado a fatura já
+    fechou e o que vale são as transações reais. Fora dessa janela devolve
+    vazio sem custo, porque cartoes_payload não é barato.
+    """
+    if mes_ref < datetime.now().strftime("%Y-%m"):
+        return {}
+    try:
+        payload = px.cartoes_payload(int(mes_ref[:4]), "fatura")
+    except Exception:
+        return {}
+    numero_mes = int(mes_ref[5:7])
+    por_banco: dict[str, list[dict[str, Any]]] = {}
+    for cartao in payload["cartoes"]:
+        nome = str(cartao["nome"]).upper()
+        banco = ("itau" if "ITA" in nome else "nubank" if "NUBANK" in nome
+                 else "inter" if "INTER" in nome else "")
+        if not banco:
+            continue
+        for item in payload["itens"].get(cartao["id"], []):
+            if item["mes"] == numero_mes:
+                por_banco.setdefault(banco, []).append(item)
+    return por_banco
+
+
+def _casar_projecao(termo: str, projecoes: dict[str, list[dict[str, Any]]],
+                    usadas: set[int]) -> dict[str, Any] | None:
+    """A parcela projetada que este termo identifica, se houver.
+
+    Serve para não contar o mesmo gasto duas vezes num mês futuro: a fatura
+    projetada JÁ inclui a parcela, e a conta fixa somaria em cima dela. É o
+    mesmo papel que a transação vinculada faz no mês fechado -- só que aqui a
+    "transação" ainda não existe, então quem identifica é o termo.
+
+    Só contas fixas entram nisso. Subdesconto tem descrição livre ("GYMPASS"),
+    não uma regra de casamento -- forçar match ali seria adivinhação.
+    """
+    if not termo:
+        return None
+    for banco, itens in projecoes.items():
+        for item in itens:
+            if id(item) in usadas:
+                continue
+            if termo in cam.normalizar(item["descricao"]):
+                usadas.add(id(item))
+                return {
+                    "banco": banco,
+                    "descricao": item["descricao"],
+                    "valor": round(float(item["valor"]), 2),
+                    "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
+                }
+    return None
+
+
+def _termo_de_regra(termo: str) -> str:
+    """Termo normalizado, sem o contador de parcela.
+
+    Vários lojistas colocam a parcela dentro da descrição ("GRUPO CASAS
+    BAHIAR01/05"), e quem cadastra a conta fixa copia a descrição inteira --
+    incluindo o contador. Aí a regra casa só com a primeira parcela e a conta
+    aparece como não paga de lá em diante.
+
+    Tirar o contador do TERMO basta: a descrição continua com o dela, e
+    "grupo casas bahiar" é substring de "grupo casas bahiar02/05". Termo sem
+    contador não muda de comportamento.
+    """
+    return re.sub(r"\s+", " ",
+                  re.sub(r"\d+\s*/\s*\d+", " ", cam.normalizar(termo))).strip()
 
 
 def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
@@ -263,7 +362,7 @@ def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
 
     pares = []
     for fixa in fixas:
-        termo = cam.normalizar(fixa["termo"])
+        termo = _termo_de_regra(fixa["termo"])
         if not termo:
             continue
         previsto = float(fixa["valor_previsto"] or 0)
@@ -337,28 +436,63 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             for l in conn.execute("SELECT * FROM fixas_mes WHERE mes_ref = ?", (mes_ref,))
         }
 
-        descontos: dict[str, list[dict]] = {}
         bancos_por_conta = _bancos_por_conta(conn)
-        for l in conn.execute(
-            "SELECT * FROM fixas_descontos WHERE mes_ref = ? ORDER BY descricao", (mes_ref,)
-        ):
+        linhas_desconto = conn.execute(
+            "SELECT * FROM fixas_descontos WHERE mes_ref = ? ORDER BY descricao",
+            (mes_ref,),
+        ).fetchall()
+
+        candidatas = _candidatas_do_mes(conn, mes_ref)
+        por_id = {t["transacao_id"]: t for t in candidatas}
+
+        # Carregados aqui, antes dos descontos, porque o detalhe da transação
+        # vinculada a um subdesconto também precisa deles.
+        formas = _formas(conn)
+        apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
+        categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
+
+        descontos: dict[str, list[dict]] = {}
+        for l in linhas_desconto:
             forma = _normalizar_forma(
                 l["forma_pagamento"] or
                 (FORMA_REEMBOLSO if l["reembolso"] else FORMA_PIX),
                 bancos_por_conta,
             )
+            tx_desc = por_id.get(l["transacao_id"]) if l["transacao_id"] else None
             descontos.setdefault(l["fixa_id"], []).append({
                 "id": l["id"],
                 "descricao": l["descricao"],
                 "valor": float(l["valor"] or 0),
                 "forma": forma,
                 "reembolso": forma == FORMA_REEMBOLSO,
+                # Vínculo próprio: é o que diz se ESTA cobrança já está na
+                # fatura. Herdar do pai errava sempre que o pai não casava.
+                "transacaoId": l["transacao_id"] or "",
+                "transacao": _detalhe_transacao(tx_desc, apelidos, categorias)
+                             if tx_desc is not None else None,
+                # Vinculado mas fora do mês: mantém o id sem fingir que achou.
+                "vinculoPerdido": bool(l["transacao_id"]) and tx_desc is None,
+                "projecao": None,   # preenchido depois, fora do "with"
             })
 
-        candidatas = _candidatas_do_mes(conn, mes_ref)
-        por_id = {t["transacao_id"]: t for t in candidatas}
+        # Vínculo que este subdesconto teve em MESES ANTERIORES. Serve para
+        # reconhecer a parcela projetada do mês corrente: a projeção carrega o
+        # id da compra que a originou, então "mesma compra" é comparação de
+        # id, não adivinhação por descrição.
+        vinculo_anterior: dict[tuple[str, str], str] = {}
+        for l in conn.execute(
+            "SELECT fixa_id, descricao, transacao_id, mes_ref FROM fixas_descontos "
+            "WHERE transacao_id IS NOT NULL AND mes_ref < ? ORDER BY mes_ref",
+            (mes_ref,),
+        ):
+            vinculo_anterior[(l["fixa_id"], cam.normalizar(l["descricao"]))] = l["transacao_id"]
 
+        # Transação usada por um subdesconto sai do páreo das contas fixas:
+        # senão a mesma cobrança pagaria a conta e o desconto dela.
         vinculos_manuais = {l["transacao_id"] for l in do_mes.values() if l["transacao_id"]}
+        vinculos_manuais |= {
+            l["transacao_id"] for l in linhas_desconto if l["transacao_id"]
+        }
         # Só as que ainda não têm vínculo manual entram na regra CONTÉM.
         sem_vinculo = [
             f for f in fixas
@@ -366,9 +500,59 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         ]
         automaticos = _casar(sem_vinculo, candidatas, vinculos_manuais)
 
-        formas = _formas(conn)
-        apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
-        categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
+    # Fora do "with": não usa o banco, e cartoes_payload abre a conexão dele.
+    # Só o que não casou com transação real disputa a projeção.
+    projecoes = _projecoes_do_mes(mes_ref)
+    projecao_usada: set[int] = set()
+    projecao_por_fixa: dict[str, dict[str, Any]] = {}
+    if projecoes:
+        for f in fixas:
+            linha = do_mes.get(f["id"])
+            tem_tx = bool(
+                (linha and linha["transacao_id"] and por_id.get(linha["transacao_id"]))
+                or automaticos.get(f["id"])
+            )
+            if tem_tx:
+                continue
+            achado = _casar_projecao(
+                _termo_de_regra(f["termo"]), projecoes, projecao_usada)
+            if achado:
+                projecao_por_fixa[f["id"]] = achado
+
+        # Subdesconto não tem termo (a descrição é rótulo livre), então o que
+        # o identifica é a COMPRA a que ele foi vinculado antes: se a parcela
+        # projetada deste mês veio da mesma compra, é o mesmo dinheiro.
+        #
+        # Compara compraId, não transacaoBaseId: o "base" é a última parcela
+        # cobrada e muda todo mês, então o casamento duraria um mês só. A
+        # identidade da compra não muda -- ver chave_compra em pluggy_extrato.
+        por_compra = {
+            item["compraId"]: (banco, item)
+            for banco, itens in projecoes.items() for item in itens
+        }
+        if por_compra:
+            with _abrir() as conn2:
+                for fixa_id, lista in descontos.items():
+                    for desconto in lista:
+                        if desconto["transacao"] or desconto["forma"] == FORMA_REEMBOLSO:
+                            continue
+                        tx_antiga = vinculo_anterior.get(
+                            (fixa_id, cam.normalizar(desconto["descricao"])))
+                        if not tx_antiga:
+                            continue
+                        compra = px.compra_da_transacao(conn2, tx_antiga)
+                        achado = por_compra.get(
+                            "|".join(str(p) for p in compra)) if compra else None
+                        if not achado or id(achado[1]) in projecao_usada:
+                            continue
+                        banco, item = achado
+                        projecao_usada.add(id(item))
+                        desconto["projecao"] = {
+                            "banco": banco,
+                            "descricao": item["descricao"],
+                            "valor": round(float(item["valor"]), 2),
+                            "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
+                        }
 
     itens = []
     for f in fixas:
@@ -443,6 +627,9 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
 
             "transacao": _detalhe_transacao(tx, apelidos, categorias) if tx is not None else None,
             "origemTransacao": origem_tx,
+            # Preenchido quando a fatura projetada do mês já inclui esta
+            # cobrança: a tela desconta em vez de somar como previsto.
+            "projecao": projecao_por_fixa.get(f["id"]),
 
             "descontos": desc,
             "totalDescontos": total_desc,
@@ -485,25 +672,37 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
     }
 
 
-def candidatas_payload(mes_ref: str, busca: str = "") -> dict[str, Any]:
+def candidatas_payload(mes_ref: str, busca: str = "",
+                       como_regra: bool = False) -> dict[str, Any]:
     """Transações do mês que casam com um termo.
 
     Serve tanto para o seletor de vínculo manual quanto para a prévia da regra
     CONTÉM na hora de cadastrar — é a mesma pergunta ("o que este texto pega?")
     feita em dois lugares.
+
+    como_regra=True aplica a mesma normalização do motor de vínculo (ignora o
+    contador de parcela). Só a prévia usa isso: no seletor a busca é texto
+    livre, e ali procurar "3/12" tem que procurar "3/12" mesmo.
     """
     with _abrir() as conn:
         linhas = _candidatas_do_mes(conn, mes_ref)
+        # Inclui os subdescontos: uma transação já usada por um deles não
+        # deve parecer livre para virar vínculo de outra coisa.
         usadas = {
             l["transacao_id"]
             for l in conn.execute(
                 "SELECT transacao_id FROM fixas_mes "
                 "WHERE mes_ref = ? AND transacao_id IS NOT NULL", (mes_ref,))
+        } | {
+            l["transacao_id"]
+            for l in conn.execute(
+                "SELECT transacao_id FROM fixas_descontos "
+                "WHERE mes_ref = ? AND transacao_id IS NOT NULL", (mes_ref,))
         }
         apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
 
-    termo = cam.normalizar(busca)
+    termo = _termo_de_regra(busca) if como_regra else cam.normalizar(busca)
     encontradas = [t for t in linhas if not termo or termo in cam.normalizar(t["descricao"])]
     return {
         "total": len(encontradas),
@@ -608,6 +807,92 @@ def atualizar(fixa_id: str, dados: dict) -> dict:
         )
         conn.commit()
     return {"ok": True, "id": fixa_id}
+
+
+def historico_payload(fixa_id: str) -> dict[str, Any]:
+    """Todas as datas em que esta conta fixa foi paga, mês a mês.
+
+    Sai da transação vinculada, não de um registro de "pago" -- é a data em
+    que o dinheiro saiu de verdade. Usa a mesma regra do mês (vínculo manual
+    tem prioridade, senão a regra CONTÉM), aplicada mês por mês, para o
+    histórico não contar uma coisa e a tela do mês outra.
+
+    Mês em que a conta existia e nada casou aparece como não pago: a lacuna
+    é informação (esqueci de pagar? o termo parou de casar?), esconder ela
+    faria o histórico parecer completo quando não está.
+    """
+    with _abrir() as conn:
+        fixa = conn.execute(
+            "SELECT * FROM fixas_contas WHERE id = ?", (fixa_id,)
+        ).fetchone()
+        if not fixa:
+            raise ValueError(f"Conta fixa {fixa_id} não encontrada.")
+
+        # Janela: da vigência da conta, limitada ao que existe de extrato.
+        limites = conn.execute(
+            "SELECT MIN(mes_ref) AS min_mes, MAX(mes_ref) AS max_mes "
+            "FROM extrato_efetivo_cache"
+        ).fetchone()
+        primeiro = max(fixa["desde"] or "", limites["min_mes"] or "")
+        ultimo = min(fixa["ate"] or "9999-12", limites["max_mes"] or "0000-01")
+        if not primeiro or primeiro > ultimo:
+            return {"fixa": {"id": fixa["id"], "nome": fixa["nome"],
+                             "termo": fixa["termo"],
+                             "valorPrevisto": float(fixa["valor_previsto"] or 0)},
+                    "pagamentos": [], "resumo": {}}
+
+        manuais = {
+            l["mes_ref"]: l["transacao_id"]
+            for l in conn.execute(
+                "SELECT mes_ref, transacao_id FROM fixas_mes "
+                "WHERE fixa_id = ? AND transacao_id IS NOT NULL", (fixa_id,))
+        }
+        apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
+        categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
+
+        pagamentos = []
+        for mes_ref in _meses_entre(primeiro, ultimo):
+            candidatas = _candidatas_do_mes(conn, mes_ref)
+            por_id = {t["transacao_id"]: t for t in candidatas}
+            tx = por_id.get(manuais.get(mes_ref, ""))
+            origem = "manual" if tx is not None else None
+            if tx is None:
+                # Mesma regra do mês, mas só para esta conta: as outras contas
+                # não disputam aqui porque a pergunta é "o que casou com ESTA".
+                achado = _casar([fixa], candidatas, set())
+                tx = achado.get(fixa_id)
+                origem = "regra" if tx is not None else None
+            pagamentos.append({
+                "mes": mes_ref,
+                "pago": tx is not None,
+                "origem": origem,
+                "transacao": _detalhe_transacao(tx, apelidos, categorias)
+                             if tx is not None else None,
+            })
+
+    pagos = [p for p in pagamentos if p["pago"]]
+    valores = [p["transacao"]["valor"] for p in pagos]
+    return {
+        "fixa": {"id": fixa["id"], "nome": fixa["nome"], "termo": fixa["termo"],
+                 "valorPrevisto": float(fixa["valor_previsto"] or 0)},
+        "pagamentos": list(reversed(pagamentos)),   # mais recente primeiro
+        "resumo": {
+            "meses": len(pagamentos),
+            "pagos": len(pagos),
+            "semPagamento": len(pagamentos) - len(pagos),
+            "total": round(sum(valores), 2),
+            "media": round(sum(valores) / len(valores), 2) if valores else 0.0,
+            "menor": round(min(valores), 2) if valores else 0.0,
+            "maior": round(max(valores), 2) if valores else 0.0,
+        },
+    }
+
+
+def _meses_entre(de: str, ate: str) -> list[str]:
+    serial_de = int(de[:4]) * 12 + int(de[5:7]) - 1
+    serial_ate = int(ate[:4]) * 12 + int(ate[5:7]) - 1
+    return [f"{s // 12:04d}-{s % 12 + 1:02d}"
+            for s in range(serial_de, serial_ate + 1)]
 
 
 def remover(fixa_id: str) -> dict:
@@ -785,19 +1070,32 @@ def salvar_desconto(mes_ref: str, fixa_id: str, dados: dict) -> dict:
     forma = str(dados.get("forma") or FORMA_PIX).strip() or FORMA_PIX
     if forma not in (FORMA_PIX, FORMA_REEMBOLSO, *FORMAS_BANCOS):
         raise ValueError("Forma de pagamento inválida.")
+    # A transação vinculada é o que diz se esta cobrança já entrou na fatura.
+    # "" limpa o vínculo; ausente preserva o que já estava (a tela manda só o
+    # que o usuário mexeu).
+    tem_tx = "transacaoId" in dados
+    transacao_id = str(dados.get("transacaoId") or "").strip() or None
+
     desconto_id = str(dados.get("id") or "") or f"dc_{uuid.uuid4().hex[:10]}"
     with _abrir() as conn:
         if not conn.execute("SELECT 1 FROM fixas_contas WHERE id = ?",
                             (fixa_id,)).fetchone():
             raise ValueError("Conta fixa não encontrada.")
+        if transacao_id and not conn.execute(
+            "SELECT 1 FROM pluggy_transacoes WHERE transacao_id = ?",
+            (transacao_id,),
+        ).fetchone():
+            raise ValueError("Transação não encontrada.")
         conn.execute(
             "INSERT INTO fixas_descontos (id, fixa_id, mes_ref, descricao, valor, "
-            "  reembolso, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "  reembolso, forma_pagamento, transacao_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET descricao = excluded.descricao, "
             "  valor = excluded.valor, reembolso = excluded.reembolso, "
-            "  forma_pagamento = excluded.forma_pagamento",
+            "  forma_pagamento = excluded.forma_pagamento"
+            + (", transacao_id = excluded.transacao_id" if tem_tx else ""),
             (desconto_id, fixa_id, mes_ref, descricao, valor,
-             1 if forma == FORMA_REEMBOLSO else 0, forma),
+             1 if forma == FORMA_REEMBOLSO else 0, forma, transacao_id),
         )
         conn.commit()
     return {"ok": True, "id": desconto_id}

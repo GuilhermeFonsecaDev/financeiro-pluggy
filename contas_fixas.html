@@ -78,7 +78,39 @@ select.forma.herdada { color: var(--text-2); }
 .subs-tit small { color: var(--text-3); font-size: 11.5px; }
 .subs-tit-acoes { display: flex; align-items: center; gap: 6px; }
 .subs-corpo { width: min(920px, calc(100% - 32px)); margin: 14px auto 16px; }
-.sub-cabec, .sub-linha { display: grid; grid-template-columns: minmax(220px, 1fr) 140px 180px 30px; gap: 12px; align-items: center; }
+.sub-cabec, .sub-linha { display: grid; grid-template-columns: minmax(220px, 1fr) 130px 168px 44px 30px; gap: 10px; align-items: center; }
+.sub-cabec > span:nth-child(4) { text-align: center; }
+/* Vínculo do subdesconto: só um ícone. O estado (tem/não tem/perdido) vive na
+   cor, e o detalhe da transação no title -- a linha já é apertada. */
+.sub-vinc { width: 30px; height: 30px; min-height: 0; padding: 0; margin: 0 auto;
+  justify-content: center; border-radius: 999px; font-size: 13px; line-height: 1;
+  color: var(--text-3); border-style: dashed; background: transparent; }
+.sub-vinc:hover { color: var(--text); border-style: solid; border-color: var(--azul); }
+.sub-vinc.ok { border-style: solid; border-color: rgba(63,191,127,.45);
+  background: rgba(63,191,127,.12); color: var(--verde); }
+.sub-vinc.perdido { border-style: solid; border-color: rgba(240,106,106,.45);
+  background: rgba(240,106,106,.1); color: var(--vermelho); }
+.sub-vinc-na { text-align: center; color: var(--text-3); font-size: 12px; }
+
+/* Seletor de transação dentro do modal */
+.vinc-busca { width: 100%; margin-bottom: 10px; }
+.vinc-lista { display: grid; gap: 3px; max-height: 56vh; overflow-y: auto; }
+.vinc-item { display: flex; gap: 10px; align-items: center; width: 100%;
+  padding: 9px 11px; border-radius: var(--raio); border-color: transparent;
+  background: var(--surface-2); font-size: 13px; text-align: left; }
+.vinc-item:hover { background: var(--surface-3); border-color: var(--line-forte); }
+.vinc-item .desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vinc-item .meta { color: var(--text-3); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vinc-item.usada { opacity: .5; }
+.vinc-item.limpar { background: transparent; border: 1px dashed var(--line-forte); color: var(--text-2); }
+/* Parcela projetada: informativa, não selecionável — não existe transação. */
+.vinc-item.projetada { background: transparent; border: 1px dashed var(--line);
+  color: var(--text-3); cursor: default; }
+.vinc-item.projetada:hover { background: transparent; border-color: var(--line); }
+.vinc-secao { margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--line);
+  color: var(--text-2); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.vinc-secao small { display: block; margin-top: 4px; color: var(--text-3);
+  font-size: 11.5px; font-weight: 450; text-transform: none; letter-spacing: 0; }
 .sub-cabec { padding: 0 10px 7px; color: var(--text-3); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
 .sub-cabec span:nth-child(2), .sub-cabec span:nth-child(3) { text-align: center; }
 .sub-linhas { display: grid; gap: 7px; }
@@ -124,6 +156,12 @@ select.forma.herdada { color: var(--text-2); }
 .fatura-barra { height: 6px; margin: 2px 0 12px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .fatura-barra span { display: block; height: 100%; border-radius: inherit; }
 .fatura-linhas { display: flex; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 11.5px; }
+/* Selo que avisa que o valor exibido inclui cobrança ainda não lançada.
+   Clicável: abre a lista do que foi somado. */
+.selo-previsto { min-height: 0; padding: 2px 8px; border-radius: 999px;
+  border-color: rgba(232, 149, 74, .4); background: rgba(232, 149, 74, .12);
+  color: var(--laranja); font-size: 11px; font-weight: 650; cursor: pointer; }
+.selo-previsto:hover { background: rgba(232, 149, 74, .22); border-color: var(--laranja); }
 .fatura-dica { margin-top: 10px; color: var(--text-3); font-size: 10.5px; }
 .fatura-card.total .fatura-dica { color: rgba(255,255,255,.70); }
 .card-modal-resumo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
@@ -198,6 +236,47 @@ select.forma.herdada { color: var(--text-2); }
   .faturas-grid { grid-template-columns: 1fr; }
   .composicao-lista { grid-template-columns: 1fr; }
 }
+
+/* -------------------------------------------- histórico de pagamentos */
+.hist-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.hist-resumo div { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2); }
+.hist-resumo span { display: block; color: var(--text-3); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.hist-resumo strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.hist-lista { display: grid; gap: 5px; max-height: 52vh; overflow-y: auto; }
+.hist-linha { display: grid; grid-template-columns: 104px 78px minmax(0,1fr) 116px; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--raio); background: var(--surface-2); font-size: 13px; }
+.hist-linha.vazio { background: transparent; border: 1px dashed var(--line); color: var(--text-3); }
+.hist-mes { font-weight: 650; }
+.hist-data { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hist-desc { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-valor { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hist-tag { margin-left: 6px; padding: 1px 5px; border-radius: 999px; background: var(--surface-3); color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+@media (max-width: 620px) { .hist-linha { grid-template-columns: 1fr 1fr; } .hist-desc { display: none; } }
+
+/* ------------------------------------------- sugestões de recorrentes */
+.badge-sug { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--azul); color: #fff; font-size: 11px; font-weight: 700; }
+
+.sug-lista { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.sug-titulo { margin: 2px 0 6px; color: var(--text-2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.sug-termo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); }
+.sug-termo.errado { color: var(--vermelho); text-decoration: line-through; }
+.sug-item { display: grid; grid-template-columns: minmax(0,1fr) 120px 156px; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2); }
+.sug-item.saindo { opacity: .35; }
+.sug-nome { font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
+.sug-meta { margin-top: 3px; color: var(--text-3); font-size: 11.5px; }
+.sug-meta b { color: var(--text-2); font-weight: 600; }
+.sug-valor { text-align: right; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sug-valor small { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; font-weight: 500; }
+.sug-acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.sug-acoes button { min-height: 30px; padding: 5px 10px; font-size: 12.5px; }
+
+/* Confiança = regularidade do intervalo. "baixa" não é erro: é aviso de que
+   o gasto aparece com falhas, e aí só a pessoa sabe se é assinatura mesmo. */
+.sug-conf { display: inline-flex; padding: 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.sug-conf.alta { background: rgba(63,191,127,.14); color: var(--verde); }
+.sug-conf.media { background: rgba(232,149,74,.14); color: var(--laranja); }
+.sug-conf.baixa { background: rgba(240,106,106,.13); color: var(--vermelho); }
+@media (max-width: 680px) { .sug-item { grid-template-columns: 1fr; } .sug-valor, .sug-acoes { text-align: left; justify-content: flex-start; } }
 </style>
 </head>
 <body>
@@ -210,6 +289,9 @@ select.forma.herdada { color: var(--text-2); }
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
+      <button id="btnSugerir" title="Procura gastos que se repetem todo mês e ainda não estão cadastrados">
+        ⌕ Sugerir recorrentes<span id="badgeSugestoes" class="badge-sug" hidden></span>
+      </button>
       <button class="primario" id="btnNova">+ Nova conta</button>
     </div>
   </header>
@@ -267,9 +349,19 @@ select.forma.herdada { color: var(--text-2); }
   <div class="pop-lista" id="popMesLista"></div>
 </div>
 
-<div class="pop" id="popVinculo" hidden style="min-width:360px">
-  <div class="pop-busca"><input type="search" id="vincBusca" placeholder="Buscar transação do mês…" autocomplete="off" /></div>
-  <div class="pop-lista" id="vincLista"></div>
+<!-- Seletor de transação. Modal centralizado, não popover: a lista é longa e
+     ancorada ao botão ela estourava a tela nas linhas de baixo. -->
+<div class="modal-fundo" id="modalVinculo" hidden>
+  <div class="modal" style="width:min(620px,100%)">
+    <div class="modal-tit">
+      <h2 id="vincTitulo">Vincular transação</h2>
+      <button class="icone" id="vincFechar" aria-label="Fechar">×</button>
+    </div>
+    <p class="muted" id="vincSub" style="margin:0 0 10px;font-size:12.5px"></p>
+    <input class="vinc-busca" type="search" id="vincBusca"
+           placeholder="Buscar transação do mês…" autocomplete="off" />
+    <div class="vinc-lista" id="vincLista"></div>
+  </div>
 </div>
 
 <div class="pop" id="popAcoes" hidden style="min-width:220px">
@@ -381,6 +473,50 @@ select.forma.herdada { color: var(--text-2); }
   </div>
 </div>
 
+<!-- Todas as datas em que a conta foi paga, mês a mês, saindo da transação
+     vinculada. Mês sem pagamento aparece: a lacuna é informação. -->
+<div class="modal-fundo" id="modalHist" hidden>
+  <div class="modal" style="width:min(700px,100%)">
+    <div class="modal-tit">
+      <h2 id="histTitulo">Datas de pagamento</h2>
+      <button class="icone" id="histFechar" aria-label="Fechar">×</button>
+    </div>
+    <div class="hist-resumo" id="histResumo"></div>
+    <div class="hist-lista" id="histLista"></div>
+    <p class="estado erro" id="histErro" style="margin:8px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="histCancelar">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gastos que se repetem todo mês e ainda não são conta fixa. Só sugere:
+     quem decide se aquilo é conta fixa é a pessoa, um a um. -->
+<div class="modal-fundo" id="modalSug" hidden>
+  <div class="modal" style="width:min(820px,100%)">
+    <div class="modal-tit">
+      <h2>Gastos recorrentes detectados</h2>
+      <button class="icone" id="sFechar" aria-label="Fechar">×</button>
+    </div>
+    <p class="muted" id="sResumo" style="margin:0 0 12px;font-size:12.5px"></p>
+    <div id="sQuebradosBloco" hidden>
+      <div class="sug-titulo">Cadastradas, mas o vínculo não está pegando</div>
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        A conta existe e o gasto acontece, mas o termo de vínculo não casa com a
+        transação — então ela fica pendente todo mês. Corrigir o termo resolve.
+      </p>
+      <div id="sQuebrados" class="sug-lista" style="margin-bottom:14px"></div>
+      <div class="sug-titulo">Não cadastradas</div>
+    </div>
+    <div id="sLista" class="sug-lista"></div>
+    <p class="muted" id="sDescartados" style="margin:12px 0 0;font-size:12px"></p>
+    <p class="estado erro" id="sErro" style="margin:8px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="sCancelar">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 <script>
 const el = id => document.getElementById(id);
@@ -390,7 +526,7 @@ const el = id => document.getElementById(id);
 let MES = "", MESES_DISP = [], ITENS = [], CATEGORIAS = [], CONTAS = [];
 let TAGS = [], FORMAS = [], ABERTAS = new Set();
 let FATURAS = null, EXTRATO_MES = null;
-let editando = null, fixaDoMenu = null, fixaDoVinculo = null;
+let editando = null, fixaDoMenu = null, fixaDoVinculo = null, descontoDoVinculo = null;
 let fixaDoDesconto = null, fixaDaTag = null;
 let vincTimer = null, previaTimer = null;
 
@@ -445,6 +581,27 @@ function opcoesForma(selecionada, { auto = "", reembolso = false } = {}) {
   return opcoes.join("");
 }
 
+/** Botão de vínculo do subdesconto.
+ *
+ *  Reembolso não é cobrança: ele abate o cartão do pai, então não tem
+ *  transação própria para vincular e o botão nem aparece. */
+function vinculoDesconto(d) {
+  if (d.forma === REEMBOLSO) return '<span class="sub-vinc-na">—</span>';
+  if (d.vinculoPerdido) {
+    return `<button class="sub-vinc perdido" data-vinc-desc="${esc(d.id)}"
+              aria-label="Vínculo perdido — clique para revincular"
+              title="A transação vinculada não está neste mês — clique para revincular">!</button>`;
+  }
+  if (d.transacao) {
+    return `<button class="sub-vinc ok" data-vinc-desc="${esc(d.id)}"
+              aria-label="Vinculada em ${esc(fmtData(d.transacao.data))} — clique para trocar"
+              title="${esc(fmtData(d.transacao.data))} · ${esc(d.transacao.descricao)} · ${fmtBRL(d.transacao.valor)} — clique para trocar">✓</button>`;
+  }
+  return `<button class="sub-vinc" data-vinc-desc="${esc(d.id)}"
+            aria-label="Vincular transação"
+            title="Sem transação vinculada: entra como previsto na fatura. Clique para vincular.">🔗</button>`;
+}
+
 function subdescontos(i) {
   const linhas = i.descontos.map(d => `
     <div class="sub-linha">
@@ -459,6 +616,7 @@ function subdescontos(i) {
               aria-label="Forma de pagamento do subdesconto">
         ${opcoesForma(d.forma, { reembolso: true })}
       </select>
+      ${vinculoDesconto(d)}
       <button class="icone sub-remover" data-tira-desc="${esc(d.id)}" title="Remover subdesconto"
               aria-label="Remover ${esc(d.descricao)}">×</button>
     </div>`).join("");
@@ -476,7 +634,7 @@ function subdescontos(i) {
         </div>
       </div>
       <div class="subs-corpo">
-        <div class="sub-cabec"><span>Item</span><span>Valor</span><span>Pagamento</span><span></span></div>
+        <div class="sub-cabec"><span>Item</span><span>Valor</span><span>Pagamento</span><span>Transação</span><span></span></div>
         <div class="sub-linhas">${linhas || '<div class="sub-vazio">Nenhum subdesconto neste mês.</div>'}</div>
         <div class="sub-resumo">
           <div><span>Descontos</span><strong>R$ ${fmtValor(i.totalDescontos)}</strong></div>
@@ -550,23 +708,59 @@ function bancoDoCartao(cartao) {
 function calcularCards() {
   const indice = Math.max(0, Number(MES.slice(5, 7)) - 1);
   const detalhes = { itau: [], nubank: [], inter: [] };
-  const adicionar = (banco, titulo, valor, tipo) => {
+  // "lancado" = a transação já apareceu na fatura. Isso decide tudo aqui:
+  // só o que ESTÁ na fatura pode ser descontado dela, e só o que ainda NÃO
+  // está pode ser somado como previsão.
+  const adicionar = (banco, titulo, valor, tipo, lancado) => {
     if (!detalhes[banco] || !(valor > 0)) return;
-    detalhes[banco].push({ titulo, valor: Number(valor), tipo });
+    detalhes[banco].push({ titulo, valor: Number(valor), tipo, lancado });
   };
 
   // Mesmas regras do dashboard manual: a parcela líquida da conta sai do
   // cartão principal; reembolso também sai dele; subdesconto comum sai do
   // banco escolhido no próprio subdesconto. PIX nunca altera fatura.
   for (const item of ITENS) {
-    if (item.incluidaCalculos && detalhes[item.forma]) {
-      adicionar(item.forma, item.nome, item.liquido, "Conta fixa paga no cartão");
+    // Onde esta conta bate na fatura, e se já está dentro dela.
+    //
+    // "Já está" tem duas formas: transação vinculada (mês fechado) ou, num mês
+    // futuro, o termo casando com uma parcela que a fatura PROJETADA já
+    // inclui. Nos dois casos a cobrança está dentro do valor do cartão e
+    // somá-la como previsto contaria o mesmo gasto duas vezes.
+    //
+    // A projeção também manda no cartão: uma conta pode estar cadastrada como
+    // PIX e a cobrança cair no Itaú -- é a projeção que sabe a verdade.
+    const p = item.projecao;
+    const naFatura = !!item.transacao || !!p;
+    const banco = (!item.transacao && p) ? p.banco : item.forma;
+    const rotulo = (!item.transacao && p) ? "Já na fatura projetada"
+                                          : "Conta fixa paga no cartão";
+    if (item.incluidaCalculos && detalhes[banco]) {
+      adicionar(banco, item.nome, item.liquido, rotulo, naFatura);
     }
     for (const d of item.incluidaCalculos ? item.descontos : []) {
+      // O subdesconto tem vínculo próprio: é uma cobrança separada, muitas
+      // vezes em outro cartão. Herdar o "lançado" do pai deixava todo
+      // subdesconto de uma conta sem termo eternamente como previsto.
+      //
+      // A exceção é o subdesconto no MESMO cartão que a parcela projetada do
+      // pai: aí ele não é cobrança separada, é uma fatia da mesma. O pai
+      // contribui com o líquido e os subdescontos com o resto (81 + 75 = os
+      // 156 da parcela), então marcar só o pai deixava a outra fatia sendo
+      // somada como previsto em cima de uma cobrança que já está na fatura.
+      // Duas formas de o subdesconto já estar na fatura projetada: ser fatia
+      // da mesma cobrança do pai, ou ter projeção própria (a parcela deste
+      // mês veio da compra a que ele foi vinculado num mês anterior).
+      const fatiaDaProjecao = (!item.transacao && p && d.forma === p.banco) || !!d.projecao;
+      const dLancado = !!d.transacao || fatiaDaProjecao;
+      const bancoDesconto = (!d.transacao && d.projecao) ? d.projecao.banco : d.forma;
       if (d.forma === REEMBOLSO) {
-        if (detalhes[item.forma]) adicionar(item.forma, `${item.nome} › ${d.descricao}`, d.valor, "Reembolso");
-      } else if (detalhes[d.forma]) {
-        adicionar(d.forma, `${item.nome} › ${d.descricao}`, d.valor, "Subdesconto pago no cartão");
+        // Reembolso abate o cartão da conta-pai, então acompanha o pai --
+        // inclusive quando quem definiu o cartão foi a projeção.
+        if (detalhes[banco]) adicionar(banco, `${item.nome} › ${d.descricao}`, d.valor, "Reembolso", naFatura);
+      } else if (detalhes[bancoDesconto]) {
+        adicionar(bancoDesconto, `${item.nome} › ${d.descricao}`, d.valor,
+          fatiaDaProjecao ? "Já na fatura projetada" : "Subdesconto pago no cartão",
+          dLancado);
       }
     }
   }
@@ -575,12 +769,19 @@ function calcularCards() {
   const cartoes = Object.keys(nomes).map(banco => {
     const cartao = FATURAS?.cartoes?.find(c => bancoDoCartao(c) === banco);
     const original = cartao ? Number(FATURAS.valores?.[cartao.id]?.[indice] || 0) : 0;
-    const jaContabilizado = detalhes[banco].reduce((s, d) => s + d.valor, 0);
-    // Seguro Carro já é somado como conta fixa em outro lugar da tela; se a
-    // fatura também mostrasse ele inteiro, o mês contaria esse gasto duas
-    // vezes. "Descontada" é o que sobra na fatura sem o que já é contado ali.
+    // Só o que já está na fatura pode ser descontado dela. Descontar uma
+    // conta que ainda não foi cobrada fazia o valor desaparecer do mês: ele
+    // entrava como conta fixa e saía daqui, sem nunca estar na fatura.
+    const jaContabilizado = detalhes[banco]
+      .filter(d => d.lancado).reduce((s, d) => s + d.valor, 0);
+    // O que vai ser cobrado mas ainda não foi. Some na fatura exibida para o
+    // cartão mostrar a previsão do mês; quando a cobrança cair, o item passa
+    // a ser "lancado" e migra sozinho para jaContabilizado.
+    const aLancar = detalhes[banco]
+      .filter(d => !d.lancado).reduce((s, d) => s + d.valor, 0);
     const descontado = Math.max(0, original - jaContabilizado);
-    return { banco, nome: nomes[banco], original, jaContabilizado, descontado,
+    return { banco, nome: nomes[banco], original, jaContabilizado, aLancar,
+             previsto: original + aLancar, descontado,
              detalhes: detalhes[banco] };
   });
   const totalFaturas = cartoes.reduce((s, c) => s + c.original, 0);
@@ -589,38 +790,53 @@ function calcularCards() {
   return {
     cartoes,
     totalFaturas,
+    // Soma do que os cards exibem (fatura + previsto ainda não cobrado).
+    // Serve para o "Total bruto dos cartões" bater com as colunas.
+    totalPrevisto: cartoes.reduce((s, c) => s + c.previsto, 0),
     // O vínculo não muda a fatura. Ele só impede que a mesma despesa seja
     // somada novamente quando faturas e contas fixas formam o total do mês.
+    // Só desconta o que JÁ está na fatura: subtrair uma conta ainda não
+    // cobrada apagava o valor do mês (ele entrava como conta fixa e saía
+    // aqui, sem nunca ter entrado na fatura).
     totalMes: totalFaturas + totalContasFixas - totalJaNosCartoes,
   };
 }
 
 function renderCardsFaturas() {
   const t = calcularCards();
-  const maximo = Math.max(1, ...t.cartoes.map(c => Math.max(0, c.original)));
+  // A barra compara previsto: senão o cartão que ainda vai receber cobrança
+  // apareceria menor que outro já fechado, invertendo a leitura.
+  const maximo = Math.max(1, ...t.cartoes.map(c => Math.max(0, c.previsto)));
   const cores = { itau: "#f28c35", nubank: "#9b74e8", inter: "#4a95ea" };
   el("metricas").innerHTML = `
     <article class="fatura-card total">
       <div class="fatura-topo"><span class="fatura-rotulo">Total do mês</span><span class="fatura-banco">sem duplicar</span></div>
       <div class="fatura-valor">${fmtBRL(t.totalMes)}</div>
     </article>` + t.cartoes.map(c => {
-      const pct = Math.min(100, Math.max(0, c.original) / maximo * 100);
+      const pct = Math.min(100, Math.max(0, c.previsto) / maximo * 100);
+      // Conta fixa deste cartão que ainda não foi cobrada entra no valor
+      // exibido para o card virar previsão do mês. O selo "≈ previsto" abre a
+      // lista do que foi somado -- o número não pode parecer vindo do banco.
+      const selo = c.aLancar > 0
+        ? `<button class="fatura-banco selo-previsto" data-previstos="${c.banco}"
+                   title="Ver o que está somado como previsto">≈ previsto</button>`
+        : `<span class="fatura-banco">Open Finance</span>`;
       return `
         <article class="fatura-card banco" data-card-banco="${c.banco}"
                  tabindex="0" role="link" aria-label="Abrir transações de ${c.nome} em ${esc(labelMes(MES))}">
-          <div class="fatura-topo"><span class="fatura-rotulo">${c.nome}</span><span class="fatura-banco">Open Finance</span></div>
-          <div class="fatura-valor">${fmtBRL(c.original)}</div>
+          <div class="fatura-topo"><span class="fatura-rotulo">${c.nome}</span>${selo}</div>
+          <div class="fatura-valor">${fmtBRL(c.previsto)}</div>
           <div class="fatura-barra"><span style="width:${pct.toFixed(1)}%;background:${cores[c.banco]}"></span></div>
           <div class="fatura-linhas"><span>Fatura de ${esc(labelMes(MES))}</span><span>${c.detalhes.length} ${c.detalhes.length === 1 ? "vínculo reconhecido" : "vínculos reconhecidos"}</span></div>
           <div class="fatura-dica">Clique para abrir as transações deste cartão.</div>
         </article>`;
     }).join("");
 
-  el("vinculosTotal").textContent = fmtBRL(t.totalFaturas);
+  el("vinculosTotal").textContent = fmtBRL(t.totalPrevisto);
   el("vinculosLista").innerHTML = t.cartoes.map(c => {
     const vinculado = c.detalhes.reduce((s, d) => s + d.valor, 0);
     return `<div class="vinculos-linha">
-      <strong>${esc(c.nome)}</strong><strong>${fmtBRL(c.original)}</strong>
+      <strong>${esc(c.nome)}</strong><strong>${fmtBRL(c.previsto)}</strong>
       <span>${c.detalhes.length} ${c.detalhes.length === 1 ? "item" : "itens"}</span>
       <span class="muted">${fmtBRL(vinculado)}</span>
       <button class="sutil" data-lista-banco="${c.banco}">Ver lista</button>
@@ -684,6 +900,31 @@ function abrirDetalhesCard(banco) {
     <div class="card-modal-linha">
       <span>${esc(d.titulo)}</span><span>${esc(d.tipo)}</span><strong>${fmtBRL(d.valor)}</strong>
     </div>`).join("") : '<div class="card-modal-vazio">Nenhum item vinculado a esta fatura.</div>';
+  el("modalCard").hidden = false;
+}
+
+/** O que está somado como previsto neste cartão: contas fixas (e subdescontos)
+ *  que vão ser cobradas mas ainda não apareceram na fatura. Reusa o modal dos
+ *  itens vinculados -- é a mesma pergunta ("o que compõe este número?"). */
+function abrirPrevistos(banco) {
+  const card = calcularCards().cartoes.find(c => c.banco === banco);
+  if (!card) return;
+  const previstos = card.detalhes.filter(d => !d.lancado);
+  el("cardModalTitulo").textContent = `Previsto ainda não lançado · ${card.nome}`;
+  el("cardModalSub").textContent =
+    "Cobranças que vão cair nesta fatura. Assim que o banco lançar, cada uma sai "
+    + "desta lista e passa a contar pela transação real.";
+  el("cardModalResumo").innerHTML = `
+    <div><span>Fatura hoje</span><strong>${fmtBRL(card.original)}</strong></div>
+    <div><span>Previsto a lançar</span><strong>${fmtBRL(card.aLancar)}</strong></div>
+    <div><span>Total do card</span><strong>${fmtBRL(card.previsto)}</strong></div>
+    <div><span>Mês</span><strong>${esc(labelMes(MES))}</strong></div>`;
+  el("cardModalLista").innerHTML = previstos.length
+    ? previstos.map(d => `
+        <div class="card-modal-linha">
+          <span>${esc(d.titulo)}</span><span>${esc(d.tipo)}</span><strong>${fmtBRL(d.valor)}</strong>
+        </div>`).join("")
+    : '<div class="card-modal-vazio">Nada previsto — a fatura já tem tudo lançado.</div>';
   el("modalCard").hidden = false;
 }
 
@@ -788,7 +1029,9 @@ async function atualizarPrevia() {
     return;
   }
   try {
-    const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(termo)}`);
+    // regra=1: a prévia tem de mostrar o que a REGRA pega, não uma busca
+    // literal — a regra ignora o contador de parcela do termo.
+    const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(termo)}&regra=1`);
     if (!p.total) {
       caixa.innerHTML = `<span class="muted">Nada em ${esc(labelMes(MES))} contém “${esc(termo)}”. A conta fica sem vínculo até aparecer.</span>`;
       return;
@@ -800,6 +1043,214 @@ async function atualizarPrevia() {
   } catch (e) {
     caixa.innerHTML = `<span class="estado erro">${esc(e.message)}</span>`;
   }
+}
+
+/* ------------------------------------------ histórico de pagamentos */
+
+async function abrirHistorico(item) {
+  el("histTitulo").textContent = `Datas de pagamento · ${item.nome}`;
+  el("histResumo").innerHTML = "";
+  el("histErro").textContent = "";
+  el("histLista").innerHTML = `<div class="muted" style="padding:20px;text-align:center">Carregando…</div>`;
+  el("modalHist").hidden = false;
+  try {
+    const p = await pedir(`/fixas/${encodeURIComponent(item.id)}/historico`);
+    renderHistorico(p);
+  } catch (e) {
+    el("histLista").innerHTML = "";
+    el("histErro").textContent = e.message;
+  }
+}
+
+function renderHistorico(p) {
+  const r = p.resumo || {};
+  const card = (rotulo, valor) => `<div><span>${rotulo}</span><strong>${valor}</strong></div>`;
+  el("histResumo").innerHTML = r.pagos
+    ? card("Pagamentos", r.pagos)
+      + card("Média", fmtBRL(r.media))
+      + card("Total", fmtBRL(r.total))
+      + (r.menor !== r.maior
+          ? card("Faixa", `${fmtBRL(r.menor)} – ${fmtBRL(r.maior)}`)
+          : card("Valor", "sempre igual"))
+      + (r.semPagamento ? card("Sem pagamento", `${r.semPagamento} ${r.semPagamento === 1 ? "mês" : "meses"}`) : "")
+    : "";
+
+  el("histLista").innerHTML = p.pagamentos.length
+    ? p.pagamentos.map(x => {
+        if (!x.pago) {
+          return `<div class="hist-linha vazio">
+            <span class="hist-mes">${esc(labelMes(x.mes))}</span>
+            <span class="hist-data">—</span>
+            <span class="hist-desc">nenhuma transação casou com o termo</span>
+            <span class="hist-valor">—</span>
+          </div>`;
+        }
+        const t = x.transacao;
+        return `<div class="hist-linha">
+          <span class="hist-mes">${esc(labelMes(x.mes))}</span>
+          <span class="hist-data">${esc(fmtData(t.data))}</span>
+          <span class="hist-desc" title="${esc(t.descricao)}">${esc(t.descricao)}${x.origem === "manual" ? '<span class="hist-tag">manual</span>' : ""}</span>
+          <span class="hist-valor">${fmtBRL(t.valor)}</span>
+        </div>`;
+      }).join("")
+    : `<div class="muted" style="padding:20px;text-align:center">
+         Sem histórico — a conta não tem vigência dentro do extrato importado.
+       </div>`;
+}
+
+/* ------------------------------------------ sugestões de recorrentes */
+
+let SUGESTOES = [], QUEBRADOS = [];
+
+const MOTIVO_DESCARTE = {
+  frequente: "acontecem várias vezes no mesmo mês (gasto frequente, não conta fixa)",
+  parcelamento: "são parcelamento no cartão (a projeção de fatura já conta)",
+  valorInstavel: "têm valor instável demais para virar previsto",
+  encerrado: "pararam de acontecer",
+  jaCadastrado: "já estão cadastrados",
+  ignorado: "você já recusou antes",
+};
+
+function itemSugestao(s) {
+  const cat = s.categoria
+    ? `${s.categoria.emoji || ""} ${esc(s.categoria.nome)}`.trim() : "sem categoria";
+  const meses = `<b>${s.meses}</b> dos últimos ${s.mesesJanela} meses`;
+  const dia = s.diaTipico ? ` · dia <b>${s.diaTipico}</b>` : "";
+  const variacao = s.variacao >= 1 ? ` · varia <b>${s.variacao}%</b>` : " · valor fixo";
+  return `
+    <div class="sug-item" data-chave="${esc(s.chave)}">
+      <div>
+        <div class="sug-nome">
+          ${esc(s.descricao)}
+          <span class="sug-conf ${s.confianca}" title="Regularidade ${s.regularidade} — quanto mais perto de 1, mais mensal">${s.confianca}</span>
+        </div>
+        <div class="sug-meta">${meses}${dia}${variacao} · ${cat} · ${s.noCartao ? "cartão" : "conta"}</div>
+      </div>
+      <div class="sug-valor">
+        ${fmtBRL(s.valorMedio)}
+        <small>último ${fmtBRL(s.valorUltimo)}</small>
+      </div>
+      <div class="sug-acoes">
+        <button class="primario" data-sug-add="${esc(s.chave)}">Adicionar</button>
+        <button class="sutil" data-sug-nao="${esc(s.chave)}" title="Não mostrar de novo">Não</button>
+      </div>
+    </div>`;
+}
+
+/** Conta fixa que existe, o gasto acontece, mas o termo não casa com ele.
+ *  A ação aqui é corrigir o termo -- cadastrar de novo criaria duplicata. */
+function itemQuebrado(s) {
+  return `
+    <div class="sug-item" data-chave="${esc(s.chave)}">
+      <div>
+        <div class="sug-nome">${esc(s.fixaNome)}</div>
+        <div class="sug-meta">
+          termo <span class="sug-termo errado">${esc(s.termoAtual || "(vazio)")}</span>
+          → <span class="sug-termo">${esc(s.termoSugerido)}</span>
+          · <b>${s.meses}</b> dos últimos ${s.mesesJanela} meses
+        </div>
+      </div>
+      <div class="sug-valor">
+        ${fmtBRL(s.valorMedio)}
+        <small>previsto ${fmtBRL(s.valorCadastrado)}</small>
+      </div>
+      <div class="sug-acoes">
+        <button class="primario" data-sug-corrigir="${esc(s.chave)}">Corrigir termo</button>
+      </div>
+    </div>`;
+}
+
+function renderSugestoes(p) {
+  SUGESTOES = p.sugestoes || [];
+  QUEBRADOS = p.vinculosQuebrados || [];
+  const badge = el("badgeSugestoes");
+  const total = SUGESTOES.length + QUEBRADOS.length;
+  badge.hidden = !total;
+  badge.textContent = total;
+
+  el("sQuebradosBloco").hidden = !QUEBRADOS.length;
+  el("sQuebrados").innerHTML = QUEBRADOS.map(itemQuebrado).join("");
+
+  el("sResumo").innerHTML = SUGESTOES.length
+    ? `Gastos que se repetem entre ${labelMes(p.janela.de)} e ${labelMes(p.janela.ate)} e ainda não são conta fixa —
+       somam <b>${fmtBRL(p.totalMensal)}/mês</b>. Adicionar já preenche valor, categoria, dia e o termo de vínculo.`
+    : `Nenhum gasto recorrente novo entre ${labelMes(p.janela.de)} e ${labelMes(p.janela.ate)}.`;
+
+  el("sLista").innerHTML = SUGESTOES.length
+    ? SUGESTOES.map(itemSugestao).join("")
+    : `<div class="muted" style="padding:20px;text-align:center">Tudo que se repete já está cadastrado ou foi recusado.</div>`;
+
+  // O que foi descartado entra no rodapé: sem isso o painel diria "achei 7" e
+  // não haveria como saber que outros foram vistos e recusados por um motivo.
+  const partes = Object.entries(p.descartados || {})
+    .filter(([, n]) => n)
+    .map(([k, n]) => `<b>${n}</b> ${MOTIVO_DESCARTE[k] || k}`);
+  el("sDescartados").innerHTML = partes.length
+    ? `Também encontrei, e deixei de fora: ${partes.join("; ")}.` : "";
+}
+
+async function carregarSugestoes({ abrir = false } = {}) {
+  try {
+    const p = await pedir("/fixas/recorrentes");
+    renderSugestoes(p);
+    if (abrir) el("modalSug").hidden = false;
+  } catch (e) {
+    if (abrir) {
+      el("modalSug").hidden = false;
+      el("sErro").textContent = e.message;
+    }
+  }
+}
+
+/** Adiciona a sugestão como conta fixa, já preenchida. Cai no mesmo POST que
+ *  o cadastro manual usa -- nada de caminho paralelo de gravação. */
+async function adicionarSugestao(chave) {
+  const s = SUGESTOES.find(x => x.chave === chave);
+  if (!s) return;
+  const linha = el("sLista").querySelector(`[data-chave="${CSS.escape(chave)}"]`);
+  linha?.classList.add("saindo");
+  el("sErro").textContent = "";
+  try {
+    await pedir("/fixas", "POST", {
+      // Nome vem da descrição do banco, que é o que a pessoa reconhece; ela
+      // pode renomear depois no cadastro.
+      nome: s.descricao.trim().slice(0, 60),
+      tag: TAGS[0],
+      valorPrevisto: s.valorMedio,
+      diaVencimento: s.diaTipico || null,
+      categoriaId: s.categoria?.id || null,
+      termo: s.termoSugerido,
+      incluirCalculos: true,
+    });
+    // Recarrega as duas coisas: a conta nova entra na lista e sai das
+    // sugestões (o backend passa a considerá-la "jaCadastrado").
+    await Promise.all([carregar(), carregarSugestoes()]);
+  } catch (e) {
+    linha?.classList.remove("saindo");
+    el("sErro").textContent = e.message;
+  }
+}
+
+async function corrigirTermoSugerido(chave) {
+  const s = QUEBRADOS.find(x => x.chave === chave);
+  if (!s) return;
+  el("sQuebrados").querySelector(`[data-chave="${CSS.escape(chave)}"]`)?.classList.add("saindo");
+  el("sErro").textContent = "";
+  try {
+    renderSugestoes(await pedir("/fixas/recorrentes/corrigir-termo", "POST",
+      { fixaId: s.fixaId, termo: s.termoSugerido }));
+    // O vínculo passa a casar: a linha do mês precisa refletir isso.
+    await carregar();
+  } catch (e) { el("sErro").textContent = e.message; }
+}
+
+async function recusarSugestao(chave) {
+  const s = SUGESTOES.find(x => x.chave === chave);
+  el("sLista").querySelector(`[data-chave="${CSS.escape(chave)}"]`)?.classList.add("saindo");
+  try {
+    renderSugestoes(await pedir("/fixas/recorrentes/ignorar", "POST",
+      { chave, descricao: s?.descricao || "" }));
+  } catch (e) { el("sErro").textContent = e.message; }
 }
 
 async function salvar() {
@@ -879,21 +1330,118 @@ async function salvarDesconto() {
 
 async function renderVinculo(busca = "") {
   const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(busca)}`);
+  // Subdesconto não tem regra CONTÉM: para ele o vazio é "desvincular".
+  const limpar = descontoDoVinculo
+    ? "Remover vínculo (volta a contar como previsto)"
+    : "Voltar ao vínculo pela regra";
   el("vincLista").innerHTML = p.transacoes.length
-    ? `<button class="pop-item" data-tx="">Voltar ao vínculo pela regra</button><div class="pop-sep"></div>` +
+    ? `<button class="vinc-item limpar" data-tx="">${limpar}</button>` +
       p.transacoes.map(t => `
-        <button class="pop-item" data-tx="${esc(t.id)}" ${t.jaVinculada ? 'style="opacity:.5"' : ""}>
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(t.descricao)}</span>
-          <span class="muted" style="font-size:11.5px">${fmtData(t.data)} · ${fmtBRL(t.valor)}</span>
+        <button class="vinc-item ${t.jaVinculada ? "usada" : ""}" data-tx="${esc(t.id)}"
+                ${t.jaVinculada ? 'title="Já vinculada a outro item deste mês"' : ""}>
+          <span class="desc">${esc(t.descricao)}</span>
+          <span class="meta">${fmtData(t.data)} · ${fmtBRL(t.valor)}</span>
         </button>`).join("")
-    : `<div class="pop-vazio">Nenhuma saída no mês com esse texto.</div>`;
+    // Duas causas bem diferentes de lista vazia, e dizer "com esse texto"
+    // sem texto nenhum escondia a que importa: a fatura do mês ainda não
+    // fechou, então não existe transação para vincular.
+    : busca
+      ? `<div class="pop-vazio">Nenhuma saída em ${esc(labelMes(MES))} contém “${esc(busca)}”.</div>`
+      : `<div class="pop-vazio">Nenhuma saída lançada em ${esc(labelMes(MES))} ainda.</div>`;
+
+  el("vincLista").innerHTML += projecoesDoMes(busca);
 }
 
-function abrirVinculo(fixaId, ancora) {
-  fixaDoVinculo = fixaId;
+/** Parcelas que a fatura do mês vai cobrar, listadas para consulta.
+ *
+ *  Não são selecionáveis: não existem como transação no banco, então não há
+ *  o que vincular. Aparecem porque respondem a pergunta que a lista vazia
+ *  deixava no ar — "e o que vai cair neste mês, então?" — e porque a conta
+ *  cujo termo casa com uma delas já está reconciliada sozinha. */
+function projecoesDoMes(busca = "") {
+  if (!FATURAS?.itens) return "";
+  const indice = Number(MES.slice(5, 7));
+  const termo = busca.trim().toLowerCase();
+  const linhas = [];
+  for (const cartao of FATURAS.cartoes || []) {
+    for (const it of FATURAS.itens[cartao.id] || []) {
+      if (it.mes !== indice) continue;
+      if (termo && !it.descricao.toLowerCase().includes(termo)) continue;
+      linhas.push(`
+        <div class="vinc-item projetada" title="Parcela projetada: ainda não foi cobrada, então não há transação para vincular">
+          <span class="desc">${esc(it.descricao)}</span>
+          <span class="meta">${esc(cartao.nome)} · parcela ${it.parcelaAtual}/${it.parcelaTotal} · ${fmtBRL(it.valor)}</span>
+        </div>`);
+    }
+  }
+  if (!linhas.length) return "";
+  return `
+    <div class="vinc-secao">
+      Já previsto na fatura de ${esc(labelMes(MES))} — ${linhas.length}
+      ${linhas.length === 1 ? "parcela" : "parcelas"}
+      <small>não dá para vincular: a cobrança ainda não aconteceu. Uma conta fixa
+      cujo termo casa com uma destas já é descontada da fatura automaticamente.</small>
+    </div>${linhas.join("")}`;
+}
+
+/** Abre o seletor. Modal, não popover: o popover era fechado no mesmo clique
+ *  pelo listener global do app.js (que só poupa elementos com
+ *  data-abre-pop), e ancorado numa linha do fim da lista ele saía da tela. */
+function abrirSeletorVinculo(titulo, subtitulo) {
+  el("vincTitulo").textContent = titulo;
+  el("vincSub").textContent = subtitulo;
   el("vincBusca").value = "";
+  el("vincLista").innerHTML = "";
+  el("modalVinculo").hidden = false;
   renderVinculo("");
-  abrirPop(el("popVinculo"), ancora);
+  el("vincBusca").focus();
+}
+
+function fecharSeletorVinculo() {
+  el("modalVinculo").hidden = true;
+  fixaDoVinculo = null;
+  descontoDoVinculo = null;
+}
+
+function abrirVinculo(fixaId) {
+  const item = acharItem(fixaId);
+  fixaDoVinculo = fixaId;
+  descontoDoVinculo = null;
+  abrirSeletorVinculo(
+    `Vincular transação · ${item?.nome || ""}`,
+    `Qual saída de ${labelMes(MES)} pagou esta conta? O vínculo manual tem`
+    + ` prioridade sobre a regra do cadastro.`);
+}
+
+/** Mesmo seletor, mirando um subdesconto em vez da conta. Os dois alvos são
+ *  exclusivos: quem estiver preenchido decide onde grava. */
+function abrirVinculoDesconto(descontoId) {
+  const achado = ITENS.flatMap(i => i.descontos.map(d => [i, d]))
+                      .find(([, d]) => d.id === descontoId);
+  if (!achado) return;
+  descontoDoVinculo = { fixaId: achado[0].id, desconto: achado[1] };
+  fixaDoVinculo = null;
+  abrirSeletorVinculo(
+    `Vincular transação · ${achado[0].nome} › ${achado[1].descricao}`,
+    `Sem vínculo, esta cobrança de ${fmtBRL(achado[1].valor)} entra como`
+    + ` previsto na fatura. Vinculada, passa a contar pela transação real.`);
+}
+
+async function vincularDesconto(transacaoId) {
+  if (!descontoDoVinculo) return;
+  const { fixaId, desconto } = descontoDoVinculo;
+  try {
+    await pedir(`/fixas/${encodeURIComponent(fixaId)}/descontos?month=${encodeURIComponent(MES)}`,
+      "POST", {
+        id: desconto.id,
+        descricao: desconto.descricao,
+        valor: desconto.valor,
+        forma: desconto.forma,
+        transacaoId: transacaoId || "",
+      });
+    ABERTAS.add(fixaId);
+    await carregar();
+  } catch (e) { setEstado("estado", e.message, "erro"); }
 }
 
 /** Painel de detalhe: tudo que foi tirado da linha mora aqui.
@@ -957,9 +1505,11 @@ function abrirDetalhe(item) {
                   : `<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join("");
 
   el("txAcoes").innerHTML = `
+    <button class="sutil" id="txHistorico">🗓 Datas de pagamento</button>
     <button class="sutil" id="txTrocar">${t ? "Trocar transação vinculada" : "Vincular transação"}</button>
     ${item.origemTransacao === "manual" || item.origemTransacao === "manual_perdido"
       ? '<button class="sutil" id="txSoltar">Desfazer vínculo manual</button>' : ""}`;
+  el("txHistorico").addEventListener("click", () => abrirHistorico(item));
   el("txTrocar").addEventListener("click", trocarVinculo);
   el("txSoltar")?.addEventListener("click", soltarVinculo);
 
@@ -970,9 +1520,8 @@ function fecharDetalhe() { el("modalTx").hidden = true; }
 
 function trocarVinculo() {
   const id = fixaDoVinculo;
-  const alvo = document.querySelector(`[data-detalhe="${CSS.escape(id)}"]`);
   fecharDetalhe();
-  if (alvo) abrirVinculo(id, alvo);
+  abrirVinculo(id);
 }
 
 async function soltarVinculo() {
@@ -987,11 +1536,26 @@ async function soltarVinculo() {
 
 function ligar() {
   el("metricas").addEventListener("click", e => {
+    // O selo fica dentro do card, que é clicável: sem sair antes, clicar no
+    // selo abriria as transações em vez da lista de previstos.
+    const selo = e.target.closest("[data-previstos]");
+    if (selo) {
+      e.stopPropagation();
+      abrirPrevistos(selo.dataset.previstos);
+      return;
+    }
     const card = e.target.closest("[data-card-banco]");
     if (card) abrirTransacoesDoBanco(card.dataset.cardBanco);
   });
   el("metricas").addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
+    const selo = e.target.closest("[data-previstos]");
+    if (selo) {
+      e.preventDefault();
+      e.stopPropagation();
+      abrirPrevistos(selo.dataset.previstos);
+      return;
+    }
     const card = e.target.closest("[data-card-banco]");
     if (!card) return;
     e.preventDefault();
@@ -1028,6 +1592,29 @@ function ligar() {
     } catch (e) { el("modalErro").textContent = e.message; }
   });
 
+  // Histórico de pagamentos
+  const fecharHist = () => { el("modalHist").hidden = true; };
+  el("histFechar").addEventListener("click", fecharHist);
+  el("histCancelar").addEventListener("click", fecharHist);
+  el("modalHist").addEventListener("click", e => { if (e.target.id === "modalHist") fecharHist(); });
+
+  // Sugestões de recorrentes
+  const fecharSug = () => { el("modalSug").hidden = true; el("sErro").textContent = ""; };
+  el("btnSugerir").addEventListener("click", () => carregarSugestoes({ abrir: true }));
+  el("sFechar").addEventListener("click", fecharSug);
+  el("sCancelar").addEventListener("click", fecharSug);
+  el("modalSug").addEventListener("click", e => { if (e.target.id === "modalSug") fecharSug(); });
+  el("sLista").addEventListener("click", e => {
+    const add = e.target.closest("[data-sug-add]");
+    if (add) return adicionarSugestao(add.dataset.sugAdd);
+    const nao = e.target.closest("[data-sug-nao]");
+    if (nao) return recusarSugestao(nao.dataset.sugNao);
+  });
+  el("sQuebrados").addEventListener("click", e => {
+    const corrigir = e.target.closest("[data-sug-corrigir]");
+    if (corrigir) return corrigirTermoSugerido(corrigir.dataset.sugCorrigir);
+  });
+
   el("dFechar").addEventListener("click", () => { el("modalDesc").hidden = true; });
   el("dCancelar").addEventListener("click", () => { el("modalDesc").hidden = true; });
   el("dSalvar").addEventListener("click", salvarDesconto);
@@ -1044,6 +1631,7 @@ function ligar() {
     if (!el("modalDesc").hidden) el("modalDesc").hidden = true;
     if (!el("modalTx").hidden) fecharDetalhe();
     if (!el("modalCard").hidden) fecharDetalhesCard();
+    if (!el("modalVinculo").hidden) fecharSeletorVinculo();
   });
 
   el("btnMes").addEventListener("click", e => {
@@ -1065,11 +1653,23 @@ function ligar() {
     vincTimer = setTimeout(() => renderVinculo(v), 250);
   });
 
+  el("vincFechar").addEventListener("click", fecharSeletorVinculo);
+  el("modalVinculo").addEventListener("click", e => {
+    if (e.target.id === "modalVinculo") fecharSeletorVinculo();
+  });
   el("vincLista").addEventListener("click", async e => {
     const b = e.target.closest("[data-tx]");
-    if (!b || !fixaDoVinculo) return;
-    fecharPop();
-    await ajustarMes(fixaDoVinculo, { transacaoId: b.dataset.tx || null });
+    if (!b) return;
+    // Guarda o alvo antes de fechar: fecharSeletorVinculo() limpa os dois.
+    const desconto = descontoDoVinculo, fixa = fixaDoVinculo;
+    fecharSeletorVinculo();
+    if (desconto) {
+      descontoDoVinculo = desconto;
+      await vincularDesconto(b.dataset.tx);
+      descontoDoVinculo = null;
+      return;
+    }
+    if (fixa) await ajustarMes(fixa, { transacaoId: b.dataset.tx || null });
   });
 
   el("popTagLista").addEventListener("click", async e => {
@@ -1140,6 +1740,9 @@ function ligar() {
 
     const novo = e.target.closest("[data-novo-desc]");
     if (novo) return abrirDesconto(novo.dataset.novoDesc);
+
+    const vincDesc = e.target.closest("[data-vinc-desc]");
+    if (vincDesc) return abrirVinculoDesconto(vincDesc.dataset.vincDesc, vincDesc);
 
     const s = e.target.closest("[data-pago]");
     if (s) {
@@ -1225,6 +1828,9 @@ function ligar() {
     MESES_DISP = completarAno(f.meses, MES);
     salvarUltimoMes(MES);
     await carregar();
+    // Depois da tela pintada: serve só para o badge do botão saber o número.
+    // Falhar aqui não pode atrapalhar a tela, então não entra no try acima.
+    carregarSugestoes();
   } catch (e) {
     setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
     el("vazio").innerHTML =

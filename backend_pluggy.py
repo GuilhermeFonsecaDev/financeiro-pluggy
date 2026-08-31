@@ -41,6 +41,8 @@ from extrato_camada import (
 import emprestimos
 import fixas
 import investimentos
+import recorrentes
+import visao_geral
 from pluggy_conexoes import criar_connect_token
 from pluggy_extrato import (
     cartoes_payload,
@@ -223,13 +225,22 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(extrato_payload(filtros))
             elif path == "/api/extrato":
                 self.send_json(extrato_payload(self.query_extrato(query)))
+            elif path == "/api/visao-geral":
+                self.send_json(visao_geral.payload(
+                    (query.get("periodo", ["mes"])[0] or "mes").strip(),
+                    (query.get("ref", [""])[0] or "").strip()))
             elif path == "/api/emprestimos":
                 self.send_json(emprestimos.payload())
+            elif path == "/api/fixas/recorrentes":
+                self.send_json(recorrentes.sugestoes_payload())
+            elif re.fullmatch(r"/api/fixas/[\w-]+/historico", path):
+                self.send_json(fixas.historico_payload(path.split("/")[3]))
             elif path == "/api/fixas":
                 self.send_json(fixas.mes_payload(self.query_mes(query)))
             elif path == "/api/fixas/candidatas":
                 self.send_json(fixas.candidatas_payload(
-                    self.query_mes(query), (query.get("q", [""])[0] or "").strip()))
+                    self.query_mes(query), (query.get("q", [""])[0] or "").strip(),
+                    como_regra=(query.get("regra", [""])[0] or "") == "1"))
             elif path == "/api/pluggy-status":
                 self.send_json(pluggy_status())
             elif path == "/api/investimentos":
@@ -285,6 +296,23 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             transacao = re.fullmatch(r"/api/extrato/transacoes/([\w-]+)", parsed.path)
             if transacao:
                 self.send_json(ajustar_transacao(transacao.group(1), payload))
+                return
+
+            # Recorrentes detectados: recusar tira a sugestão do painel para
+            # sempre; reconsiderar traz de volta.
+            if parsed.path == "/api/fixas/recorrentes/ignorar":
+                self.send_json(recorrentes.ignorar(
+                    str(payload.get("chave") or ""),
+                    str(payload.get("descricao") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/reconsiderar":
+                self.send_json(recorrentes.reconsiderar(
+                    str(payload.get("chave") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/corrigir-termo":
+                self.send_json(recorrentes.corrigir_termo(
+                    str(payload.get("fixaId") or ""),
+                    str(payload.get("termo") or "")))
                 return
 
             # Contas fixas: /api/fixas/{id} edita o cadastro,

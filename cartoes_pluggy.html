@@ -26,6 +26,94 @@
 .ident-rot { color:var(--text-3); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
 @media (max-width:700px) { .ident-linha { grid-template-columns:34px minmax(0,1fr) 44px; } .ident-campo-tag { grid-column:2; grid-row:2; } .ident-linha input[type="color"] { grid-column:3; grid-row:1; } .ident-origem { grid-column:2/-1; } }
 
+/* --- seletor de ano ----------------------------------------------------- */
+/* Antes eram duas setas e um input numerico com spinner: tres alvos para uma
+   escolha entre tres valores que a propria API informa. */
+.anos { display:flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.anos button {
+  border:0; background:transparent; color:var(--text-3); font:inherit; font-size:13px;
+  padding:5px 13px; border-radius:7px; cursor:pointer; font-variant-numeric:tabular-nums;
+}
+.anos button:hover { color:var(--text); }
+.anos button[aria-pressed="true"] { background:var(--surface-3); color:var(--text); font-weight:600; }
+
+/* --- carteira: um cartao por coluna da grade ---------------------------- */
+.carteira { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); margin-bottom:14px; }
+.cartao-tile {
+  position:relative; overflow:hidden; display:flex; flex-direction:column; gap:11px;
+  padding:15px 16px; border:1px solid var(--line); border-radius:var(--raio-g);
+  background:var(--surface); min-height:142px;
+}
+.cartao-tile::after { content:""; position:absolute; inset:0 auto 0 0; width:3px; background:var(--faixa,var(--azul)); }
+.cartao-tile .cab { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.cartao-tile .nome { font-size:14px; font-weight:700; letter-spacing:.01em; }
+.cartao-tile .instrumento { font-size:11px; color:var(--text-3); font-variant-numeric:tabular-nums; margin-top:2px; }
+.cartao-tile .corpo { margin-top:auto; }
+.cartao-tile .rot { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); }
+.cartao-tile .fatura { font-size:21px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin-top:2px; }
+.trilha { height:4px; border-radius:3px; background:var(--surface-3); overflow:hidden; margin-top:10px; }
+.trilha i { display:block; height:100%; border-radius:3px; background:var(--faixa,var(--azul)); }
+.cartao-tile .limite { font-size:11px; color:var(--text-3); margin-top:5px; }
+
+.selo-origem {
+  flex:0 0 auto; font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 6px; border-radius:5px; border:1px solid currentColor; white-space:nowrap;
+}
+.selo-origem.oficial, .selo-origem.pagamento { color:var(--verde); }
+.selo-origem.aberta, .selo-origem.aberta_projecao, .selo-origem.mista { color:var(--laranja); }
+.selo-origem.projecao, .selo-origem.vazio, .selo-origem.movimento, .selo-origem.fechada { color:var(--text-3); }
+
+/* --- ano empilhado + composicao ---------------------------------------- */
+.duo { display:grid; gap:14px; grid-template-columns:minmax(0,2fr) minmax(0,1fr); margin:14px 0; align-items:stretch; }
+@media (max-width:1080px) { .duo { grid-template-columns:1fr; } }
+.duo > .painel { display:flex; flex-direction:column; }
+
+/* align-items:stretch, e nao end: a coluna e um <button>, que como item de
+   grade nao estica sozinho -- sem altura definida aqui, a altura em % dos
+   segmentos nao tem referencia e a pilha inteira colapsa para zero. */
+/* flex:1 em vez de altura fixa: o painel estica para acompanhar a Composicao,
+   que e mais alta, e o grafico ocupa essa sobra em vez de deixar um vazio
+   embaixo. min-height garante altura util quando ele e o mais alto dos dois. */
+.ano-empilhado { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:5px; align-items:stretch; flex:1; min-height:168px; margin-top:4px; }
+.mes-col {
+  display:flex; flex-direction:column; justify-content:flex-end; align-items:stretch; gap:4px; min-height:0;
+  border:0; padding:3px 2px 0; background:transparent; border-radius:8px; cursor:pointer; font:inherit;
+}
+.mes-col:hover { background:var(--surface-2); }
+/* Mesmo cinza da linha selecionada na tabela: um mes em foco se marca
+   igual nos dois lugares. */
+.mes-col[aria-pressed="true"] { background:var(--surface-3); }
+/* width:100% explicito porque o <button> nao estica os filhos no eixo
+   transversal: sem isto a pilha tem altura certa e largura zero. */
+/* A pilha e mais estreita que o botao: barra fina, alvo de clique inteiro.
+   width explicito porque o <button> nao estica os filhos no eixo transversal
+   -- sem isto a pilha tem altura certa e largura zero. */
+.mes-col .pilha { display:flex; flex-direction:column; justify-content:flex-end; gap:2px; flex:1; min-height:0; width:54%; margin-inline:auto; }
+.mes-col .seg { border-radius:2px; min-height:2px; }
+.mes-col .seg.futura { opacity:.45; }
+.mes-col .rotm { font-size:10px; color:var(--text-3); letter-spacing:.02em; }
+.mes-col[aria-pressed="true"] .rotm { color:var(--text); font-weight:700; }
+.legenda-ano { display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; flex:0 0 auto; font-size:11.5px; color:var(--text-3); }
+.legenda-ano span { display:inline-flex; align-items:center; gap:6px; }
+.legenda-ano i { width:9px; height:9px; border-radius:2px; display:block; }
+
+.comp-linha { margin-bottom:11px; }
+.comp-linha:last-of-type { margin-bottom:0; }
+.comp-topo { display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:12.5px; }
+.comp-topo b { font-weight:600; }
+.comp-topo span { color:var(--text-3); font-variant-numeric:tabular-nums; font-size:11.5px; }
+.comp-membros { border-top:1px solid var(--line); margin-top:13px; padding-top:11px; }
+.comp-membros .rot { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); margin-bottom:6px; }
+.comp-membros div {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:baseline;
+  padding:6px 0; border-top:1px solid var(--line); font-size:12px;
+}
+.comp-membros div:first-of-type { border-top:0; }
+.comp-membros .qual { color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.comp-membros .quanto { font-weight:600; font-variant-numeric:tabular-nums; }
+.comp-total { display:flex; align-items:baseline; justify-content:space-between; gap:10px; border-top:1px solid var(--line-forte); margin-top:12px; padding-top:11px; }
+.comp-total .valor { font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+
 /* Grade de faturas: 12 meses x cartoes. Primeira coluna fixa ao rolar. */
 table { table-layout: fixed; min-width:var(--largura-cartoes,440px); }
 thead { position:sticky; top:0; z-index:3; }
@@ -35,9 +123,11 @@ th small { display:block; font-size:10px; font-weight:400; text-transform:none; 
 th, td { text-align: right; white-space: nowrap; font-size: 13.5px; padding: 11px 12px; }
 th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; text-align: left; background: var(--surface); }
 th { background: var(--surface-2); }
-tr.total-row td { background: var(--azul-suave); font-weight: 650; }
-tr.total-row td:first-child { background: #1d3450; }
-tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
+/* Linha de total no mesmo cinza da selecao. O que a distingue e o peso da
+   fonte e a borda de cima, nao uma cor propria -- azul aqui competia com o
+   azul da interface e com as cores das tags. */
+tr.total-row td { background: var(--surface-3); font-weight: 650; border-top: 1px solid var(--line-forte); }
+tr.total-row td:first-child { background: var(--surface-3); }
 .card-name { display: flex; align-items: center; gap: 9px; }
 .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; flex: 0 0 auto; background: var(--verde); }
 .valor-cell { display: flex; align-items: center; justify-content: flex-end; }
@@ -47,6 +137,12 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
 .aviso { margin: 0 0 14px; padding: 11px 14px; border: 1px solid rgba(232,149,74,.32); border-radius: var(--raio); background: rgba(232,149,74,.09); color: #f0b980; font-size: 13px; }
 .aviso[hidden] { display: none; }
 .vazio-cell { padding: 26px 14px; color: var(--text-3); }
+
+/* Selecao em cinza, como o resto do projeto marca item ativo. Azul aqui
+   competia com o azul do total e com as cores das tags. */
+tr.mes-sel td { background:var(--surface-3); }
+tr.mes-sel td:first-child { background:var(--surface-3); }
+tbody tr { cursor:pointer; }
 </style>
 </head>
 <body>
@@ -57,9 +153,7 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
       <h1>Cartões Pluggy</h1>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <button id="prevYearBtn" type="button">←</button>
-      <input id="yearInput" class="" type="number" min="2000" max="2100" step="1" />
-      <button id="nextYearBtn" type="button">→</button>
+      <div class="anos" id="anos" role="group" aria-label="Ano"></div>
       <select id="groupSelect" aria-label="Forma de agrupamento">
         <option value="fatura" selected>Agrupar por fatura</option>
         <option value="mes">Agrupar por mês da compra</option>
@@ -68,27 +162,7 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
     </div>
   </header>
 
-  <section class="grid grid-4" style="margin-bottom:14px">
-    <article class="metrica">
-      <span class="rotulo">Total do ano</span>
-      <div id="yearTotal" class="valor">R$ 0,00</div>
-    </article>
-    <article class="metrica">
-      <span class="rotulo">Mês atual</span>
-      <div id="currentMonthTotal" class="valor">R$ 0,00</div>
-      <div class="nota" id="currentMonthLabel">—</div>
-    </article>
-    <article class="metrica">
-      <span class="rotulo">Maior mês</span>
-      <div id="biggestMonthTotal" class="valor">R$ 0,00</div>
-      <div class="nota" id="biggestMonthLabel">—</div>
-    </article>
-    <article class="metrica">
-      <span class="rotulo">Cartão mais caro</span>
-      <div id="biggestCardTotal" class="valor">R$ 0,00</div>
-      <div class="nota" id="biggestCardLabel">—</div>
-    </article>
-  </section>
+  <section class="carteira" id="carteira" aria-label="Cartões e a fatura do mês"></section>
 
   <section class="painel" style="padding:0;overflow:hidden">
     <div class="tabela-wrap grade-cartoes" tabindex="0" aria-label="Faturas dos cartões; deslize para ver todas as colunas">
@@ -98,6 +172,29 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
       </table>
     </div>
   </section>
+
+  <div class="duo">
+    <section class="painel">
+      <div class="painel-tit">
+        <div>
+          <h2>Mês a mês</h2>
+          <div class="sub">clique num mês para ver a composição · translúcido é projeção</div>
+        </div>
+      </div>
+      <div class="ano-empilhado" id="anoEmpilhado"></div>
+      <div class="legenda-ano" id="legendaAno"></div>
+    </section>
+
+    <section class="painel">
+      <div class="painel-tit">
+        <div>
+          <h2>Composição</h2>
+          <div class="sub" id="compSub">—</div>
+        </div>
+      </div>
+      <div id="composicao"></div>
+    </section>
+  </div>
 </main>
 
 <div class="modal-fundo" id="modalCartoes" hidden>
@@ -134,6 +231,8 @@ let dados = null;
 // requisicoes; sem isso a que responder por ultimo vence, e a tela pode acabar
 // mostrando os dados de um ano diferente do que esta no seletor.
 let requisicaoAtual = 0;
+// Mes em foco: manda na composicao e no destaque do grafico e da tabela.
+let mesSelecionado = new Date().getMonth();
 
 const escapeHtml = esc;
 const api = (caminho, metodo, corpo) => pedir(caminho, metodo, corpo);
@@ -151,6 +250,171 @@ function totalCartao(cartaoId) {
   return Array.from({ length: 12 }, (_, i) => valorMes(cartaoId, i)).reduce((a, b) => a + b, 0);
 }
 function totalMes(indice) { return Number(dados?.totalMes?.[indice] || 0); }
+function origemMes(cartaoId, indice) { return String(dados?.origens?.[cartaoId]?.[indice] || "vazio"); }
+
+// Rotulo curto da origem do valor. A origem e a informacao mais rica que a
+// grade tem e que nenhuma tela mostrava: diz se o numero e a fatura oficial,
+// o pagamento que a quitou, uma estimativa do ciclo aberto ou projecao.
+const ROTULO_ORIGEM = {
+  oficial: "Oficial", pagamento: "Paga", confirmada: "Confirmada",
+  aberta: "Aberta", aberta_projecao: "Aberta", projecao: "Projeção",
+  fechada: "Fechada", movimento: "Movimento", mista: "Mista", vazio: "\u2014",
+};
+function rotuloOrigem(origem) { return ROTULO_ORIGEM[origem] || origem; }
+
+// Limite da coluna: quando ela consolida varios cartoes o payload nao traz
+// limite (nao existe limite "da tag"), mas a soma dos membros existe e e o
+// numero que interessa.
+function limiteColuna(cartao) {
+  const membros = cartao.membros || [];
+  const total = Number(cartao.limiteCredito || 0)
+    || membros.reduce((s, m) => s + Number(m.limiteCredito || 0), 0);
+  const disponivel = cartao.limiteCredito != null
+    ? Number(cartao.limiteDisponivel || 0)
+    : membros.reduce((s, m) => s + Number(m.limiteDisponivel || 0), 0);
+  if (!(total > 0)) return null;
+  const usado = Math.max(0, total - disponivel);
+  return { total, usado, pct: Math.min(100, usado / total * 100) };
+}
+
+// Bandeira e quatro ultimos digitos: e como o cartao se identifica quando nao
+// tem tag, e o que distingue os membros de uma tag.
+function identificacao(instrumento) {
+  const marca = String(instrumento.marca || "").toUpperCase();
+  const numero = instrumento.numero || "";
+  const partes = [marca, numero ? "\u00b7\u00b7\u00b7\u00b7 " + numero : ""].filter(Boolean);
+  return partes.join(" ") || nomeInstrumento(instrumento);
+}
+
+function instrumentoDe(cartao) {
+  const membros = cartao.membros || [];
+  if (membros.length > 1) return membros.length + " cartões nesta tag";
+  return identificacao(membros[0] || cartao);
+}
+
+function mesEmFoco() {
+  const agora = new Date();
+  if (selectedYear === agora.getFullYear()) return agora.getMonth();
+  for (let i = 11; i >= 0; i--) if (totalMes(i) > 0) return i;
+  return 0;
+}
+
+function renderCarteira() {
+  const lista = cartoes();
+  const alvo = document.getElementById("carteira");
+  if (!lista.length) { alvo.innerHTML = ""; return; }
+
+  alvo.innerHTML = lista.map(cartao => {
+    const valor = valorMes(cartao.id, mesSelecionado);
+    const origem = origemMes(cartao.id, mesSelecionado);
+    const limite = limiteColuna(cartao);
+    return `
+    <article class="cartao-tile" style="--faixa:${esc(corInstrumento(cartao))}">
+      <div class="cab">
+        <div>
+          <div class="nome">${esc(nomeInstrumento(cartao))}</div>
+          <div class="instrumento">${esc(instrumentoDe(cartao))}</div>
+        </div>
+        <span class="selo-origem ${esc(origem)}">${esc(rotuloOrigem(origem))}</span>
+      </div>
+      <div class="corpo">
+        <div class="rot">Fatura de ${esc(MONTHS[mesSelecionado])}</div>
+        <div class="fatura">${fmtBRL(valor)}</div>
+        ${limite ? `
+          <div class="trilha"><i style="width:${limite.pct.toFixed(1)}%"></i></div>
+          <div class="limite">${limite.pct.toFixed(0)}% de ${fmtBRL(limite.total)} usado</div>
+        ` : `<div class="limite">limite não informado</div>`}
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderAnoEmpilhado() {
+  const lista = cartoes();
+  const alvo = document.getElementById("anoEmpilhado");
+  const legenda = document.getElementById("legendaAno");
+  if (!lista.length) { alvo.innerHTML = ""; legenda.innerHTML = ""; return; }
+
+  // Uma escala para os doze meses: a altura de um mes e comparavel a do outro.
+  const teto = Math.max(1, ...MONTHS.map((_, i) => totalMes(i)));
+
+  alvo.innerHTML = MONTHS.map((mes, indice) => {
+    const segmentos = lista.map(cartao => {
+      const valor = valorMes(cartao.id, indice);
+      if (valor <= 0) return "";
+      const origem = origemMes(cartao.id, indice);
+      const futura = origem === "projecao" || origem === "aberta_projecao";
+      return `<span class="seg${futura ? " futura" : ""}"
+        style="height:${(valor / teto * 100).toFixed(2)}%;background:${esc(corInstrumento(cartao))}"
+        title="${esc(nomeInstrumento(cartao))}: ${fmtBRL(valor)}"></span>`;
+    }).reverse().join("");
+    return `
+      <button type="button" class="mes-col" data-mes="${indice}"
+              aria-pressed="${indice === mesSelecionado}"
+              title="${esc(mes)}: ${fmtBRL(totalMes(indice))}">
+        <span class="pilha">${segmentos}</span>
+        <span class="rotm">${esc(mes.slice(0, 3).toLowerCase())}</span>
+      </button>`;
+  }).join("");
+
+  legenda.innerHTML = lista.map(cartao =>
+    `<span><i style="background:${esc(corInstrumento(cartao))}"></i>${esc(nomeInstrumento(cartao))}</span>`
+  ).join("");
+}
+
+function renderComposicao() {
+  const lista = cartoes();
+  const alvo = document.getElementById("composicao");
+  document.getElementById("compSub").textContent =
+    `${MONTHS[mesSelecionado]} de ${selectedYear}`;
+  if (!lista.length) { alvo.innerHTML = ""; return; }
+
+  const total = totalMes(mesSelecionado);
+  const fatias = lista
+    .map(c => ({ cartao: c, valor: valorMes(c.id, mesSelecionado) }))
+    .sort((a, b) => b.valor - a.valor)
+    .map(({ cartao, valor }) => {
+      const pct = total > 0 ? valor / total * 100 : 0;
+      return `
+      <div class="comp-linha">
+        <div class="comp-topo">
+          <b>${esc(nomeInstrumento(cartao))}</b>
+          <span>${pct.toFixed(0)}% \u00b7 ${fmtBRL(valor)}</span>
+        </div>
+        <div class="trilha" style="--faixa:${esc(corInstrumento(cartao))}">
+          <i style="width:${pct.toFixed(1)}%"></i>
+        </div>
+      </div>`;
+    }).join("");
+
+  // Dentro de uma tag, quanto foi de cada cartao. O payload traz a serie por
+  // conta ao lado da consolidada, entao isso nao custa requisicao nova.
+  const membros = lista
+    .filter(c => (c.membros || []).length > 1)
+    .map(cartao => `
+    <div class="comp-membros">
+      <div class="rot">Dentro de ${esc(nomeInstrumento(cartao))}</div>
+      ${(cartao.membros || []).map(m => `
+        <div>
+          <span class="qual">${esc(identificacao(m))}</span>
+          <span class="quanto">${fmtBRL(valorMes(m.contaId, mesSelecionado))}</span>
+        </div>`).join("")}
+    </div>`).join("");
+
+  alvo.innerHTML = `${fatias}${membros}
+    <div class="comp-total">
+      <span class="rot">Total do mês</span>
+      <span class="valor">${fmtBRL(total)}</span>
+    </div>`;
+}
+
+function renderAnos() {
+  const anos = (dados?.anosDisponiveis || []).slice().sort((a, b) => a - b);
+  const lista = anos.length ? anos : [selectedYear];
+  document.getElementById("anos").innerHTML = lista.map(ano =>
+    `<button type="button" data-ano="${ano}" aria-pressed="${ano === selectedYear}">${ano}</button>`
+  ).join("");
+}
 
 function renderTable() {
   const lista = cartoes();
@@ -172,11 +436,8 @@ function renderTable() {
     </tr>
   `;
 
-  const agora = new Date();
-  const indiceMesAtual = selectedYear === agora.getFullYear() ? agora.getMonth() : -1;
-
   const linhas = MONTHS.map((mes, indice) => `
-    <tr class="${indice === indiceMesAtual ? "mes-atual" : ""}">
+    <tr class="${indice === mesSelecionado ? "mes-sel" : ""}" data-mes="${indice}">
       <td>
         <span class="card-name">
           <span class="dot month"></span>
@@ -185,8 +446,11 @@ function renderTable() {
       </td>
       ${lista.map(cartao => {
         const valor = valorMes(cartao.id, indice);
+        // A tabela fica só com os numeros: a comparacao visual do ano mora no
+        // grafico empilhado, e repeti-la em barra dentro de cada celula
+        // poluia a leitura. A origem do valor continua no title.
         return `
-        <td>
+        <td title="${esc(rotuloOrigem(origemMes(cartao.id, indice)))}">
           <div class="valor-cell">
             <span class="valor ${valor === 0 ? "zero" : ""}">${fmtBRL(valor)}</span>
           </div>
@@ -207,26 +471,16 @@ function renderTable() {
   body.innerHTML = linhas + linhaTotal;
 }
 
-function renderSummary() {
-  const lista = cartoes();
-  const agora = new Date();
-  const indiceMesAtual = selectedYear === agora.getFullYear() ? agora.getMonth() : 0;
-
-  const totaisPorMes = MONTHS.map((mes, indice) => ({ mes, indice, total: totalMes(indice) }));
-  const maiorMes = totaisPorMes.reduce((melhor, item) => item.total > melhor.total ? item : melhor, totaisPorMes[0]);
-  const totaisPorCartao = lista.map(cartao => ({ ...cartao, total: totalCartao(cartao.id) }));
-  const maiorCartao = totaisPorCartao.reduce(
-    (melhor, item) => item.total > melhor.total ? item : melhor,
-    totaisPorCartao[0] || { nome: "—", total: 0 }
-  );
-
-  document.getElementById("yearTotal").textContent = fmtBRL(dados?.totalAno || 0);
-  document.getElementById("currentMonthTotal").textContent = fmtBRL(totalMes(indiceMesAtual));
-  document.getElementById("currentMonthLabel").textContent = `${MONTHS[indiceMesAtual]} de ${selectedYear}`;
-  document.getElementById("biggestMonthTotal").textContent = fmtBRL(maiorMes.total);
-  document.getElementById("biggestMonthLabel").textContent = `${maiorMes.mes} de ${selectedYear}`;
-  document.getElementById("biggestCardTotal").textContent = fmtBRL(maiorCartao.total);
-  document.getElementById("biggestCardLabel").textContent = maiorCartao.nome;
+// Os quatro KPIs genericos do topo deram lugar a carteira: o mesmo espaco
+// passou a mostrar cada cartao com a fatura do mes, a origem daquele valor e
+// o quanto do limite ja foi usado.
+function selecionarMes(indice) {
+  if (!Number.isInteger(indice) || indice < 0 || indice > 11) return;
+  mesSelecionado = indice;
+  renderCarteira();
+  renderAnoEmpilhado();
+  renderComposicao();
+  renderTable();
 }
 
 function renderAviso() {
@@ -243,8 +497,12 @@ async function carregar() {
   const payload = await api(`/pluggy-cartoes?year=${encodeURIComponent(selectedYear)}&group=${encodeURIComponent(agrupamento)}`);
   if (token !== requisicaoAtual) return; // resposta obsoleta: já pediram outro ano
   dados = payload;
+  mesSelecionado = mesEmFoco();
+  renderAnos();
+  renderCarteira();
+  renderAnoEmpilhado();
+  renderComposicao();
   renderTable();
-  renderSummary();
   renderAviso();
   renderFooter();
 
@@ -268,12 +526,6 @@ async function carregar() {
   setStatus(texto, falhou ? "err" : "");
 }
 
-async function trocarAno(delta) {
-  selectedYear += delta;
-  document.getElementById("yearInput").value = String(selectedYear);
-  await recarregar();
-}
-
 async function recarregar() {
   try {
     await carregar();
@@ -285,14 +537,22 @@ async function recarregar() {
 }
 
 function ligarEventos() {
-  document.getElementById("prevYearBtn").addEventListener("click", () => trocarAno(-1));
-  document.getElementById("nextYearBtn").addEventListener("click", () => trocarAno(1));
-  document.getElementById("yearInput").addEventListener("change", event => {
-    const valor = Number(event.target.value);
-    if (Number.isFinite(valor) && valor >= 2000 && valor <= 2100) {
-      selectedYear = valor;
-      recarregar();
-    }
+  document.getElementById("anos").addEventListener("click", event => {
+    const botao = event.target.closest("button[data-ano]");
+    if (!botao) return;
+    const ano = Number(botao.dataset.ano);
+    if (!Number.isFinite(ano) || ano === selectedYear) return;
+    selectedYear = ano;
+    renderAnos();
+    recarregar();
+  });
+  document.getElementById("anoEmpilhado").addEventListener("click", event => {
+    const botao = event.target.closest("button[data-mes]");
+    if (botao) selecionarMes(Number(botao.dataset.mes));
+  });
+  document.getElementById("tableBody").addEventListener("click", event => {
+    const linha = event.target.closest("tr[data-mes]");
+    if (linha) selecionarMes(Number(linha.dataset.mes));
   });
   document.getElementById("groupSelect").addEventListener("change", event => {
     agrupamento = event.target.value;
@@ -429,7 +689,7 @@ async function renomearTag(botao) {
   // Deep link: o card "Cartões" da Visão geral abre o ano que estava na tela.
   const anoUrl = Number(new URLSearchParams(location.search).get("year"));
   if (Number.isInteger(anoUrl) && anoUrl >= 2000 && anoUrl <= 2100) selectedYear = anoUrl;
-  document.getElementById("yearInput").value = String(selectedYear);
+  renderAnos();
   ligarEventos();
   observarIdentidadeCartoes(recarregar);
   recarregar();

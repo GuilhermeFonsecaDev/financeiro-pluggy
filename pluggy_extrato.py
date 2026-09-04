@@ -332,6 +332,7 @@ def _completar_faturas_abertas_e_parcelas(
             ).strip()
             itens[conta_id].append({
                 "mes": numero_mes,
+                "contaId": conta_id,
                 # Id da parcela de onde a projecao saiu: muda a cada mes, na
                 # medida em que novas parcelas sao cobradas.
                 "transacaoBaseId": linha["transacao_id"],
@@ -368,42 +369,51 @@ def garantir_tabelas(conn: sqlite3.Connection) -> None:
     _tabelas_prontas = True
 
 
-NOMES_BANCOS = {"itau": "Itaú", "nubank": "Nubank", "inter": "Inter"}
+def _grupos_contas(conn: sqlite3.Connection,
+                   ativas: set[str] | None = None) -> dict[str, set[str]]:
+    """Contas bancárias são instrumentos individuais, separados de cartões."""
+    return {
+        linha["conta_id"]: {linha["conta_id"]}
+        for linha in conn.execute(
+            "SELECT conta_id FROM pluggy_contas WHERE subtipo <> 'CREDIT_CARD'"
+        )
+        if ativas is None or linha["conta_id"] in ativas
+    }
 
 
-def _grupos_bancarios(conn: sqlite3.Connection,
-                      ativas: set[str] | None = None,
-                      somente_cartoes: bool = False) -> dict[str, set[str]]:
-    """Agrupa conta corrente e cartoes pela instituicao do item Pluggy.
+def _grupos_cartoes(conn: sqlite3.Connection,
+                    ativas: set[str] | None = None) -> dict[str, set[str]]:
+    """Resolve tags, cartões e fontes para as mesmas fontes canônicas."""
+    fontes = cartoes_id.fontes_ativas(conn)
+    if ativas is not None:
+        fontes &= ativas
+    identidades = cartoes_id.identidades(conn)
+    por_cartao: dict[str, set[str]] = {}
+    por_grupo: dict[str, set[str]] = {}
+    for fonte in fontes:
+        ident = identidades.get(fonte)
+        if ident:
+            por_cartao.setdefault(ident["cartaoId"], set()).add(fonte)
+            por_grupo.setdefault(ident["grupo"], set()).add(fonte)
+    referencias = {**por_cartao, **por_grupo}
+    # Uma referência antiga à fonte continua abrindo o cartão correto após
+    # reconexão, sem usar tag ou nome visível como identidade financeira.
+    for fonte, ident in identidades.items():
+        referencias[fonte] = por_cartao.get(ident["cartaoId"], set())
+    return referencias
 
-    O agrupamento existe somente para navegacao e filtros. Os ids originais
-    continuam nas transacoes e nenhuma soma e alterada por ele.
-    """
-    linhas = conn.execute(
-        "SELECT conta_id, item_id, nome, subtipo, raw_json FROM pluggy_contas"
-    ).fetchall()
-    textos_item: dict[str, str] = {}
-    for linha in linhas:
-        textos_item[linha["item_id"]] = (
-            textos_item.get(linha["item_id"], "") + " " +
-            f"{linha['nome']} {linha['raw_json']}"
-        ).lower()
 
-    grupos = {banco: set() for banco in NOMES_BANCOS}
-    for linha in linhas:
-        conta_id = linha["conta_id"]
-        if ativas is not None and conta_id not in ativas:
-            continue
-        if somente_cartoes and linha["subtipo"] != "CREDIT_CARD":
-            continue
-        texto = textos_item.get(linha["item_id"], "")
-        if "itau" in texto or "itaú" in texto:
-            grupos["itau"].add(conta_id)
-        elif "nubank" in texto or "nu pagamentos" in texto:
-            grupos["nubank"].add(conta_id)
-        elif "inter" in texto:
-            grupos["inter"].add(conta_id)
-    return grupos
+def _dados_instrumento(conta_id: str, identidades: dict[str, dict]) -> dict:
+    ident = identidades.get(conta_id)
+    if not ident:
+        return {"instrumentoTipo": "conta", "cartaoId": None,
+                "grupoId": None, "tagId": None, "tag": ""}
+    return {
+        "instrumentoTipo": "cartao", "cartaoId": ident["cartaoId"],
+        "grupoId": ident["grupo"], "tagId": ident.get("tagId"),
+        "tag": ident.get("tag") or "", "cartaoOriginal": ident["nomeOriginal"],
+        "corInstrumento": ident.get("cor"),
+    }
 
 
 def _serie_com_projecao(evolucao: dict[str, dict], projetar) -> list[dict[str, Any]]:
@@ -492,8 +502,8 @@ def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
             clausulas.append(f"t.conta_id IN ({marcadores})")
             params.extend(sorted(ids_grupo))
         else:
-            clausulas.append("t.conta_id = ?")
-            params.append(conta)
+            # O filtro Conta nunca vira uma porta de entrada para cartões.
+            clausulas.append("1 = 0")
     if filtros.get("cartao"):
         cartao = filtros["cartao"]
         ids_cartao = grupos_cartoes.get(cartao, set()) if grupos_cartoes else set()
@@ -559,12 +569,13 @@ def filtros_payload(modo: str = "fatura") -> dict[str, Any]:
             )
         ]
 
-        grupos = _grupos_bancarios(conn, ativas)
-        grupos_cartoes = _grupos_bancarios(conn, ativas, somente_cartoes=True)
+        grupos = _grupos_contas(conn, ativas)
+        colunas_cartoes = cartoes_id.colunas(conn, ativas)
         apelidos_edicao = mapa_apelidos(conn, ativas)
+        identidades = cartoes_id.identidades(conn)
         contas = [
-            {"id": banco, "nome": nome, "transacoes": len(grupos[banco])}
-            for banco, nome in NOMES_BANCOS.items() if grupos[banco]
+            {"id": conta_id, "nome": apelidos_edicao[conta_id], "tipo": "conta"}
+            for conta_id in sorted(grupos, key=lambda cid: apelidos_edicao[cid])
         ]
 
         # Ordem de arvore (pai seguido dos filhos): a tela indenta as
@@ -618,11 +629,19 @@ def filtros_payload(modo: str = "fatura") -> dict[str, Any]:
         "mesAtual": datetime.now().strftime("%Y-%m"),
         "contas": contas,
         "cartoes": [
-            {"id": banco, "nome": nome, "contas": len(grupos_cartoes[banco])}
-            for banco, nome in NOMES_BANCOS.items() if grupos_cartoes[banco]
+            {"id": coluna["id"], "nome": coluna["nome"],
+             "cor": coluna["cor"], "contas": len(coluna["contas"]),
+             "membros": coluna["membros"], "tipo": "cartao"}
+            for coluna in colunas_cartoes
         ],
         "contasEdicao": [
-            {"id": conta_id, "nome": apelidos_edicao.get(conta_id, conta_id)}
+            {"id": conta_id,
+             "nome": (
+                 f"{identidades[conta_id]['nomeExibicao']} ({identidades[conta_id]['nomeOriginal']})"
+                 if conta_id in identidades and identidades[conta_id].get("tag")
+                 else apelidos_edicao.get(conta_id, conta_id)
+             ),
+             **_dados_instrumento(conta_id, identidades)}
             for conta_id in sorted(ativas, key=lambda cid: apelidos_edicao.get(cid, cid))
         ],
         "categorias": categorias,
@@ -666,50 +685,22 @@ GASTO_LIQUIDO = (
 )
 
 
-def apelido_do_cartao(linha: sqlite3.Row) -> str:
-    """Rotulo para a coluna do cartao.
+def _chave_conta(linha: sqlite3.Row,
+                 instituicao: str = "") -> tuple[str, str, str, str, str]:
+    """Reconexões bancárias precisam de instituição, titular e número.
 
-    A Pluggy costuma preencher "name" do cartao com o nome do titular, o que
-    nao serve de cabecalho de coluna. Preferimos bandeira + ultimos digitos, que
-    e o que identifica o cartao de fato.
+    Nomes genéricos e finais de cartão nunca comprovam uma reconexão. Fontes
+    sem número permanecem separadas para não esconder instrumentos distintos.
     """
-    try:
-        credito = (json.loads(linha["raw_json"]) or {}).get("creditData") or {}
-    except (ValueError, TypeError):
-        credito = {}
-
-    bandeira = str(credito.get("brand") or "").strip()
-    final = str(linha["numero"] or "").strip()
-
-    if bandeira and final:
-        return f"{bandeira} •••• {final}"
-    if bandeira:
-        return bandeira
-    if final:
-        return f"Cartão •••• {final}"
-    return str(linha["nome"] or "Cartão")
-
-
-def _chave_conta(linha: sqlite3.Row) -> tuple[str, str]:
-    """Identidade da conta no mundo real, para reconhecer a mesma conta vinda
-    de conexoes diferentes.
-
-    O numero e o melhor sinal: a mesma conta corrente veio com e sem o digito
-    numa conexao e "70509450" na outra, entao normalizamos para so os digitos,
-    sem zeros a esquerda. Sem numero, cai no rotulo.
-    """
-    numero = re.sub(r"\D", "", str(linha["numero"] or "")).lstrip("0")
-    if numero:
-        return (str(linha["subtipo"]), f"num:{numero}")
-    return (str(linha["subtipo"]), f"rot:{_rotulo_base(linha)}")
-
-
-def _rotulo_base(linha: sqlite3.Row) -> str:
-    return (
-        apelido_do_cartao(linha)
-        if linha["subtipo"] == "CREDIT_CARD"
-        else str(linha["nome"] or "Conta")
-    )
+    numero = re.sub(r"\D", "", str(linha["numero"] or ""))
+    contexto = cam.normalizar(instituicao) or str(linha["item_id"])
+    titular = cam.normalizar(str(linha["titular"] or ""))
+    nome = cam.normalizar(str(linha["nome"] or ""))
+    referencia = f"num:{numero}" if numero else f"fonte:{linha['conta_id']}"
+    # Uma mesma conexão pode expor instrumentos bancários distintos com o
+    # mesmo número, como BTG Banking e BTG Investimentos. O nome natural faz
+    # parte da identidade para não esconder uma dessas contas.
+    return (contexto, str(linha["subtipo"]), titular, referencia, nome)
 
 
 def contas_ativas(conn: sqlite3.Connection) -> set[str]:
@@ -731,37 +722,43 @@ def contas_ativas(conn: sqlite3.Connection) -> set[str]:
         )
     }
 
-    melhor: dict[tuple[str, str], tuple[str, str]] = {}
+    instituicoes = {
+        linha["item_id"]: linha["conector"]
+        for linha in conn.execute("SELECT item_id, conector FROM pluggy_itens")
+    }
+    melhor: dict[tuple[str, str, str, str, str], tuple[str, str, str]] = {}
     for linha in conn.execute("SELECT * FROM pluggy_contas"):
+        if linha["subtipo"] == "CREDIT_CARD":
+            continue
         conta_id = linha["conta_id"]
-        chave = _chave_conta(linha)
-        candidato = (ultima_por_conta.get(conta_id) or "", conta_id)
+        chave = _chave_conta(linha, instituicoes.get(linha["item_id"], ""))
+        candidato = (ultima_por_conta.get(conta_id) or "",
+                     str(linha["atualizado_em"] or linha["importado_em"] or ""), conta_id)
         if chave not in melhor or candidato > melhor[chave]:
             melhor[chave] = candidato
 
-    return {conta_id for _, conta_id in melhor.values()}
+    return {conta_id for _, _, conta_id in melhor.values()} | cartoes_id.fontes_ativas(conn)
 
 
 def mapa_apelidos(conn: sqlite3.Connection,
                   apenas: set[str] | None = None) -> dict[str, str]:
-    """conta_id -> rotulo de exibicao, garantidamente unico.
+    """conta_id -> nome efetivo, compartilhado por toda a aplicação.
 
     "apenas" limita o calculo as contas que serao mostradas: nao faz sentido
     desempatar rotulo contra uma conta escondida, senao sobra um sufixo feio
     sem nada com que confundir na tela.
 
-    Cartoes viram bandeira + digitos; contas bancarias mantem o nome que a
-    Pluggy manda. Reconectar a mesma conta gera um conta_id novo com os mesmos
-    dados de exibicao, entao dois rotulos iguais apareceriam lado a lado sem
-    como distinguir. Quando isso acontece, acrescentamos o final do id.
+    Cartões com a mesma tag têm o mesmo nome de exibição intencionalmente.
+    Somente contas bancárias recebem desambiguação de nomes repetidos.
     """
     linhas = [
         linha for linha in conn.execute("SELECT * FROM pluggy_contas")
         if apenas is None or linha["conta_id"] in apenas
     ]
+    identidades = cartoes_id.identidades(conn)
     rotulos = {
         linha["conta_id"]: (
-            apelido_do_cartao(linha)
+            identidades[linha["conta_id"]]["nomeExibicao"]
             if linha["subtipo"] == "CREDIT_CARD"
             else str(linha["nome"] or "Conta")
         )
@@ -780,7 +777,8 @@ def mapa_apelidos(conn: sqlite3.Connection,
     # tem subtipos diferentes -- senao o sufixo so polui (dois cartoes iguais
     # nao ficam mais claros com "(Cartao)" nos dois).
     for rotulo_repetido in repetidos(rotulos):
-        empatados = [c for c, r in rotulos.items() if r == rotulo_repetido]
+        empatados = [c for c, r in rotulos.items()
+                     if r == rotulo_repetido and subtipos.get(c) != "CREDIT_CARD"]
         distintos = {subtipos.get(c) for c in empatados}
         if len(distintos) > 1 and all(s in DESCRICAO_SUBTIPO for s in distintos):
             for conta_id in empatados:
@@ -789,9 +787,12 @@ def mapa_apelidos(conn: sqlite3.Connection,
                 )
 
     # 2a tentativa: sobrou empate (o mesmo cartao reconectado, por exemplo).
-    colidindo = repetidos(rotulos)
+    colidindo = repetidos({cid: rotulo for cid, rotulo in rotulos.items()
+                          if subtipos.get(cid) != "CREDIT_CARD"})
     return {
-        conta_id: (f"{rotulo} · {conta_id[-4:]}" if rotulo in colidindo else rotulo)
+        conta_id: (f"{rotulo} · {conta_id[-4:]}"
+                   if rotulo in colidindo and subtipos.get(conta_id) != "CREDIT_CARD"
+                   else rotulo)
         for conta_id, rotulo in rotulos.items()
     }
 
@@ -809,28 +810,13 @@ def _consolidar_por_grupo(
     previstas: dict[str, list[int]],
     itens: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], dict[str, set[str]]]:
-    """Junta numa coluna so os cartoes que compartilham grupo.
+    """Consolida resultados individuais já resolvidos, somente pela tag.
 
-    Quem decide e o registro de identidade (cartoes.py): dois cartoes do mesmo
-    banco vem com o mesmo grupo por padrao e viram uma fatura, e o usuario pode
-    separa-los ou juntar quaisquer outros pela tela. Nao existe regra por nome
-    de banco aqui -- adicionar um cartao novo acrescenta uma coluna sozinho.
-
-    Devolve tambem quais CONTAS cada coluna representa: a fatura oficial
-    precisa somar as duas contas quando a coluna e consolidada.
+    A origem de cada membro e seus itens sobrevivem à consolidação. Tag não
+    cria fatura conjunta nem transforma estimativas dos irmãos em oficiais.
     """
     colunas = cartoes_id.colunas(conn, {cartao["id"] for cartao in cartoes})
     por_conta = {cartao["id"]: cartao for cartao in cartoes}
-
-    prioridade = {
-        "vazio": 0,
-        "movimento": 1,
-        "fechada": 2,
-        "projecao": 3,
-        "aberta": 4,
-        "aberta_projecao": 5,
-        "pagamento": 6,
-    }
 
     resultado: list[dict[str, Any]] = []
     contas_do_cartao: dict[str, set[str]] = {}
@@ -841,35 +827,55 @@ def _consolidar_por_grupo(
         destino = coluna["id"]
         contas_do_cartao[destino] = set(contas)
 
-        if destino not in valores:
-            valores[destino] = [
-                sum(valores[c][i] for c in contas) for i in range(12)
-            ]
-            quantidades[destino] = [
-                sum(quantidades[c][i] for c in contas) for i in range(12)
-            ]
-            previstas[destino] = [
-                sum(previstas[c][i] for c in contas) for i in range(12)
-            ]
-            origens[destino] = [
-                max((origens[c][i] for c in contas),
-                    key=lambda origem: prioridade.get(origem, 0))
-                for i in range(12)
-            ]
-            itens[destino] = [item for c in contas for item in itens.get(c, [])]
+        valores[destino] = [
+            round(sum(valores[c][i] for c in contas), 2) for i in range(12)
+        ]
+        quantidades[destino] = [
+            sum(quantidades[c][i] for c in contas) for i in range(12)
+        ]
+        previstas[destino] = [
+            sum(previstas[c][i] for c in contas) for i in range(12)
+        ]
+        origens[destino] = []
+        for indice in range(12):
+            presentes = {origens[c][indice] for c in contas
+                         if origens[c][indice] != "vazio"}
+            origens[destino].append(
+                next(iter(presentes)) if len(presentes) == 1
+                else "mista" if presentes else "vazio"
+            )
+        itens[destino] = [
+            {**item, "contaId": c, "cartaoId": por_conta[c]["cartaoId"],
+             "cartaoOriginal": por_conta[c]["nomeOriginal"]}
+            for c in contas for item in itens.get(c, [])
+        ]
 
         primeiro = por_conta[contas[0]]
+        membros = [
+            {**membro,
+             "fechamento": por_conta.get(membro["contaId"], {}).get("fechamento", ""),
+             "vencimento": por_conta.get(membro["contaId"], {}).get("vencimento", "")}
+            for membro in coluna["membros"]
+        ]
+        vencimentos = sorted({por_conta[c].get("vencimento") for c in contas
+                              if por_conta[c].get("vencimento")})
         resultado.append({
             "id": destino,
             "nome": coluna["nome"],
             "cor": coluna["cor"],
-            "numero": coluna["numero"],
+            "numero": coluna.get("numero", ""),
+            "grupoId": destino,
+            "tagId": primeiro.get("tagId"),
+            "tag": primeiro.get("tag") or "",
+            "contas": contas,
+            "membros": membros,
             "limiteCredito": coluna["limiteCredito"],
             "limiteDisponivel": coluna["limiteDisponivel"],
             "fechamento": primeiro.get("fechamento") if len(contas) == 1 else "",
-            "vencimento": primeiro.get("vencimento") if len(contas) == 1 else "",
+            "vencimento": vencimentos[0] if len(vencimentos) == 1 else "",
+            "vencimentos": vencimentos,
             "cartoesConsolidados": (
-                coluna["apelidos"] if len(contas) > 1 else []
+                [m["nomeOriginal"] for m in membros] if len(contas) > 1 else []
             ),
         })
     return resultado, contas_do_cartao
@@ -922,8 +928,8 @@ def _aplicar_faturas_oficiais(
         if not 0 <= indice < 12:
             continue
         conta_id = linha["conta_id"]
-        # Um cartao da grade pode representar varias contas (os Itau
-        # consolidados), entao a fatura entra na coluna que contem a conta.
+        # A chamada usa fontes individuais. A soma por tag ocorre somente
+        # depois, preservando irmãos que ainda não têm valor oficial.
         for cartao_id, contas in contas_do_cartao.items():
             if conta_id in contas:
                 chave = (cartao_id, indice)
@@ -1114,7 +1120,11 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
         cartoes = [
             {
                 "id": linha["conta_id"],
-                "nome": identidades[linha["conta_id"]]["apelido"],
+                "cartaoId": identidades[linha["conta_id"]]["cartaoId"],
+                "nome": identidades[linha["conta_id"]]["nomeExibicao"],
+                "nomeOriginal": identidades[linha["conta_id"]]["nomeOriginal"],
+                "tagId": identidades[linha["conta_id"]].get("tagId"),
+                "tag": identidades[linha["conta_id"]].get("tag") or "",
                 "cor": identidades[linha["conta_id"]]["cor"],
                 "grupo": identidades[linha["conta_id"]]["grupo"],
                 "numero": linha["numero"],
@@ -1138,8 +1148,12 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             linha[0]
             for linha in conn.execute(
                 "SELECT DISTINCT ano FROM pluggy_transacoes "
-                f"WHERE conta_id IN ({marcadores}) ORDER BY ano",
-                ids_cartoes,
+                f"WHERE conta_id IN ({marcadores}) "
+                "UNION SELECT DISTINCT CAST(SUBSTR(competencia, 1, 4) AS INTEGER) "
+                "FROM pluggy_faturas "
+                f"WHERE conta_id IN ({marcadores}) "
+                "AND competencia GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' ORDER BY 1",
+                [*ids_cartoes, *ids_cartoes],
             )
         ]
 
@@ -1250,9 +1264,26 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             }
             itens = {conta_id: [] for conta_id in ids_cartoes}
 
-        # Uma coluna por grupo do registro de identidade, e quais CONTAS cada
-        # coluna representa -- a fatura oficial precisa somar as duas contas
-        # quando a coluna e consolidada.
+        if agrupamento == "fatura":
+            _aplicar_faturas_oficiais(
+                conn, ano, valores, quantidades, origens,
+                quantidades_previstas, itens,
+                {conta_id: {conta_id} for conta_id in ids_cartoes},
+            )
+
+        # Retira detalhes apenas dos membros cujo valor foi substituído por
+        # uma fonte completa. Os irmãos projetados de uma tag continuam lá.
+        for conta_id in ids_cartoes:
+            itens[conta_id] = [
+                item for item in itens.get(conta_id, [])
+                if 1 <= item["mes"] <= 12
+                and origens[conta_id][item["mes"] - 1] in {"projecao", "aberta_projecao"}
+            ]
+            for indice, origem in enumerate(origens[conta_id]):
+                if origem not in {"projecao", "aberta_projecao"}:
+                    quantidades_previstas[conta_id][indice] = 0
+
+        # Nomes e tags só entram depois de todos os cálculos individuais.
         cartoes, contas_do_cartao = _consolidar_por_grupo(
             conn,
             cartoes,
@@ -1262,40 +1293,6 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             quantidades_previstas,
             itens,
         )
-
-        if agrupamento == "fatura":
-            # Por ultimo: onde existe fatura fechada, o valor emitido pelo
-            # banco vale mais que qualquer reconstrucao nossa.
-            _aplicar_faturas_oficiais(
-                conn,
-                ano,
-                valores,
-                quantidades,
-                origens,
-                quantidades_previstas,
-                itens,
-                contas_do_cartao,
-            )
-
-    # Item projetado sobrevive nos meses cujo valor E projecao: "projecao"
-    # (so parcelas futuras) e "aberta_projecao" (fatura aberta que ja tem
-    # compra real mais as parcelas que ainda vao entrar). Esse segundo caso
-    # ficava de fora e era justamente o mes corrente e o seguinte -- a coluna
-    # somava as parcelas e a tela nao tinha como mostrar quais eram.
-    #
-    # Mes cujo valor veio inteiro de outra fonte -- fatura oficial, pagamento
-    # que quitou, valor confirmado -- nao tem decomposicao confiavel: listar
-    # ali apenas as parcelas projetadas daria uma lista que nao soma o total.
-    COM_DETALHE = {"projecao", "aberta_projecao"}
-    for cartao in cartoes:
-        conta_id = cartao["id"]
-        lista = itens.get(conta_id, [])
-        origens_cartao = origens.get(conta_id, [])
-        itens[conta_id] = [
-            item for item in lista
-            if 1 <= item["mes"] <= 12
-            and origens_cartao[item["mes"] - 1] in COM_DETALHE
-        ]
 
     total_mes = [
         sum(valores[cartao["id"]][indice] for cartao in cartoes)
@@ -1329,8 +1326,8 @@ def categorias_resumo_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         cam.garantir_camada(conn)
         garantir_extrato_materializado(conn)
         ativas = contas_ativas(conn)
-        grupos = _grupos_bancarios(conn, ativas)
-        grupos_cartoes = _grupos_bancarios(conn, ativas, somente_cartoes=True)
+        grupos = _grupos_contas(conn, ativas)
+        grupos_cartoes = _grupos_cartoes(conn, ativas)
         onde, params = _onde(filtros, ativas, grupos, grupos_cartoes)
 
         gasto = {
@@ -1461,11 +1458,16 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         cam.garantir_camada(conn)
         ativas = contas_ativas(conn)
         apelidos = mapa_apelidos(conn, ativas)
-        grupos = _grupos_bancarios(conn, ativas)
-        grupos_cartoes = _grupos_bancarios(conn, ativas, somente_cartoes=True)
-        banco_por_conta = {
-            conta_id: banco for banco, ids in grupos.items() for conta_id in ids
-        }
+        grupos = _grupos_contas(conn, ativas)
+        grupos_cartoes = _grupos_cartoes(conn, ativas)
+        identidades = cartoes_id.identidades(conn)
+        filtro_cartao = filtros.get("cartao") or ""
+        fontes_filtro_cartao = (
+            (cartoes_id.fontes_ativas(conn) & ativas)
+            if filtro_cartao in ("", "todos")
+            else set() if filtro_cartao == "nenhum"
+            else grupos_cartoes.get(filtro_cartao, set())
+        )
 
         # A view aplica todas as regras e é cara. A cópia materializada é
         # compartilhada entre aberturas e invalidada pela assinatura das
@@ -1669,12 +1671,10 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             """
             if sem_filtro_estreito:
                 return payload["totalMes"]
-            ids_alvo = grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
             return [
                 sum(
-                    payload["valores"].get(cartao["id"], [0.0] * 12)[indice]
-                    for cartao in payload["cartoes"]
-                    if cartao["id"] in ids_alvo
+                    payload["valores"].get(conta_id, [0.0] * 12)[indice]
+                    for conta_id in fontes_filtro_cartao
                 )
                 for indice in range(12)
             ]
@@ -1802,19 +1802,11 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             and projecoes_cartoes and offset == 0
         ):
             for payload_ano in projecoes_cartoes:
-                if filtros.get("cartao"):
-                    ids_alvo_itens = (
-                        grupos_cartoes.get(filtros["cartao"]) or {filtros["cartao"]}
-                    )
-                else:
-                    ids_alvo_itens = {
-                        cartao["id"] for cartao in payload_ano["cartoes"]
-                    }
                 ano_projecao_itens = payload_ano["ano"]
                 for cartao in payload_ano["cartoes"]:
-                    if cartao["id"] not in ids_alvo_itens:
-                        continue
                     for item in payload_ano["itens"].get(cartao["id"], []):
+                        if item["contaId"] not in fontes_filtro_cartao:
+                            continue
                         mes_ref_item = f"{ano_projecao_itens}-{item['mes']:02d}"
                         if mes_de and mes_ref_item < mes_de:
                             continue
@@ -1897,17 +1889,9 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "parcelaNumero": item["parcelaAtual"],
                     "parcelaTotal": item["parcelaTotal"],
                     "faturaId": "",
-                    "contaId": cartao["id"],
-                    # O nome sai da CONTA que vai ser cobrada -- a mesma da
-                    # parcela real de onde a projecao veio --, e nao do nome da
-                    # coluna: coluna consolidada nao e uma conta, e ali a linha
-                    # aparecia com um rotulo diferente do das reais.
-                    "contaNome": NOMES_BANCOS.get(
-                        banco_por_conta.get(categoria.get("contaId") or ""),
-                        apelidos.get(
-                            categoria.get("contaId") or "", cartao["nome"]
-                        ),
-                    ),
+                    "contaId": item["contaId"],
+                    "contaNome": apelidos.get(item["contaId"], cartao["nome"]),
+                    **_dados_instrumento(item["contaId"], identidades),
                     "contaSubtipo": "CREDIT_CARD",
                     "projetada": True,
                 })
@@ -1956,10 +1940,8 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             "parcelaTotal": linha["parcela_total"],
             "faturaId": linha["fatura_id"],
             "contaId": linha["conta_id"],
-            "contaNome": NOMES_BANCOS.get(
-                banco_por_conta.get(linha["conta_id"]),
-                apelidos.get(linha["conta_id"], linha["conta_nome"]),
-            ),
+            "contaNome": apelidos.get(linha["conta_id"], linha["conta_nome"]),
+            **_dados_instrumento(linha["conta_id"], identidades),
             "contaSubtipo": linha["conta_subtipo"],
         }
         for linha in linhas

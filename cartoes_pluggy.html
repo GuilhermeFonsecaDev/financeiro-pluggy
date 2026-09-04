@@ -7,19 +7,31 @@
 <link rel="stylesheet" href="tema.css" />
 <style>
 /* --- identificacao de cartoes ------------------------------------------- */
+.topo { flex-wrap:wrap; }
 .ident-modal { width:min(760px,100%); }
 .ident-lista { display:grid; gap:10px; padding:12px 18px; max-height:min(60vh,520px); overflow-y:auto; }
 .ident-linha { display:grid; grid-template-columns:34px minmax(0,1.1fr) minmax(0,1fr) 44px; gap:10px; align-items:center; padding:11px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.ident-nome { font-size:13px; overflow-wrap:anywhere; }
+.ident-tag { display:flex; gap:5px; }
+.ident-tag input { min-width:0; }
+.ident-tags { display:grid; gap:8px; padding:4px 18px 12px; }
+.ident-tag-linha { display:flex; align-items:center; gap:8px; }
+.ident-tag-linha input { flex:1; min-width:0; }
+.ident-tag-linha button { flex-shrink:0; }
 .ident-linha.inativa { opacity:.55; }
 .ident-selo { width:34px; height:34px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:13px; }
 .ident-origem { grid-column:2 / -1; color:var(--text-3); font-size:11.5px; }
 .ident-linha input[type="text"] { width:100%; }
 .ident-linha input[type="color"] { width:44px; height:34px; padding:3px; cursor:pointer; }
 .ident-rot { color:var(--text-3); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
-@media (max-width:700px) { .ident-linha { grid-template-columns:34px minmax(0,1fr) 44px; } }
+@media (max-width:700px) { .ident-linha { grid-template-columns:34px minmax(0,1fr) 44px; } .ident-campo-tag { grid-column:2; grid-row:2; } .ident-linha input[type="color"] { grid-column:3; grid-row:1; } .ident-origem { grid-column:2/-1; } }
 
 /* Grade de faturas: 12 meses x cartoes. Primeira coluna fixa ao rolar. */
-table { table-layout: fixed; }
+table { table-layout: fixed; min-width:var(--largura-cartoes,440px); }
+thead { position:sticky; top:0; z-index:3; }
+.grade-cartoes { max-height:75vh; }
+th:not(:first-child) { white-space:normal; overflow-wrap:anywhere; }
+th small { display:block; font-size:10px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-3); margin-top:4px; }
 th, td { text-align: right; white-space: nowrap; font-size: 13.5px; padding: 11px 12px; }
 th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; text-align: left; background: var(--surface); }
 th { background: var(--surface-2); }
@@ -52,7 +64,7 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
         <option value="fatura" selected>Agrupar por fatura</option>
         <option value="mes">Agrupar por mês da compra</option>
       </select>
-      <button class="primario" id="btnIdentificar">Identificar cartões</button>
+      <button class="primario" id="btnIdentificar">Tags dos cartões</button>
     </div>
   </header>
 
@@ -79,7 +91,7 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
   </section>
 
   <section class="painel" style="padding:0;overflow:hidden">
-    <div class="table-wrap">
+    <div class="tabela-wrap grade-cartoes" tabindex="0" aria-label="Faturas dos cartões; deslize para ver todas as colunas">
       <table aria-label="Gastos por cartão e mês vindos do Open Finance">
         <thead id="tableHead"></thead>
         <tbody id="tableBody"></tbody>
@@ -91,16 +103,18 @@ tr.mes-atual td { box-shadow: inset 0 0 0 1px rgba(74,149,234,.22); }
 <div class="modal-fundo" id="modalCartoes" hidden>
   <div class="modal ident-modal">
     <header class="modal-topo">
-      <h2>Identificar cartões</h2>
+      <h2>Tags dos cartões</h2>
       <button class="icone" id="btnFecharIdent" aria-label="Fechar">×</button>
     </header>
     <p class="sub" style="padding:0 18px">
-      Diga qual é cada cartão que a conexão trouxe. Cartões com o mesmo
-      <b>grupo</b> dividem uma coluna só — é assim que dois cartões do mesmo
-      banco aparecem como uma fatura. Deixe o grupo vazio para o cartão ter
-      coluna própria.
+      A tag é o nome exibido nas telas. Cartões com a mesma tag aparecem
+      juntos nos resumos. Deixe a tag vazia para mostrar o cartão individual.
     </p>
     <div class="ident-lista" id="identLista"></div>
+    <details style="padding:0 18px"><summary>Renomear uma tag em todos os cartões</summary>
+      <p class="sub">Ao usar o nome de outra tag existente, os cartões passam a formar um único grupo.</p>
+      <div class="ident-tags" id="identTags"></div>
+    </details>
     <p class="estado erro" id="identErro" style="margin:8px 18px 0"></p>
     <footer class="modal-rodape">
       <button class="sutil" id="btnCancelarIdent">Cancelar</button>
@@ -142,17 +156,18 @@ function renderTable() {
   const lista = cartoes();
   const head = document.getElementById("tableHead");
   const body = document.getElementById("tableBody");
+  head.closest("table").style.setProperty("--largura-cartoes", `${180 + Math.max(1, lista.length) * 145 + 155}px`);
 
   if (!lista.length) {
     head.innerHTML = "";
-    body.innerHTML = `<tr><td class="vazio-cell" colspan="3">Nenhum cartão de crédito conectado no Open Finance. Conecte no <code>meu.pluggy.ai</code> e rode <code>python importar_pluggy.py</code>.</td></tr>`;
+    body.innerHTML = `<tr><td class="vazio-cell">Nenhum cartão conectado. Adicione uma instituição na tela Conexões.</td></tr>`;
     return;
   }
 
   head.innerHTML = `
     <tr>
       <th>Mês</th>
-      ${lista.map(c => `<th>${escapeHtml(c.nome)}</th>`).join("")}
+      ${lista.map(c => `<th title="${esc((c.membros || []).map(m => m.nomeOriginal || nomeInstrumento(m)).join(" · "))}">${esc(nomeInstrumento(c))}${(c.membros || []).length > 1 ? `<small>${c.membros.length} cartões${(c.vencimentos || []).length > 1 ? " · múltiplos vencimentos" : ""}</small>` : ""}</th>`).join("")}
       <th>Total mês</th>
     </tr>
   `;
@@ -292,56 +307,76 @@ const el = id => document.getElementById(id);
 
 function renderIdent() {
   el("identLista").innerHTML = IDENT.cartoes.map(c => `
-    <div class="ident-linha ${c.ativa ? "" : "inativa"}" data-conta="${esc(c.contaId)}">
-      <span class="ident-selo" style="background:${esc(c.cor)}">${esc((c.apelido || "?").trim().charAt(0).toUpperCase())}</span>
-      <label><span class="ident-rot">Apelido</span>
-        <input type="text" class="i-apelido" value="${esc(c.apelido)}" maxlength="60"
-               placeholder="ex.: NUBANK" autocomplete="off" /></label>
-      <label><span class="ident-rot">Grupo (fatura conjunta)</span>
-        <input type="text" class="i-grupo" list="listaGrupos" maxlength="60"
-               value="${esc(c.grupoTexto || "")}"
-               placeholder="vazio = coluna própria" autocomplete="off" /></label>
-      <input type="color" class="i-cor" value="${esc(c.cor)}" aria-label="Cor do cartão" />
+    <div class="ident-linha ${c.ativa === false ? "inativa" : ""}" data-cartao="${esc(c.cartaoId || c.id)}">
+      <span class="ident-selo" style="background:${corInstrumento(c)}">${esc((nomeInstrumento(c) || "?").trim().charAt(0).toUpperCase())}</span>
+      <strong class="ident-nome">${esc(c.nomeOriginal || nomeInstrumento(c))}</strong>
+      <label class="ident-campo-tag"><span class="ident-rot">Tag opcional</span>
+        <span class="ident-tag"><input type="text" class="i-tag" list="listaTags" maxlength="60"
+               value="${esc(c.tag || "")}" placeholder="Sem tag" autocomplete="off" />
+        <button class="icone" type="button" data-remover-tag aria-label="Remover tag">×</button></span></label>
+      <input type="color" class="i-cor" value="${corInstrumento(c)}" aria-label="Cor do cartão ou grupo" title="${c.tag ? "Cor da tag; aplicada a todos os cartões do grupo" : "Cor do cartão"}" />
       <span class="ident-origem">
-        Banco informou <b>${esc(c.nomeBanco || "sem nome")}</b>${c.numero ? ` · final ${esc(c.numero)}` : ""}${
-          c.marca ? ` · ${esc(c.marca)}${c.nivel ? " " + esc(c.nivel) : ""}` : ""}${
-          c.ativa ? "" : " · conta substituída por reconexão, não vira coluna"}
+        ${esc(c.instituicao || c.nomeBanco || "")}${c.ativa === false ? " · cartão inativo" : ""}
       </span>
     </div>`).join("") +
-    `<datalist id="listaGrupos">${
-      IDENT.grupos.map(g => `<option value="${esc(g)}"></option>`).join("")}</datalist>`;
+    `<datalist id="listaTags">${(IDENT.tags || []).map(t => `<option value="${esc(t.nome)}"></option>`).join("")}</datalist>`;
+  el("identTags").innerHTML = (IDENT.tags || []).map(t => `<div class="ident-tag-linha" data-tag-id="${esc(t.id)}">
+    <input type="text" value="${esc(t.nome)}" maxlength="60" aria-label="Nome da tag ${esc(t.nome)}" />
+    <button type="button" data-renomear-tag>Renomear</button></div>`).join("") || '<span class="sub">Nenhuma tag criada.</span>';
 }
 
 async function abrirIdent() {
   el("identErro").textContent = "";
+  el("btnSalvarIdent").disabled = true;
   try {
     IDENT = await api("/cartoes-identidade");
     renderIdent();
     el("modalCartoes").hidden = false;
-  } catch (e) { setEstado("estado", e.message, "erro"); }
+    el("btnSalvarIdent").disabled = false;
+  } catch (e) { el("identErro").textContent = e.message; el("modalCartoes").hidden = false; }
 }
 
-async function salvarIdent() {
-  const cartoes = [...document.querySelectorAll(".ident-linha")].map((linha, ordem) => ({
-    contaId: linha.dataset.conta,
-    apelido: linha.querySelector(".i-apelido").value.trim(),
-    // Grupo vazio no formulário significa "coluna própria". Mandar vazio faz
-    // o backend voltar ao padrão (agrupar pela conexão), que NÃO é o que a
-    // pessoa pediu -- então vira um grupo com o nome do próprio cartão.
-    grupo: linha.querySelector(".i-grupo").value.trim()
-      || `só:${linha.dataset.conta.slice(0, 8)}`,
+function identDoFormulario() {
+  return [...document.querySelectorAll(".ident-linha")].map((linha, ordem) => ({
+    cartaoId: linha.dataset.cartao,
+    tag: linha.querySelector(".i-tag").value.trim(),
     cor: linha.querySelector(".i-cor").value,
     ordem,
   }));
-  if (cartoes.some(c => !c.apelido)) {
-    el("identErro").textContent = "Todo cartão precisa de um apelido.";
-    return;
-  }
+}
+
+async function salvarIdent() {
+  el("btnSalvarIdent").disabled = true;
   try {
-    IDENT = await api("/cartoes-identidade", "PUT", { cartoes });
+    IDENT = await api("/cartoes-identidade", "PUT", { cartoes: identDoFormulario() });
     el("modalCartoes").hidden = true;
     await recarregar();
   } catch (e) { el("identErro").textContent = e.message; }
+  finally { el("btnSalvarIdent").disabled = false; }
+}
+
+async function renomearTag(botao) {
+  const linha = botao.closest("[data-tag-id]");
+  const nome = linha.querySelector("input").value.trim();
+  if (!nome) { el("identErro").textContent = "Preencha o nome da tag."; return; }
+  const normalizar = texto => String(texto).trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const antiga = IDENT.tags.find(t => t.id === linha.dataset.tagId)?.nome;
+  const rascunhos = new Map(identDoFormulario().map(c => [c.cartaoId, c]));
+  botao.disabled = true;
+  try {
+    await api(`/cartoes-tags/${encodeURIComponent(linha.dataset.tagId)}`, "PUT", { nome });
+    IDENT = await api("/cartoes-identidade");
+    // Renomear salva somente a tag; as demais edições continuam no formulário.
+    IDENT.cartoes = IDENT.cartoes.map(c => {
+      const rascunho = rascunhos.get(c.cartaoId);
+      return rascunho ? { ...c, cor: rascunho.cor,
+        tag: normalizar(rascunho.tag) === normalizar(antiga) ? nome : rascunho.tag } : c;
+    });
+    renderIdent();
+    el("identErro").textContent = "";
+    await recarregar();
+  } catch (e) { el("identErro").textContent = e.message; }
+  finally { botao.disabled = false; }
 }
 
 (function iniciar() {
@@ -350,6 +385,44 @@ async function salvarIdent() {
   el("btnFecharIdent").addEventListener("click", () => { el("modalCartoes").hidden = true; });
   el("btnCancelarIdent").addEventListener("click", () => { el("modalCartoes").hidden = true; });
   el("btnSalvarIdent").addEventListener("click", salvarIdent);
+  el("identLista").addEventListener("click", e => {
+    if (e.target.closest("[data-remover-tag]")) {
+      const linha = e.target.closest(".ident-linha");
+      linha.querySelector(".i-tag").value = "";
+    }
+  });
+  el("identLista").addEventListener("input", e => {
+    const linha = e.target.closest(".ident-linha");
+    if (!linha) return;
+    const normalizar = texto => String(texto).trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+    if (e.target.matches(".i-tag")) {
+      const tag = normalizar(e.target.value);
+      const existente = (IDENT.tags || []).find(t => normalizar(t.nome) === tag);
+      const outra = [...document.querySelectorAll(".ident-linha")].find(item =>
+        item !== linha && normalizar(item.querySelector(".i-tag").value) === tag);
+      const cor = existente?.cor || outra?.querySelector(".i-cor").value;
+      if (tag && cor) document.querySelectorAll(".ident-linha").forEach(item => {
+        if (normalizar(item.querySelector(".i-tag").value) === tag) {
+          item.querySelector(".i-cor").value = cor;
+          item.querySelector(".ident-selo").style.background = cor;
+        }
+      });
+    }
+    if (e.target.matches(".i-cor")) {
+      const tag = normalizar(linha.querySelector(".i-tag").value);
+      if (tag) document.querySelectorAll(".ident-linha").forEach(outra => {
+        if (normalizar(outra.querySelector(".i-tag").value) === tag) {
+          outra.querySelector(".i-cor").value = e.target.value;
+          outra.querySelector(".ident-selo").style.background = e.target.value;
+        }
+      });
+      else linha.querySelector(".ident-selo").style.background = e.target.value;
+    }
+  });
+  el("identTags").addEventListener("click", e => {
+    const botao = e.target.closest("[data-renomear-tag]");
+    if (botao) renomearTag(botao);
+  });
   el("modalCartoes").addEventListener("click", e => {
     if (e.target.id === "modalCartoes") el("modalCartoes").hidden = true;
   });
@@ -358,6 +431,7 @@ async function salvarIdent() {
   if (Number.isInteger(anoUrl) && anoUrl >= 2000 && anoUrl <= 2100) selectedYear = anoUrl;
   document.getElementById("yearInput").value = String(selectedYear);
   ligarEventos();
+  observarIdentidadeCartoes(recarregar);
   recarregar();
 })();
 </script>

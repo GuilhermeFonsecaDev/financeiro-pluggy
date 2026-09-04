@@ -4,7 +4,8 @@
  * uma vez só.
  */
 
-const API = "http://127.0.0.1:8766/api";
+const API = /^https?:$/.test(location.protocol) && ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname)
+  ? `${location.origin}/api` : "http://127.0.0.1:8766/api";
 
 const fmtBRL = v => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtBRLCurto = v => {
@@ -62,7 +63,71 @@ async function pedir(caminho, metodo = "GET", corpo = null) {
   // inteiro cai. É grosso de propósito: cache errado aqui mostraria número
   // desatualizado, que é pior que a espera que ele evita.
   if (metodo !== "GET") limparCache();
+  if (metodo !== "GET" && /^\/cartoes-(identidade|tags)(?:\/|$)/.test(caminho)) {
+    avisarIdentidadeCartoes();
+  }
   return p;
+}
+
+// Identidade é compartilhada: cada aba revalida suas visões após uma tag mudar.
+const CHAVE_IDENTIDADE_CARTOES = "pluggy:identidade-cartoes";
+function avisarIdentidadeCartoes() {
+  try { localStorage.setItem(CHAVE_IDENTIDADE_CARTOES, `${Date.now()}:${Math.random()}`); } catch { }
+}
+
+function observarIdentidadeCartoes(atualizar) {
+  let pendente = false, atualizando = false, agendado = null;
+  const executar = async () => {
+    agendado = null;
+    if (!pendente || atualizando || document.hidden) return;
+    // Não repinta formulários enquanto a pessoa está editando.
+    if (document.querySelector(".modal-fundo:not([hidden])")) {
+      agendado = setTimeout(executar, 750);
+      return;
+    }
+    pendente = false;
+    atualizando = true;
+    limparCache();
+    try { await atualizar(); }
+    catch (erro) { setEstado("estado", erro.message, "erro"); }
+    finally { atualizando = false; if (pendente && !agendado) agendado = setTimeout(executar, 100); }
+  };
+  const solicitar = () => {
+    pendente = true;
+    if (!agendado) agendado = setTimeout(executar, 80);
+  };
+  window.addEventListener("storage", evento => {
+    if (evento.key === CHAVE_IDENTIDADE_CARTOES) solicitar();
+  });
+  window.addEventListener("focus", solicitar);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) solicitar(); });
+}
+
+function nomeInstrumento(instrumento) {
+  return instrumento?.nomeExibicao || instrumento?.nome || instrumento?.nomeOriginal || "Cartão";
+}
+
+function corInstrumento(instrumento) {
+  const cor = String(instrumento?.cor || "");
+  return /^#[a-f\d]{6}$/i.test(cor) ? cor : "#4a95ea";
+}
+
+function opcoesInstrumentos(instrumentos, selecionado = "", todos = "") {
+  const ehCartao = c => c.tipo === "CREDIT" || c.tipo === "cartao" || c.tipo === "CREDIT_CARD"
+    || c.subtipo === "CREDIT_CARD" || !!c.cartaoId;
+  const opcao = c => {
+    const nome = nomeInstrumento(c);
+    const original = c.nomeOriginal && c.nomeOriginal !== nome ? ` · ${c.nomeOriginal}` : "";
+    return `<option value="${esc(c.contaId || c.id)}" ${(c.contaId || c.id) === selecionado ? "selected" : ""}>${esc(nome + original)}</option>`;
+  };
+  const anterior = selecionado && !instrumentos.some(c => (c.contaId || c.id) === selecionado)
+    ? instrumentos.find(c => c.cartaoId === selecionado || c.tagId === selecionado) : null;
+  const preservada = selecionado && !instrumentos.some(c => (c.contaId || c.id) === selecionado)
+    ? `<option value="${esc(selecionado)}" selected>${esc(anterior ? nomeInstrumento(anterior) : "Origem salva · conexão anterior")}</option>` : "";
+  return (todos ? `<option value="">${esc(todos)}</option>` : "") + preservada
+    + [["Contas bancárias", instrumentos.filter(c => !ehCartao(c))], ["Cartões", instrumentos.filter(ehCartao)]]
+      .filter(([, itens]) => itens.length)
+      .map(([titulo, itens]) => `<optgroup label="${titulo}">${itens.map(opcao).join("")}</optgroup>`).join("");
 }
 
 /* ----------------------------------------------------------------- cache

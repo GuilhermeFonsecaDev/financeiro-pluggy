@@ -17,7 +17,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from atualizar_pluggy import atualizar_em_background, registrar_item
 from atualizar_pluggy import status as pluggy_status
@@ -283,6 +283,10 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/cartoes-identidade":
                 self.send_json(cartoes_id.salvar(payload))
+                return
+            tag = re.fullmatch(r"/api/cartoes-tags/([^/]+)", parsed.path)
+            if tag:
+                self.send_json(cartoes_id.renomear_tag(unquote(tag.group(1)), payload))
                 return
             if parsed.path == "/api/extrato/entradas/valor-esperado":
                 self.send_json(definir_valor_esperado_entradas(payload))

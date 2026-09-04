@@ -40,6 +40,7 @@ from typing import Any
 import banco as fin
 import importar_pluggy
 import investimentos
+import cartoes
 
 # Download e importacao vivem no mesmo projeto: pluggy_sync.py fica aqui do lado
 # e grava em ./data. Caminho relativo ao arquivo, nao absoluto, para a pasta
@@ -154,24 +155,19 @@ def conexoes_conhecidas() -> list[dict[str, Any]]:
     fin.ensure_database()
     with fin.connect() as conn:
         importar_pluggy_tabelas(conn)
-        return [
-            {
-                "id": linha["item_id"],
-                "idCurto": linha["item_id"][:8],
+        identidades = cartoes.identidades(conn)
+        fontes = cartoes.fontes_ativas(conn)
+        conexoes = []
+        for linha in conn.execute("SELECT * FROM pluggy_itens ORDER BY conector,item_id"):
+            produtos = list(conn.execute("SELECT conta_id,nome,subtipo FROM pluggy_contas WHERE item_id=? ORDER BY nome", (linha["item_id"],)))
+            conexoes.append({
+                "id": linha["item_id"], "idCurto": linha["item_id"][:8],
                 "conector": linha["conector"] or "",
-                "contas": [
-                    nome for nome in (linha["contas"] or "").split(",") if nome
-                ],
+                "contas": [p["nome"] for p in produtos if p["conta_id"] not in identidades],
+                "cartoes": [identidades[p["conta_id"]]["nomeExibicao"] for p in produtos if p["conta_id"] in fontes],
                 "importadoEm": linha["importado_em"],
-            }
-            for linha in conn.execute(
-                "SELECT i.item_id, i.conector, i.importado_em, "
-                "GROUP_CONCAT(DISTINCT c.nome) AS contas "
-                "FROM pluggy_itens i LEFT JOIN pluggy_contas c "
-                "ON c.item_id = i.item_id GROUP BY i.item_id "
-                "ORDER BY COALESCE(NULLIF(i.conector, ''), contas, i.item_id)"
-            )
-        ]
+            })
+        return conexoes
 
 
 def status() -> dict[str, Any]:

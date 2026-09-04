@@ -116,16 +116,23 @@ def _cartoes_do_mes(mes: str) -> list[dict[str, Any]]:
     saida = []
     for cartao in dados["cartoes"]:
         valor = float(dados["valores"].get(cartao["id"], [0] * 12)[indice] or 0)
-        limite = float(cartao.get("limiteCredito") or 0)
-        disponivel = float(cartao.get("limiteDisponivel") or 0)
+        limite = cartao.get("limiteCredito")
+        disponivel = cartao.get("limiteDisponivel")
         saida.append({
             "id": cartao["id"],
             "nome": cartao["nome"],
+            "cor": cartao["cor"],
+            "grupoId": cartao["grupoId"],
+            "tagId": cartao.get("tagId"),
+            "tag": cartao.get("tag") or "",
+            "membros": cartao["membros"],
             "valor": round(valor, 2),
-            "limite": round(limite, 2),
-            "disponivel": round(disponivel, 2),
-            "usoPct": round((limite - disponivel) / limite * 100, 1) if limite else None,
+            "limite": round(limite, 2) if limite is not None else None,
+            "disponivel": round(disponivel, 2) if disponivel is not None else None,
+            "usoPct": (round((limite - disponivel) / limite * 100, 1)
+                       if limite and disponivel is not None else None),
             "vencimento": cartao.get("vencimento") or "",
+            "vencimentos": cartao.get("vencimentos") or [],
             "origem": (dados["origens"].get(cartao["id"]) or [""] * 12)[indice],
             "quantidade": (dados["quantidades"].get(cartao["id"]) or [0] * 12)[indice],
         })
@@ -171,6 +178,10 @@ def _detalhe(de: str, ate: str, quantos: int = 15) -> dict[str, Any]:
             "cor": t["categoria"]["cor"],
             "emoji": t["categoria"]["emoji"],
             "conta": t["contaNome"],
+            "instrumentoTipo": t.get("instrumentoTipo"),
+            "cartaoId": t.get("cartaoId"),
+            "grupoId": t.get("grupoId"),
+            "cartaoOriginal": t.get("cartaoOriginal"),
             "parcela": (f"{t['parcelaNumero']}/{t['parcelaTotal']}"
                         if t.get("parcelaTotal") else ""),
         }

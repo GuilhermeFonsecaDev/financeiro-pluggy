@@ -203,7 +203,7 @@ select {
 
 /* --------------------------------------------------------------- tabelas */
 
-.tabela-wrap { overflow-x: auto; }
+.tabela-wrap { overflow-x: auto; max-width: 100%; overscroll-behavior-x: contain; }
 table { width: 100%; border-collapse: collapse; }
 th {
   padding: 8px 10px;

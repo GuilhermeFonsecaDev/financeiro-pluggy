@@ -73,16 +73,18 @@ def preparar():
 # ---------------------------------------------------------------------------
 
 def grade(px) -> dict:
-    """A grade de todos os anos, por nome de coluna (o id muda entre versões)."""
+    """Posições por identidade física: tags não mudam a chave do snapshot."""
     saida = {}
     for ano in ANOS:
         dados = px.cartoes_payload(ano, "fatura")
-        for cartao in dados["cartoes"]:
-            chave = f"{cartao['nome']}|{ano}"
-            saida[chave] = {
-                "valores": [round(v, 2) for v in dados["valores"][cartao["id"]]],
-                "origens": list(dados["origens"][cartao["id"]]),
-            }
+        for coluna in dados["cartoes"]:
+            for membro in coluna["membros"]:
+                fonte = membro["contaId"]
+                chave = f"{membro['cartaoId']}|{ano}"
+                saida[chave] = {
+                    "valores": [round(v, 2) for v in dados["valores"][fonte]],
+                    "origens": list(dados["origens"][fonte]),
+                }
         saida[f"TOTAL|{ano}"] = {
             "valores": [round(v, 2) for v in dados["totalMes"]],
             "origens": [""] * 12,
@@ -133,7 +135,7 @@ def invariante_oficial_igual_api(conn, px,
     """
     faturas = {}
     for linha in conn.execute(
-        "SELECT conta_id, competencia, valor_total FROM pluggy_faturas"
+        "SELECT conta_id, competencia, SUM(valor_total) valor_total FROM pluggy_faturas GROUP BY conta_id, competencia"
     ):
         faturas[(linha["conta_id"], linha["competencia"])] = round(
             linha["valor_total"] or 0, 2
@@ -142,31 +144,22 @@ def invariante_oficial_igual_api(conn, px,
     nao_verificaveis = 0
     for ano in ANOS:
         dados = px.cartoes_payload(ano, "fatura")
-        colunas = contas_por_coluna(conn, px, dados)
-        for cartao in dados["cartoes"]:
-            contas = colunas.get(cartao["id"], [cartao["id"]])
-            if contas is None:
-                nao_verificaveis += sum(
-                    1 for origem in dados["origens"][cartao["id"]]
-                    if origem == "oficial"
-                )
-                continue
-            for indice in range(12):
-                if dados["origens"][cartao["id"]][indice] != "oficial":
-                    continue
-                competencia = f"{ano}-{indice + 1:02d}"
-                esperado = round(sum(
-                    faturas[(conta, competencia)] for conta in contas
-                    if (conta, competencia) in faturas
-                ), 2)
-                obtido = round(dados["valores"][cartao["id"]][indice], 2)
-                conferidos += 1
-                if abs(esperado - obtido) > 0.005:
-                    problemas.append(
-                        f"mês 'oficial' diverge da API: {cartao['nome']} "
-                        f"{MESES[indice]}/{ano} API={esperado:.2f} "
-                        f"grade={obtido:.2f}"
-                    )
+        # Conferir cada membro, inclusive quando a coluna agregada é mista.
+        for coluna in dados["cartoes"]:
+            for membro in coluna["membros"]:
+                fonte = membro["contaId"]
+                for indice in range(12):
+                    if dados["origens"][fonte][indice] != "oficial":
+                        continue
+                    competencia = f"{ano}-{indice + 1:02d}"
+                    esperado = faturas.get((fonte, competencia), 0)
+                    obtido = round(dados["valores"][fonte][indice], 2)
+                    conferidos += 1
+                    if abs(esperado - obtido) > 0.005:
+                        problemas.append(
+                            f"mês oficial diverge da API: {membro['nomeOriginal']} "
+                            f"{competencia}: obtido={obtido}, esperado={esperado}"
+                        )
     return conferidos, nao_verificaveis
 
 

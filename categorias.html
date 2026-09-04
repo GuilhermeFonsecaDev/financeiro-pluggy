@@ -120,7 +120,8 @@
   <div class="pop-rotulo">Filtrar por</div>
   <div style="display:grid;gap:9px;padding:5px 8px 8px">
     <label class="campo"><span>Mês</span><select id="fMes"></select></label>
-    <label class="campo"><span>Conta</span><select id="fConta"></select></label>
+    <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
+    <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
   </div>
   <div class="pop-rodape">
     <button class="sutil" id="fLimpar">Limpar</button>
@@ -189,8 +190,8 @@
 
 <script src="app.js"></script>
 <script>
-let filtros = { month: "", account: "" };
-let MES_ATUAL = "", CONTAS = [], CATEGORIAS = [], EMOJIS = [], EMOJI_CATALOGO = [];
+let filtros = { month: "", account: "", card: "" };
+let MES_ATUAL = "", CONTAS = [], CARTOES = [], CATEGORIAS = [], EMOJIS = [], EMOJI_CATALOGO = [];
 let EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
 let abertas = new Set();
 // Uma vez por carregamento de tela: os pais que tem subcategoria com gasto
@@ -283,12 +284,14 @@ async function carregar() {
   const q = new URLSearchParams();
   if (filtros.month) q.set("month", filtros.month);
   if (filtros.account) q.set("account", filtros.account);
+  if (filtros.card) q.set("card", filtros.card);
   const p = await pedir(`/extrato/categorias-resumo?${q}`);
   render(p);
 
   const conta = CONTAS.find(c => c.id === filtros.account)?.nome;
+  const cartao = CARTOES.find(c => c.id === filtros.card)?.nome;
   document.getElementById("resumoFiltro").textContent =
-    [filtros.month ? labelMes(filtros.month) : "Todos os meses", conta].filter(Boolean).join(" · ");
+    [filtros.month ? labelMes(filtros.month) : "Todos os meses", conta, cartao].filter(Boolean).join(" · ");
   setEstado("estado", `${p.categorias.filter(c => c.total > 0).length} categorias com gasto`, "ok");
 }
 
@@ -517,6 +520,7 @@ async function carregarCatalogoEmojis() {
 async function carregarFiltros() {
   const p = await pedirCache("/extrato/filtros");
   CONTAS = p.contas || [];
+  CARTOES = p.cartoes || [];
   MES_ATUAL = p.mesAtual || "";
   const meses = p.meses.includes(MES_ATUAL) || !MES_ATUAL ? p.meses : [MES_ATUAL, ...p.meses];
   document.getElementById("fMes").innerHTML =
@@ -525,23 +529,28 @@ async function carregarFiltros() {
   document.getElementById("fConta").innerHTML =
     ['<option value="">Todas as contas</option>']
       .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+  document.getElementById("fCartao").innerHTML =
+    ['<option value="">Todos os cartões</option>']
+      .concat(CARTOES.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
 }
 
 function ligar() {
   document.getElementById("btnFiltros").addEventListener("click", e => {
     document.getElementById("fMes").value = filtros.month;
     document.getElementById("fConta").value = filtros.account;
+    document.getElementById("fCartao").value = filtros.card;
     abrirPop(document.getElementById("popFiltros"), e.currentTarget);
   });
   document.getElementById("fAplicar").addEventListener("click", () => {
     filtros.month = document.getElementById("fMes").value;
     filtros.account = document.getElementById("fConta").value;
+    filtros.card = document.getElementById("fCartao").value;
     salvarUltimoMes(filtros.month);
     fecharPop();
     carregar().catch(e => setEstado("estado", e.message, "erro"));
   });
   document.getElementById("fLimpar").addEventListener("click", () => {
-    filtros = { month: MES_ATUAL, account: "" };
+    filtros = { month: MES_ATUAL, account: "", card: "" };
     salvarUltimoMes(filtros.month);
     fecharPop();
     carregar().catch(e => setEstado("estado", e.message, "erro"));
@@ -628,6 +637,8 @@ function ligar() {
     if (linha) {
       const q = new URLSearchParams({ category: linha.dataset.cat });
       if (filtros.month) q.set("month", filtros.month);
+      if (filtros.account) q.set("account", filtros.account);
+      if (filtros.card) q.set("card", filtros.card);
       location.href = `transacoes.html?${q}`;
     }
   });
@@ -635,6 +646,7 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("categorias.html");
+  observarIdentidadeCartoes(async () => { await carregarFiltros(); await carregar(); });
   ligar();
   try {
     await carregarCategorias();

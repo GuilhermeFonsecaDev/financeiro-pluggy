@@ -106,8 +106,10 @@ function render(st) {
     <div class="conexao">
       <span class="banco-ic">◎</span>
       <div>
-        <strong>${esc(c.contas.length ? c.contas.join(" · ") : "Aguardando identificação do banco")}</strong>
-        <div class="det">${esc(c.conector || "Registrada; dados ainda não importados")}</div>
+        <strong>${esc(c.conector || "Instituição conectada")}</strong>
+        ${(c.contas || []).length ? `<div class="det">Contas: ${esc(c.contas.join(" · "))}</div>` : ""}
+        ${(c.cartoes || []).length ? `<div class="det">Cartões: ${esc(c.cartoes.join(" · "))}</div>` : ""}
+        ${!(c.contas || []).length && !(c.cartoes || []).length ? '<div class="det">Aguardando identificação dos produtos</div>' : ""}
       </div>
       <span class="id-curto">${esc(c.idCurto)}…</span>
     </div>`).join("")
@@ -169,6 +171,7 @@ el("btnConectar").addEventListener("click", async e => {
 });
 
 montarNav("conexoes_pluggy.html");
+observarIdentidadeCartoes(carregar);
 carregar();
 // Durante uma sincronização o estado muda sozinho; sem polling a tela ficaria
 // mentindo "Parada".

@@ -1,7 +1,10 @@
 # Plano de correção: competência de fatura de cartão
 
-Estado: **etapas 1 a 5 aplicadas** (02/09/2026), não commitadas. Etapa 6
-pendente, porque exige migrar dados já cadastrados.
+Estado: **concluído**. Etapas 1 a 5 aplicadas em 02/09/2026 (commit
+"Competência de fatura a partir do que o banco informa"); a etapa 6, que tira o
+que ainda era específico de banco, foi feita em 04/09/2026 — ver
+`PLANO_CARTOES_GENERICOS.md`, que a substitui e vai além, com identidade de
+cartão e tags.
 
 Rede de segurança: `python testes_faturas.py`. Ela roda sobre uma cópia do
 banco, confere as invariantes e lista as células da grade que mudaram desde o
@@ -135,7 +138,8 @@ duplicação por **compra**, não por cartão; nenhuma projeção em mês já fe
 Verificação: os primeiros dias do mês, quando dois ciclos estão abertos ao mesmo
 tempo, é o caso que quebra — conferir outubro e novembro juntos.
 
-**6. Genérico de verdade.** — PENDENTE
+**6. Genérico de verdade.** — FEITO em 04/09/2026, ver
+`PLANO_CARTOES_GENERICOS.md`
 Sai o que ainda é por banco: `NOMES_BANCOS` e `_grupos_bancarios`, usados pela
 *forma de pagamento* das contas fixas. Isso exige migrar dados já cadastrados
 (`fixas_contas.forma` guarda `itau`/`nubank`/`inter`), então é a última etapa e

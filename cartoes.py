@@ -1,287 +1,450 @@
-"""Identidade dos cartões: quem é cada cartão e quais dividem uma fatura.
+"""Identidade, tags e catálogo de cartões, independente de bancos.
 
-Antes, o nome de cada coluna da tela de Cartões vinha de heurística no código
-(`"gold" -> NUBANK`, `"PLATINUM PRIME DUO" -> INTER`) e a consolidação era uma
-função dedicada ao Itaú. Isso funcionava para os três cartões que existiam e
-falhava calado no quarto: um cartão novo aparecia com o nome cru do banco e
-nunca se juntava a ninguém.
-
-Aqui o de-para é dado, não código. Cada conta de cartão tem:
-
-  apelido -- como a pessoa chama aquele cartão.
-  grupo   -- vazio: coluna própria. Preenchido: divide a coluna (e a fatura)
-             com todo cartão que tenha o mesmo grupo, e o texto do grupo é o
-             nome da coluna.
-  cor     -- usada nas telas que pintam por cartão.
-
-O PADRÃO reproduz o que a tela já mostrava: `grupo = item_id`, porque cartões
-da mesma conexão são justamente os que compartilham fatura (é o caso dos dois
-Itaú). Então quem nunca abrir a tela de identificação não vê diferença, e quem
-conectar um cartão novo o vê aparecer sozinho na hora.
+A Pluggy guarda cartões em accounts. Aqui cada cartão tem identidade própria;
+a conexão é apenas origem e a tag é apenas apresentação/agrupamento.
 """
-
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
+import threading
+import unicodedata
+import uuid
+from collections import defaultdict
+from contextlib import closing
 from datetime import datetime
 from typing import Any
 
 import banco as fin
-import extrato_camada as cam
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS cartoes_identidade (
-  conta_id TEXT PRIMARY KEY,
-  apelido TEXT NOT NULL DEFAULT '',
-  grupo TEXT NOT NULL DEFAULT '',
-  cor TEXT NOT NULL DEFAULT '',
-  ordem INTEGER NOT NULL DEFAULT 0,
-  atualizado_em TEXT NOT NULL DEFAULT ''
-);
-"""
-
-# Paleta usada quando a pessoa não escolheu cor. São as mesmas cores que as
-# telas já usavam para Inter, Nubank e Itaú, seguidas de tons distinguíveis
-# para os próximos cartões.
 PALETA = ["#4a95ea", "#9b74e8", "#f28c35", "#3fbf7f", "#e5533d",
           "#5aa9a3", "#d9a520", "#c96f4f", "#8f7ce0", "#6b7280"]
-
-_pronto = False
-
-
-def _abrir() -> sqlite3.Connection:
-    global _pronto
-    fin.ensure_database()
-    conn = cam.conectar()
-    if not _pronto:
-        conn.executescript(SCHEMA)
-        conn.commit()
-        _pronto = True
-    return conn
-
-
-def _slug(texto: str) -> str:
-    limpo = re.sub(r"[^a-z0-9]+", "-", cam.normalizar(texto)).strip("-")
-    return limpo or "cartao"
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS cartoes_tags (
+ tag_id TEXT PRIMARY KEY, nome TEXT NOT NULL, normalizado TEXT NOT NULL UNIQUE,
+ cor TEXT NOT NULL DEFAULT '', atualizado_em TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cartoes_catalogo (
+ cartao_id TEXT PRIMARY KEY, tag_id TEXT REFERENCES cartoes_tags(tag_id),
+ cor TEXT NOT NULL DEFAULT '', ordem INTEGER NOT NULL DEFAULT 0,
+ atualizado_em TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cartoes_fontes (
+ conta_id TEXT PRIMARY KEY, cartao_id TEXT NOT NULL REFERENCES cartoes_catalogo(cartao_id),
+ criado_em TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_cartoes_fontes_cartao ON cartoes_fontes(cartao_id);
+"""
+_trava = threading.RLock()
 
 
-def _apelido_sugerido(nome: str) -> str:
-    """Palpite inicial, no lugar da antiga heurística espalhada no código.
+def _normalizar(texto: str) -> str:
+    return " ".join(unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().casefold().split())
 
-    Serve só como sugestão na primeira vez: assim que a pessoa salvar, o valor
-    dela manda. Um cartão desconhecido cai no próprio nome do banco em vez de
-    virar "Cartão" genérico.
+
+def _json(texto):
+    try:
+        obj = json.loads(texto or "{}")
+        return obj if isinstance(obj, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _numero_final(numero) -> str:
+    return re.sub(r"\D", "", str(numero or ""))[-4:]
+
+
+def _nome_original(conta, credito):
+    marca = str(credito.get("brand") or "").strip().upper()
+    final = _numero_final(conta["numero"])
+    if marca and final:
+        return f"{marca} {final}"
+    nome = str(conta["nome"] or "Cartão").strip()
+    if marca:
+        return marca
+    return f"{nome} {final}" if final and not nome.endswith(final) else nome
+
+
+def _contas(conn):
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM pluggy_contas WHERE subtipo='CREDIT_CARD' ORDER BY conta_id")]
+
+
+def _cor(chave):
+    return PALETA[int(hashlib.sha256(chave.encode()).hexdigest()[:8], 16) % len(PALETA)]
+
+
+def _agora():
+    return datetime.now().isoformat(timespec="microseconds")
+
+
+def _tabela(conn, nome):
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (nome,)).fetchone() is not None
+
+
+def _obter_tag(conn, nome: str) -> str | None:
+    nome = " ".join(str(nome or "").split())
+    if not nome:
+        return None
+    if len(nome) > 60:
+        raise ValueError("A tag deve ter no máximo 60 caracteres.")
+    normalizado = _normalizar(nome)
+    if not normalizado:
+        raise ValueError("Informe um nome legível para a tag.")
+    existente = conn.execute("SELECT tag_id FROM cartoes_tags WHERE normalizado=?", (normalizado,)).fetchone()
+    if existente:
+        return existente[0]
+    tag = "tag:" + str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO cartoes_tags (tag_id,nome,normalizado,cor,atualizado_em) VALUES (?,?,?,?,?)",
+        (tag, nome, normalizado, _cor(tag), _agora()),
+    )
+    return tag
+
+
+def _assinatura(conta):
+    credito = _json(conta["raw_json"]).get("creditData") or {}
+    return (_normalizar(conta["nome"]), _numero_final(conta["numero"]),
+            _normalizar(credito.get("brand") or ""), _normalizar(conta.get("titular") or ""),
+            conta.get("moeda") or "BRL")
+
+
+def _instituicao(conn, conta):
+    instituicao = _json(conta["raw_json"]).get("institution")
+    if isinstance(instituicao, dict):
+        instituicao = instituicao.get("id") or instituicao.get("name")
+    if instituicao:
+        return _normalizar(str(instituicao))
+    item = conn.execute("SELECT conector FROM pluggy_itens WHERE item_id=?", (conta["item_id"],)).fetchone()
+    conector = _normalizar(item[0]) if item else ""
+    # Agregador não é instituição: sem contexto não há reconexão automática.
+    return conector if conector not in {"", "meupluggy"} else None
+
+
+def _mesma_fonte(conn, nova, antiga):
+    # Nome/final isolados não identificam reconexão. Exigimos também histórico
+    # coincidente em datas distintas, em conexões distintas, sem candidatos ambíguos.
+    if nova["item_id"] == antiga["item_id"] or _assinatura(nova) != _assinatura(antiga):
+        return False
+    if not _numero_final(nova["numero"]):
+        return False
+    instituicao = _instituicao(conn, nova)
+    if not instituicao or instituicao != _instituicao(conn, antiga):
+        return False
+    dias = conn.execute(
+        "SELECT DISTINCT substr(a.data,1,10) dia FROM pluggy_transacoes a "
+        "JOIN pluggy_transacoes b ON a.data=b.data AND a.valor=b.valor "
+        "AND a.descricao=b.descricao AND a.tipo=b.tipo "
+        "WHERE a.conta_id=? AND b.conta_id=? LIMIT 3",
+        (nova["conta_id"], antiga["conta_id"])).fetchall()
+    return len(dias) >= 3
+
+
+def _reconciliar_fontes(conn, contas):
+    """Reavalia identidades provisórias quando o histórico finalmente chega.
+
+    A descoberta de accounts pode anteceder as transações. Uma fonte já
+    cadastrada não pode ficar duplicada para sempre por causa dessa ordem.
+    Só unem-se componentes com evidência entre todos os pares, sem cartões
+    distintos da mesma conexão nem preferências pessoais conflitantes.
     """
-    texto = str(nome or "").strip()
-    alto = texto.upper()
-    if "ITAU" in alto or "ITAÚ" in alto:
-        return alto.replace("ITAU", "ITAÚ")
-    if alto == "GOLD" or "NUBANK" in alto:
-        return "NUBANK"
-    if "PLATINUM PRIME DUO" in alto or "BANCO INTER" in alto:
-        return "INTER"
-    return texto or "CARTÃO"
+    fontes = {r["conta_id"]: dict(r) for r in conn.execute("SELECT * FROM cartoes_fontes")}
+    catalogo = {r["cartao_id"]: dict(r) for r in conn.execute("SELECT * FROM cartoes_catalogo")}
+    por_cartao = defaultdict(list)
+    for conta in contas:
+        fonte = fontes.get(conta["conta_id"])
+        if fonte:
+            por_cartao[fonte["cartao_id"]].append(conta)
+    ids = sorted(por_cartao)
+    vizinhos = {cid: set() for cid in ids}
+    for indice, primeiro in enumerate(ids):
+        for segundo in ids[indice + 1:]:
+            if any(_mesma_fonte(conn, a, b)
+                   for a in por_cartao[primeiro] for b in por_cartao[segundo]):
+                vizinhos[primeiro].add(segundo)
+                vizinhos[segundo].add(primeiro)
 
+    def criacao(cid):
+        return min(fontes[c["conta_id"]]["criado_em"] for c in por_cartao[cid])
 
-def _contas_de_cartao(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Toda conta de cartão conhecida, com o que ajuda a reconhecê-la."""
-    saida = []
-    for linha in conn.execute(
-        "SELECT conta_id, item_id, nome, numero, limite_credito, limite_disponivel, "
-        "       raw_json "
-        "  FROM pluggy_contas WHERE subtipo = 'CREDIT_CARD' "
-        " ORDER BY nome"
-    ):
-        try:
-            credito = (json.loads(linha["raw_json"] or "{}") or {}).get("creditData") or {}
-        except (TypeError, ValueError):
-            credito = {}
-        saida.append({
-            "contaId": linha["conta_id"],
-            "itemId": linha["item_id"],
-            "nomeBanco": str(linha["nome"] or "").strip(),
-            "numero": str(linha["numero"] or "").strip(),
-            "marca": credito.get("brand") or "",
-            "nivel": credito.get("level") or "",
-            "limiteCredito": float(linha["limite_credito"] or 0),
-            "limiteDisponivel": float(linha["limite_disponivel"] or 0),
-        })
-    return saida
+    def preferencia(cid):
+        registro = catalogo[cid]
+        cor_pessoal = registro["cor"] if registro["cor"] != _cor(cid) else ""
+        # Salvar/remover uma tag explicitamente também é preferência, mesmo
+        # que o resultado seja vazio. Não deixar outra identidade sobrescrevê-la.
+        pessoal = (registro["atualizado_em"] > criacao(cid)
+                   or registro["tag_id"] or cor_pessoal or registro["ordem"])
+        return (registro["tag_id"], cor_pessoal, registro["ordem"]) if pessoal else None
 
-
-def identidades(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """conta_id -> identidade efetiva (o que foi salvo, ou o padrão).
-
-    É o que `cartoes_payload` consulta para nomear e agrupar as colunas.
-    """
-    if not conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cartoes_identidade'"
-    ).fetchone():
-        conn.executescript(SCHEMA)
-
-    salvas = {
-        linha["conta_id"]: linha
-        for linha in conn.execute("SELECT * FROM cartoes_identidade")
-    }
-    saida: dict[str, dict[str, Any]] = {}
-    for indice, conta in enumerate(_contas_de_cartao(conn)):
-        salva = salvas.get(conta["contaId"])
-        # Padrão: agrupa pela conexão. É o que faz os dois Itaú continuarem
-        # numa coluna só sem nenhuma regra escrita sobre "Itaú".
-        grupo = (salva["grupo"] if salva else "") or conta["itemId"]
-        saida[conta["contaId"]] = {
-            **conta,
-            "apelido": (salva["apelido"] if salva else "") or _apelido_sugerido(conta["nomeBanco"]),
-            "grupo": grupo,
-            "cor": (salva["cor"] if salva else "") or PALETA[indice % len(PALETA)],
-            "ordem": int(salva["ordem"]) if salva else indice,
-            "identificado": salva is not None,
-        }
-    return saida
-
-
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-", re.I)
-
-
-def rotulo_de_grupo(grupo: str, apelidos: list[str]) -> str:
-    """Nome da coluna de um grupo de cartões.
-
-    Se a pessoa deu um nome ao grupo, é ele. No padrão o grupo é o id da
-    conexão (um UUID, que não serve de rótulo), então o nome sai do PREFIXO
-    COMUM dos apelidos: "ITAÚ MASTERCARD PLATINUM" + "ITAÚ MULTIPLO VS PLAT"
-    dá "ITAÚ", que é exatamente como a coluna já se chamava.
-    """
-    nomes = [a for a in apelidos if a]
-    if grupo and not _UUID.match(grupo):
-        return grupo
-    if len(nomes) <= 1:
-        return nomes[0] if nomes else "CARTÃO"
-    palavras = [n.split() for n in nomes]
-    comuns: list[str] = []
-    for pedaco in zip(*palavras):
-        if len(set(p.upper() for p in pedaco)) != 1:
-            break
-        comuns.append(pedaco[0])
-    return " ".join(comuns) if comuns else nomes[0]
-
-
-def colunas(conn: sqlite3.Connection,
-            contas_visiveis: set[str] | None = None) -> list[dict[str, Any]]:
-    """Uma entrada por COLUNA da tela de Cartões, já agrupada.
-
-    É daqui que `cartoes_payload` tira quantas colunas existem e como se
-    chamam -- por isso um cartão novo aparece sozinho sem nenhuma mudança de
-    código, e dois cartões viram uma coluna só se compartilharem o grupo.
-    """
-    mapa = identidades(conn)
-    grupos: dict[str, list[dict[str, Any]]] = {}
-    for conta_id, ident in mapa.items():
-        if contas_visiveis is not None and conta_id not in contas_visiveis:
+    vistos = set()
+    alterou = False
+    for inicio in ids:
+        if inicio in vistos:
             continue
-        grupos.setdefault(ident["grupo"], []).append(ident)
+        componente, pendentes = set(), [inicio]
+        while pendentes:
+            cid = pendentes.pop()
+            if cid in componente:
+                continue
+            componente.add(cid)
+            pendentes.extend(vizinhos[cid] - componente)
+        vistos.update(componente)
+        if len(componente) < 2:
+            continue
+        if any(vizinhos[cid] & componente != componente - {cid} for cid in componente):
+            continue  # Candidatos ambíguos: não escolher um por ordem de leitura.
+        conexoes = [set(c["item_id"] for c in por_cartao[cid]) for cid in componente]
+        if sum(len(c) for c in conexoes) != len(set().union(*conexoes)):
+            continue
+        preferencias = {p for cid in componente if (p := preferencia(cid)) is not None}
+        if len(preferencias) > 1:
+            continue
+        destino = min(componente, key=lambda cid: (criacao(cid), cid))
+        if preferencias:
+            tag, cor, ordem = next(iter(preferencias))
+            # A identidade estável mais antiga sobrevive; a preferência única
+            # acompanha a união mesmo quando foi definida na fonte mais nova.
+            conn.execute("UPDATE cartoes_catalogo SET tag_id=?,cor=?,ordem=?,atualizado_em=? WHERE cartao_id=?",
+                         (tag, cor or _cor(destino), ordem, _agora(), destino))
+        for antiga in sorted(componente - {destino}):
+            conn.execute("UPDATE cartoes_fontes SET cartao_id=? WHERE cartao_id=?", (destino, antiga))
+            for tabela in ("fixas_contas", "fixas_mes", "fixas_descontos"):
+                if not _tabela(conn, tabela):
+                    continue
+                colunas = {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}
+                for coluna in ("forma_pagamento", "conta_id") if tabela == "fixas_contas" else ("forma_pagamento",):
+                    if coluna in colunas:
+                        conn.execute(f"UPDATE {tabela} SET {coluna}=? WHERE {coluna}=?", (destino, antiga))
+            conn.execute("DELETE FROM cartoes_catalogo WHERE cartao_id=?", (antiga,))
+        alterou = True
+    if alterou and _tabela(conn, "app_meta"):
+        _registrar_revisao(conn)
 
-    saida = []
+
+def garantir(conn):
+    """Migração idempotente e descoberta automática. Não altera os dados de origem."""
+    with _trava:
+        transacao_anterior = conn.in_transaction
+        nova_base = not _tabela(conn, "cartoes_catalogo")
+        if nova_base:
+            if fin.DATABASE_PATH.resolve() == (fin.ROOT / "pluggy.db").resolve():
+                fin.create_database_backup("cartoes_genericos", min_interval_seconds=0)
+            for comando in SCHEMA.split(";"):
+                if comando.strip():
+                    conn.execute(comando)
+        colunas_tag = {r[1] for r in conn.execute("PRAGMA table_info(cartoes_tags)")}
+        if "cor" not in colunas_tag:
+            conn.execute("ALTER TABLE cartoes_tags ADD COLUMN cor TEXT NOT NULL DEFAULT ''")
+        for tag_id, cor in conn.execute("SELECT tag_id,cor FROM cartoes_tags").fetchall():
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(cor or "")):
+                conn.execute("UPDATE cartoes_tags SET cor=? WHERE tag_id=?", (_cor(tag_id), tag_id))
+        contas = _contas(conn)
+        fontes = {r["conta_id"]: r["cartao_id"] for r in conn.execute("SELECT * FROM cartoes_fontes")}
+        legadas = {r["conta_id"]: dict(r) for r in conn.execute("SELECT * FROM cartoes_identidade")} if _tabela(conn, "cartoes_identidade") else {}
+        por_id = {c["conta_id"]: c for c in contas}
+        for conta in contas:
+            fonte = conta["conta_id"]
+            if fonte in fontes:
+                continue
+            # Uma identidade que já possui outra fonte nesta mesma conexão não
+            # pode representar o cartão novo: ambos coexistem no item. Sem
+            # este bloqueio, uma fonte antiga parecida poderia unir dois
+            # cartões físicos distintos depois de uma reconexão.
+            identidades_do_item = {
+                cid for origem, cid in fontes.items()
+                if origem in por_id and por_id[origem]["item_id"] == conta["item_id"]
+            }
+            candidatas = {
+                cid for origem, cid in fontes.items()
+                if cid not in identidades_do_item
+                and origem in por_id
+                and _mesma_fonte(conn, conta, por_id[origem])
+            }
+            if len(candidatas) == 1:
+                cartao = candidatas.pop()
+            else:
+                cartao = "cartao:" + str(uuid.uuid5(uuid.NAMESPACE_URL, "pluggy-card:" + fonte))
+                antiga = legadas.get(fonte, {})
+                # O sistema anterior persistia grupos/apelidos inferidos por
+                # banco como se fossem escolhas do usuário. Não há marcador
+                # capaz de distinguir esses defaults de uma edição manual;
+                # portanto nenhum texto legado vira tag automaticamente.
+                tag = None
+                cor = antiga.get("cor") or _cor(cartao)
+                conn.execute("INSERT OR IGNORE INTO cartoes_catalogo VALUES (?,?,?,?,?)",
+                             (cartao, tag, cor, int(antiga.get("ordem") or 0), _agora()))
+            conn.execute("INSERT OR IGNORE INTO cartoes_fontes VALUES (?,?,?)", (fonte, cartao, _agora()))
+            fontes[fonte] = cartao
+        _reconciliar_fontes(conn, contas)
+        if _tabela(conn, "app_meta"):
+            conn.execute("INSERT OR REPLACE INTO app_meta VALUES ('cartoes_schema_versao','2')")
+        if not transacao_anterior:
+            conn.commit()
+
+
+def identidades(conn) -> dict[str, dict[str, Any]]:
+    garantir(conn)
+    salvas = {r["conta_id"]: dict(r) for r in conn.execute(
+        "SELECT f.conta_id, c.*, t.nome tag, t.cor tag_cor FROM cartoes_fontes f "
+        "JOIN cartoes_catalogo c USING(cartao_id) LEFT JOIN cartoes_tags t USING(tag_id)")}
+    mapa = {}
+    for conta in _contas(conn):
+        salva = salvas[conta["conta_id"]]
+        credito = _json(conta["raw_json"]).get("creditData") or {}
+        original = _nome_original(conta, credito)
+        tag = salva["tag"] or ""
+        grupo = salva["tag_id"] or salva["cartao_id"]
+        mapa[conta["conta_id"]] = {
+            "contaId": conta["conta_id"], "itemId": conta["item_id"], "cartaoId": salva["cartao_id"],
+            "nomeOriginal": original, "nomeExibicao": tag or original, "nomeBanco": conta["nome"],
+            "numero": _numero_final(conta["numero"]), "marca": credito.get("brand") or "",
+            "nivel": credito.get("level") or "", "tagId": salva["tag_id"], "tag": tag,
+            "grupo": grupo, "grupoId": grupo, "apelido": tag or original,
+            "cor": (salva["tag_cor"] or _cor(grupo)) if tag else (salva["cor"] or _cor(grupo)),
+            "ordem": salva["ordem"],
+            "limiteCredito": conta["limite_credito"], "limiteDisponivel": conta["limite_disponivel"],
+            "vencimento": conta["vencimento"], "fechamento": conta["fechamento"], "moeda": conta["moeda"],
+            "identificado": bool(tag), "tipo": "cartao",
+        }
+    return mapa
+
+
+def _ativas(conn, mapa):
+    ultimas = {r[0]: r[1] for r in conn.execute("SELECT conta_id, MAX(data) FROM pluggy_transacoes GROUP BY conta_id")}
+    importadas = {r[0]: r[1] for r in conn.execute("SELECT conta_id,importado_em FROM pluggy_contas")}
+    grupos = defaultdict(list)
+    for fonte, ident in mapa.items():
+        grupos[ident["cartaoId"]].append(fonte)
+    return {max(fontes, key=lambda f: (ultimas.get(f) or "", importadas.get(f) or "", f)) for fontes in grupos.values()}
+
+
+def fontes_ativas(conn) -> set[str]:
+    return _ativas(conn, identidades(conn))
+
+
+def resolver_contas(conn, referencia: str) -> set[str]:
+    mapa = identidades(conn)
+    return {fonte for fonte, ident in mapa.items() if referencia in {fonte, ident["cartaoId"], ident["tagId"]}}
+
+
+def colunas(conn, contas_visiveis: set[str] | None = None) -> list[dict[str, Any]]:
+    mapa = identidades(conn)
+    visiveis = _ativas(conn, mapa) if contas_visiveis is None else set(contas_visiveis) & _ativas(conn, mapa)
+    grupos = defaultdict(list)
+    for fonte, ident in mapa.items():
+        if fonte in visiveis:
+            grupos[ident["grupo"]].append(ident)
+    resultado = []
     for grupo, membros in grupos.items():
-        membros.sort(key=lambda m: (m["ordem"], m["apelido"]))
-        saida.append({
-            "id": (membros[0]["contaId"] if len(membros) == 1
-                   else f"grupo:{_slug(rotulo_de_grupo(grupo, [m['apelido'] for m in membros]))}"),
-            "nome": rotulo_de_grupo(grupo, [m["apelido"] for m in membros]),
-            "cor": membros[0]["cor"],
-            "grupo": grupo,
-            "contas": [m["contaId"] for m in membros],
-            "apelidos": [m["apelido"] for m in membros],
-            "numero": membros[0]["numero"] if len(membros) == 1 else "",
-            "limiteCredito": round(sum(m["limiteCredito"] for m in membros), 2),
-            "limiteDisponivel": round(sum(m["limiteDisponivel"] for m in membros), 2),
-            "ordem": membros[0]["ordem"],
+        membros.sort(key=lambda m: (m["ordem"], m["nomeOriginal"], m["cartaoId"]))
+        primeiro = membros[0]
+        vencimentos = sorted({m["vencimento"] for m in membros if m["vencimento"]})
+        resultado.append({
+            "id": grupo, "nome": primeiro["nomeExibicao"], "nomeExibicao": primeiro["nomeExibicao"],
+            "grupo": grupo, "grupoId": grupo, "tagId": primeiro["tagId"], "tag": primeiro["tag"],
+            "cor": primeiro["cor"], "ordem": primeiro["ordem"],
+            "contas": [m["contaId"] for m in membros], "cartoes": [m["cartaoId"] for m in membros],
+            "membros": membros, "apelidos": [m["nomeOriginal"] for m in membros],
+            "numero": primeiro["numero"] if len(membros) == 1 else "",
+            "limiteCredito": primeiro["limiteCredito"] if len(membros) == 1 else None,
+            "limiteDisponivel": primeiro["limiteDisponivel"] if len(membros) == 1 else None,
+            "vencimento": vencimentos[0] if len(vencimentos) == 1 else "",
+            "vencimentos": vencimentos, "tipo": "cartao",
         })
-    saida.sort(key=lambda c: (c["ordem"], c["nome"]))
-    return saida
+    return sorted(resultado, key=lambda x: (x["ordem"], x["nome"], x["id"]))
 
 
-def payload() -> dict[str, Any]:
-    """Tudo que a tela de identificação precisa mostrar."""
-    with _abrir() as conn:
-        cam.garantir_camada(conn)
-        try:
-            import pluggy_extrato as px
-            ativas = px.contas_ativas(conn)
-        except Exception:
-            ativas = None
+def payload():
+    fin.ensure_database()
+    with closing(fin.connect()) as conn:
         mapa = identidades(conn)
-
-    # Quantos cartões caem em cada grupo, e como aquela coluna se chama. O
-    # formulário precisa disso para JÁ VIR com o grupo preenchido quando o
-    # cartão divide coluna: com o campo vazio, salvar sem mexer em nada
-    # separaria a coluna consolidada em duas.
-    por_grupo: dict[str, list[dict[str, Any]]] = {}
-    for ident in mapa.values():
-        por_grupo.setdefault(ident["grupo"], []).append(ident)
-
-    cartoes = []
-    for conta_id, ident in sorted(mapa.items(), key=lambda x: (x[1]["ordem"], x[1]["apelido"])):
-        irmaos = por_grupo.get(ident["grupo"], [])
-        rotulo = rotulo_de_grupo(ident["grupo"], [i["apelido"] for i in irmaos])
-        cartoes.append({
-            **ident,
-            # Conta substituída por reconexão continua no banco, mas não deve
-            # virar coluna. A tela mostra e explica, em vez de esconder.
-            "ativa": ativas is None or conta_id in ativas,
-            "compartilhaColuna": len(irmaos) > 1,
-            # Vazio quando o cartão está sozinho (é o que a pessoa deve ver);
-            # o rótulo da coluna quando ele divide fatura com outro.
-            "grupoTexto": rotulo if len(irmaos) > 1 else "",
-        })
-    grupos = sorted({
-        c["grupoTexto"] for c in cartoes if c["grupoTexto"]
-    })
-    return {"cartoes": cartoes, "grupos": grupos, "paleta": PALETA}
+        ativas = _ativas(conn, mapa)
+        tags = [{"id": r[0], "nome": r[1], "cor": r[2]} for r in conn.execute(
+            "SELECT tag_id,nome,cor FROM cartoes_tags ORDER BY nome")]
+        cartoes = [{**i, "ativa": True, "grupoTexto": i["tag"]} for fonte, i in mapa.items() if fonte in ativas]
+        for cartao in cartoes:
+            cartao["compartilhaColuna"] = sum(i["grupo"] == cartao["grupo"] for i in cartoes) > 1
+        revisao = conn.execute("SELECT valor FROM app_meta WHERE chave='cartoes_revisao'").fetchone()
+    return {"cartoes": sorted(cartoes, key=lambda c: (c["ordem"], c["nomeOriginal"])), "tags": tags,
+            "grupos": [t["nome"] for t in tags], "paleta": PALETA,
+            "versao": 2, "revisao": revisao[0] if revisao else ""}
 
 
-def salvar(dados: dict) -> dict[str, Any]:
-    """Grava a identificação de um ou vários cartões de uma vez."""
+def _registrar_revisao(conn):
+    conn.execute("INSERT OR REPLACE INTO app_meta VALUES ('cartoes_revisao',?)", (_agora(),))
+
+
+def salvar(dados):
     itens = dados.get("cartoes")
     if not isinstance(itens, list) or not itens:
-        raise ValueError("Envie a lista de cartões a identificar.")
-
-    agora = datetime.now().isoformat(timespec="seconds")
-    with _abrir() as conn:
-        validos = {c["contaId"] for c in _contas_de_cartao(conn)}
-        for item in itens:
-            conta_id = str(item.get("contaId") or "").strip()
-            if conta_id not in validos:
-                raise ValueError(f"Cartão desconhecido: {conta_id}")
-            apelido = str(item.get("apelido") or "").strip()[:60]
-            if not apelido:
-                raise ValueError("Todo cartão precisa de um apelido.")
-            cor = str(item.get("cor") or "").strip()[:9]
-            if cor and not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
-                raise ValueError(f"Cor inválida: {cor}")
-            grupo = str(item.get("grupo") or "").strip()[:60]
-            try:
-                ordem = int(item.get("ordem", 0))
-            except (TypeError, ValueError):
-                ordem = 0
-            conn.execute(
-                "INSERT INTO cartoes_identidade "
-                "  (conta_id, apelido, grupo, cor, ordem, atualizado_em) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(conta_id) DO UPDATE SET "
-                "  apelido = excluded.apelido, grupo = excluded.grupo, "
-                "  cor = excluded.cor, ordem = excluded.ordem, "
-                "  atualizado_em = excluded.atualizado_em",
-                (conta_id, apelido, grupo, cor, ordem, agora),
-            )
-        conn.commit()
+        raise ValueError("Envie a lista de cartões.")
+    fin.ensure_database()
+    with _trava, closing(fin.connect()) as conn:
+        mapa = identidades(conn)
+        validos = {i["cartaoId"] for i in mapa.values()}
+        with conn:
+            cores_tags: dict[str, str] = {}
+            for item in itens:
+                cartao = str(item.get("cartaoId") or "")
+                if not cartao:
+                    cartao = mapa.get(item.get("contaId"), {}).get("cartaoId", "")
+                if cartao not in validos:
+                    raise ValueError("Cartão desconhecido.")
+                if "tag" not in item:
+                    raise ValueError("Atualize a página para editar a tag do cartão.")
+                tag = _obter_tag(conn, item["tag"])
+                atual = conn.execute("SELECT cor,ordem FROM cartoes_catalogo WHERE cartao_id=?", (cartao,)).fetchone()
+                cor_informada = item.get("cor") if "cor" in item else None
+                cor = str(cor_informada if cor_informada is not None else atual["cor"] or "")
+                if cor and not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
+                    raise ValueError("Cor inválida.")
+                try:
+                    ordem = int(item.get("ordem", atual["ordem"]))
+                except (TypeError, ValueError):
+                    raise ValueError("Ordem inválida.") from None
+                conn.execute("UPDATE cartoes_catalogo SET tag_id=?,cor=?,ordem=?,atualizado_em=? WHERE cartao_id=?",
+                             (tag, cor, ordem, _agora(), cartao))
+                if tag and cor_informada is not None:
+                    anterior = cores_tags.setdefault(tag, cor)
+                    if anterior.lower() != cor.lower():
+                        raise ValueError("Cartões com a mesma tag devem usar a mesma cor.")
+            for tag, cor in cores_tags.items():
+                conn.execute("UPDATE cartoes_tags SET cor=?,atualizado_em=? WHERE tag_id=?",
+                             (cor, _agora(), tag))
+            _registrar_revisao(conn)
     return {"ok": True, **payload()}
 
 
-def esquecer(conta_id: str) -> dict[str, Any]:
-    """Volta um cartão ao padrão (apelido sugerido, grupo pela conexão)."""
-    with _abrir() as conn:
-        conn.execute("DELETE FROM cartoes_identidade WHERE conta_id = ?", (conta_id,))
-        conn.commit()
+def renomear_tag(tag_id, dados):
+    nome = " ".join(str(dados.get("nome") or "").split())
+    if not nome or len(nome) > 60 or not _normalizar(nome):
+        raise ValueError("Informe um nome de tag com até 60 caracteres.")
+    fin.ensure_database()
+    with _trava, closing(fin.connect()) as conn:
+        garantir(conn)
+        with conn:
+            if not conn.execute("SELECT 1 FROM cartoes_tags WHERE tag_id=?", (tag_id,)).fetchone():
+                raise ValueError("Tag desconhecida.")
+            outra = conn.execute("SELECT tag_id FROM cartoes_tags WHERE normalizado=?", (_normalizar(nome),)).fetchone()
+            if outra and outra[0] != tag_id:
+                conn.execute("UPDATE cartoes_catalogo SET tag_id=? WHERE tag_id=?", (outra[0], tag_id))
+                # Referências já salvas em planejamento acompanham a união.
+                for tabela in ("fixas_contas", "fixas_mes", "fixas_descontos"):
+                    if _tabela(conn, tabela):
+                        conn.execute(f"UPDATE {tabela} SET forma_pagamento=? WHERE forma_pagamento=?", (outra[0], tag_id))
+                conn.execute("DELETE FROM cartoes_tags WHERE tag_id=?", (tag_id,))
+            else:
+                conn.execute("UPDATE cartoes_tags SET nome=?,normalizado=?,atualizado_em=? WHERE tag_id=?",
+                             (nome, _normalizar(nome), _agora(), tag_id))
+            _registrar_revisao(conn)
+    return {"ok": True, **payload()}
+
+
+def esquecer(referencia):
+    fin.ensure_database()
+    with _trava, closing(fin.connect()) as conn:
+        mapa = identidades(conn)
+        cartao = mapa.get(referencia, {}).get("cartaoId", referencia)
+        with conn:
+            conn.execute("UPDATE cartoes_catalogo SET tag_id=NULL,atualizado_em=? WHERE cartao_id=?", (_agora(), cartao))
+            _registrar_revisao(conn)
     return {"ok": True, **payload()}

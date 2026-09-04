@@ -163,12 +163,10 @@
 .mini-trilha { grid-column:1/-1; height:5px; border-radius:999px; background:var(--surface-3); overflow:hidden; margin-top:3px; }
 .mini-trilha span { display:block; height:100%; border-radius:999px; }
 
-/* Cartao ganha a cor do banco: as mesmas de Contas Fixas, para o Nubank ser
-   roxo nas duas telas. Sem cor, tres linhas de texto cinza com uma barra azul
-   igual nao diziam de qual cartao era cada bloco. */
+/* A cor acompanha a identidade do cartão ou da tag em todas as telas. */
 .cartao-linha { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:4px 11px; align-items:center; padding:11px; border-radius:var(--raio); border:1px solid var(--line); background:var(--surface-2); }
 .cartao-selo { grid-row:span 2; width:34px; height:34px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; }
-.cartao-nome { font-size:13px; font-weight:650; letter-spacing:.02em; }
+.cartao-nome { font-size:13px; font-weight:650; letter-spacing:.02em; overflow-wrap:anywhere; }
 .cartao-val { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
 .cartao-sub { grid-column:2/-1; display:flex; justify-content:space-between; gap:8px; color:var(--text-3); font-size:11px; }
 .cartao-trilha { grid-column:2/-1; height:5px; border-radius:999px; background:var(--surface-3); overflow:hidden; margin-top:3px; }
@@ -647,33 +645,31 @@ function renderComparativo() {
 }
 
 /* --------------------------------------------------------------- cartões */
-/* Mesmas cores de contas_fixas.html -- o cartao precisa ser o mesmo tom nas
-   duas telas, senao a cor vira decoracao em vez de identificacao. */
-const CORES_BANCO = { itau: "#f28c35", nubank: "#9b74e8", inter: "#4a95ea" };
-function bancoDoNome(nome) {
-  const n = String(nome || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  return ["itau", "nubank", "inter"].find(b => n.includes(b)) || "";
-}
-
 function renderCartoes() {
-  const cs = D.cartoes.filter(c => c.valor > 0 || c.limite > 0);
+  const cs = D.cartoes || [];
   el("notaCartoes").textContent = `fatura de ${labelMes(D.mesFoco)}`;
   if (!cs.length) { el("cartoes").innerHTML = `<div class="vazio">Nenhum cartão.</div>`; return; }
   el("cartoes").innerHTML = cs.map(c => {
-    const cor = CORES_BANCO[bancoDoNome(c.nome)] || "#9ba1ab";
-    const apertado = c.usoPct !== null && c.usoPct > 80;
+    const cor = corInstrumento(c);
+    const usoValido = c.usoPct !== null && c.usoPct !== undefined && Number.isFinite(Number(c.usoPct));
+    const apertado = usoValido && c.usoPct > 80;
+    const membros = c.membros || [];
+    const nome = nomeInstrumento(c);
+    const origem = { projecao: "projetada", mista: "fechada + aberta" }[c.origem] || `${c.quantidade || 0} lançamentos`;
+    const link = `transacoes.html?${new URLSearchParams({ month: D.mesFoco, card: c.id })}`;
     return `
       <div class="cartao-linha" style="border-color:${cor}44">
-        <span class="cartao-selo" style="background:${cor}">${esc((c.nome || "?").trim().charAt(0))}</span>
-        <span class="cartao-nome" style="color:${cor}">${esc(c.nome)}</span>
+        <span class="cartao-selo" style="background:${cor}">${esc(nome.trim().charAt(0))}</span>
+        <a class="cartao-nome" style="color:${cor}" href="${esc(link)}">${esc(nome)}</a>
         <span class="cartao-val">${fmtBRL(c.valor)}</span>
-        ${c.usoPct === null ? "" : `<span class="cartao-trilha"><span style="width:${
+        ${!usoValido ? "" : `<span class="cartao-trilha"><span style="width:${
           Math.min(100, c.usoPct)}%;background:${apertado ? "var(--vermelho)" : cor}"></span></span>`}
         <span class="cartao-sub">
-          <span>${c.usoPct === null ? "sem limite informado"
+          <span>${!usoValido ? (membros.length > 1 ? "limites por cartão" : "sem limite informado")
             : `limite ${pct(c.usoPct)} usado · ${fmtBRLCurto(c.disponivel)} livre`}</span>
-          <span>${c.origem === "projecao" ? "projetada" : `${c.quantidade} lançamentos`}</span>
+          <span>${esc(origem)}</span>
         </span>
+        ${membros.length > 1 ? `<details style="grid-column:2/-1;font-size:11px;color:var(--text-3)"><summary>${membros.length} cartões${(c.vencimentos || []).length > 1 ? " · múltiplos vencimentos" : ""}</summary>${membros.map(m => `<div style="margin-top:6px">${esc(m.nomeOriginal || nomeInstrumento(m))}${(m.limiteCredito ?? m.limite) == null ? " · limite —" : ` · limite ${fmtBRL(m.limiteCredito ?? m.limite)}`}${m.vencimento ? ` · vencimento ${esc(m.vencimento)}` : ""}</div>`).join("")}</details>` : ""}
       </div>`;
   }).join("");
 }
@@ -860,6 +856,7 @@ async function recarregar() {
 
 (async function iniciar() {
   montarNav("visao_geral.html");
+  observarIdentidadeCartoes(recarregar);
   ligarHoverLinha("grafCartao");
   ligarHoverLinha("grafInvest");
   // Card com destino vira link de verdade: clique e Enter/Espaço pelo teclado.

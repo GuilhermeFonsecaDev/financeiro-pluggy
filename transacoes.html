@@ -251,7 +251,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
     </div>
     <div class="edicao-grid">
       <label class="campo"><span>Data</span><input id="eData" type="date" /></label>
-      <label class="campo"><span>Conta</span><select id="eConta"></select></label>
+      <label class="campo"><span>Conta ou cartão de origem</span><select id="eConta"></select></label>
       <label class="campo full"><span>Descrição</span><input id="eDescricao" type="text" autocomplete="off" /></label>
       <label class="campo"><span>Valor</span><input id="eValor" type="text" inputmode="decimal" autocomplete="off" /></label>
       <label class="campo"><span>Tipo</span><select id="eTipo"><option value="DEBIT">Saída</option><option value="CREDIT">Entrada</option></select></label>
@@ -290,8 +290,8 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
       <label class="campo"><span>De</span><select id="fMesDe"></select></label>
       <label class="campo"><span>Até</span><select id="fMesAte"></select></label>
     </div>
-    <label class="campo"><span>Conta</span><select id="fConta"></select></label>
-    <label class="campo"><span>Cartão de crédito</span><select id="fCartao"></select></label>
+    <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
+    <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
     <label class="campo"><span>Tipo</span>
       <select id="fTipo">
         <option value="">Todos</option>
@@ -498,7 +498,7 @@ function linha(tx) {
       <td class="data" style="width:62px">${fmtData(tx.data)}</td>
       <td class="desc">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
       <td style="width:1%">${chipCategoria(tx)}</td>
-      <td class="conta-tag" style="width:1%">${esc(tx.contaNome)}</td>
+      <td class="conta-tag" style="width:1%" title="${esc(tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal || "")}">${esc(tx.nomeExibicao || tx.contaNome)}</td>
       <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
       <td style="width:34px">${acoes}</td>
     </tr>`;
@@ -890,11 +890,10 @@ function abrirModalEdicao(tx) {
   document.getElementById("eParcelaTotal").value = tx.parcelaTotal || 1;
   document.getElementById("eCalculo").value = String(!!tx.incluidaNosCalculos);
 
-  const contas = CONTAS_EDICAO.some(c => c.id === tx.contaId)
+  const contas = CONTAS_EDICAO.some(c => (c.contaId || c.id) === tx.contaId)
     ? CONTAS_EDICAO
-    : [{ id: tx.contaId, nome: tx.contaNome }, ...CONTAS_EDICAO];
-  document.getElementById("eConta").innerHTML = contas.map(c =>
-    `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+    : [{ id: tx.contaId, nome: tx.contaNome, cartaoId: tx.cartaoId, nomeOriginal: tx.cartaoOriginal || tx.cartaoNomeOriginal }, ...CONTAS_EDICAO];
+  document.getElementById("eConta").innerHTML = opcoesInstrumentos(contas, tx.contaId);
   document.getElementById("eConta").value = tx.contaId;
 
   document.getElementById("eCategoria").innerHTML = CATEGORIAS.map(c =>
@@ -969,7 +968,7 @@ function aplicarFiltros(p) {
   CATEGORIAS = p.categorias || [];
   CONTAS = p.contas || [];
   CARTOES = p.cartoes || [];
-  CONTAS_EDICAO = p.contasEdicao || [];
+  CONTAS_EDICAO = p.instrumentos || p.contasEdicao || [];
   MES_ATUAL = p.mesAtual || "";
 
   const meses = completarAteFimDoAno(p.meses, MES_ATUAL);
@@ -1301,6 +1300,7 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("transacoes.html");
+  observarIdentidadeCartoes(async () => { await carregarFiltros(); await carregar(); });
   ligar();
   try {
     await carregarFiltros();

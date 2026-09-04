@@ -44,6 +44,7 @@ from datetime import datetime
 from typing import Any
 
 import banco as fin
+import cartoes
 import extrato_camada as cam
 import pluggy_extrato as px
 
@@ -53,11 +54,8 @@ TAGS = ["Contas Pessoais", "Contas Empresa"]
 # destes dois sentinelas — que nunca colidem com um id da Pluggy (uuid).
 FORMA_PIX = "pix"
 FORMA_REEMBOLSO = "__reembolso__"
-FORMAS_BANCOS = {
-    "itau": "Itaú",
-    "nubank": "Nubank",
-    "inter": "Inter",
-}
+# Referências do cadastro anterior, reconhecidas somente pela migração.
+_FORMAS_LEGADAS = frozenset({"itau", "nubank", "inter"})
 
 # "" no banco significa "não escolhi", e cada nível decide o que fazer com isso:
 # no cadastro vira PIX, no mês vira "herda do cadastro/da transação".
@@ -126,6 +124,20 @@ CREATE TABLE IF NOT EXISTS fixas_termos (
 CREATE INDEX IF NOT EXISTS idx_fixas_termos ON fixas_termos (fixa_id, ordem);
 CREATE INDEX IF NOT EXISTS idx_fixas_mes ON fixas_mes (mes_ref);
 CREATE INDEX IF NOT EXISTS idx_fixas_desc ON fixas_descontos (mes_ref, fixa_id);
+
+CREATE TABLE IF NOT EXISTS fixas_migracoes (
+  versao INTEGER PRIMARY KEY,
+  aplicado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fixas_formas_migradas (
+  versao INTEGER NOT NULL,
+  tabela TEXT NOT NULL,
+  registro_id TEXT NOT NULL,
+  forma_original TEXT NOT NULL,
+  forma_nova TEXT NOT NULL,
+  evidencia TEXT NOT NULL,
+  PRIMARY KEY (versao, tabela, registro_id)
+);
 """
 
 # Colunas acrescentadas depois da primeira versão. ALTER TABLE ADD COLUMN é a
@@ -183,6 +195,7 @@ def _abrir() -> sqlite3.Connection:
         conn.execute(
             "UPDATE fixas_descontos SET forma_pagamento = ? "
             "WHERE reembolso = 1 AND forma_pagamento = ''", (FORMA_REEMBOLSO,))
+        _migrar_formas(conn)
         conn.commit()
         _pronto = True
     return conn
@@ -192,60 +205,138 @@ def _abrir() -> sqlite3.Connection:
 # Formas de pagamento
 # --------------------------------------------------------------------------
 
-def _formas(conn: sqlite3.Connection) -> list[dict[str, str]]:
-    """As quatro formas consolidadas usadas no planejamento mensal.
+def _referencias_salvas(conn: sqlite3.Connection) -> set[str]:
+    """Inclui referências antigas sem ocultá-las nem mudar o meio de pagamento."""
+    return {
+        str(linha[0]) for linha in conn.execute(
+            "SELECT forma_pagamento FROM fixas_contas "
+            "UNION SELECT forma_pagamento FROM fixas_mes "
+            "UNION SELECT forma_pagamento FROM fixas_descontos")
+        if linha[0]
+    }
 
-    Conta corrente e cartões do mesmo banco não são formas diferentes para
-    esta tela. O detalhe da transação continua mostrando a conta real.
-    """
-    return [{"id": FORMA_PIX, "nome": "PIX"}] + [
-        {"id": chave, "nome": nome} for chave, nome in FORMAS_BANCOS.items()
-    ]
 
-
-def _bancos_por_conta(conn: sqlite3.Connection) -> dict[str, str]:
-    """Relaciona cada conta/cartão Pluggy à instituição consolidada."""
-    linhas = conn.execute(
-        "SELECT conta_id, item_id, tipo, nome, raw_json FROM pluggy_contas"
-    ).fetchall()
-    textos_item: dict[str, str] = {}
-    for linha in linhas:
-        textos_item[linha["item_id"]] = (
-            textos_item.get(linha["item_id"], "") + " " +
-            f"{linha['nome']} {linha['raw_json']}"
-        ).lower()
-
-    resultado = {}
-    for linha in linhas:
-        # Nesta tela os bancos representam cartões. Uma transação que saiu
-        # da conta corrente do Itaú/Inter/Nubank (PIX ou boleto) continua PIX;
-        # só compras vindas de uma conta CREDIT herdam o nome do banco.
-        if linha["tipo"] != "CREDIT":
-            continue
-        texto = textos_item.get(linha["item_id"], "")
-        if "itau" in texto or "itaú" in texto:
-            resultado[linha["conta_id"]] = "itau"
-        elif "nubank" in texto or "nu pagamentos" in texto:
-            resultado[linha["conta_id"]] = "nubank"
-        elif "inter" in texto:
-            resultado[linha["conta_id"]] = "inter"
+def _formas_por_conta(conn: sqlite3.Connection) -> dict[str, str]:
+    """Fonte Pluggy e identidade individual resolvem para o grupo de exibição."""
+    resultado: dict[str, str] = {}
+    for fonte, identidade in cartoes.identidades(conn).items():
+        grupo = identidade["grupo"]
+        resultado[fonte] = grupo
+        resultado[identidade["cartaoId"]] = grupo
+        resultado[grupo] = grupo
     return resultado
 
 
-def _normalizar_forma(forma: str, bancos_por_conta: dict[str, str]) -> str:
-    """Converte UUIDs antigos/automáticos para uma das formas consolidadas."""
-    if forma in (FORMA_PIX, FORMA_REEMBOLSO, *FORMAS_BANCOS):
-        return forma
-    return bancos_por_conta.get(forma, FORMA_PIX)
+def _normalizar_forma(forma: str, formas_por_conta: dict[str, str]) -> str:
+    """Normaliza referências conhecidas; desconhecidas continuam identificáveis."""
+    return formas_por_conta.get(forma, forma) if forma else FORMA_PIX
 
 
-def _nome_forma(forma: str, formas: list[dict[str, str]]) -> str:
+def _formas(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """PIX e o catálogo dinâmico de cartões/tags, separados de contas bancárias."""
+    resultado = [{"id": FORMA_PIX, "nome": "PIX", "cor": "#3fbf7f",
+                  "tipo": "pagamento", "pendenteAssociacao": False}]
+    resultado += [dict(coluna, tipo="cartao", pendenteAssociacao=False)
+                  for coluna in cartoes.colunas(conn)]
+    conhecidas = {forma["id"] for forma in resultado} | {FORMA_REEMBOLSO}
+    mapa = _formas_por_conta(conn)
+    for referencia in sorted(_referencias_salvas(conn)):
+        forma = _normalizar_forma(referencia, mapa)
+        if forma not in conhecidas:
+            resultado.append({
+                "id": forma, "nome": f"Associar cartão · {referencia}",
+                "cor": "#9aa3ad", "tipo": "pendente",
+                "contas": [], "membros": [], "pendenteAssociacao": True,
+            })
+            conhecidas.add(forma)
+    return resultado
+
+
+def _forma_para_gravar(conn: sqlite3.Connection, forma: str,
+                       *, reembolso: bool = False) -> str:
+    """Guarda instrumento/tag estável, nunca um nome de banco inferido."""
+    permitidas = {"", FORMA_PIX}
+    if reembolso:
+        permitidas.add(FORMA_REEMBOLSO)
+    identidades = cartoes.identidades(conn)
+    if forma in identidades:
+        return identidades[forma]["cartaoId"]
+    for identidade in identidades.values():
+        permitidas.add(identidade["cartaoId"])
+        permitidas.add(identidade["grupo"])
+    # Editar descrição/valor não deve destruir uma associação ainda pendente.
+    permitidas |= _referencias_salvas(conn)
+    if forma not in permitidas or (forma == FORMA_REEMBOLSO and not reembolso):
+        raise ValueError("Forma de pagamento inválida. Selecione um cartão ou PIX.")
+    return forma
+
+
+def _nome_forma(forma: str, formas: list[dict[str, Any]]) -> str:
     if forma == FORMA_REEMBOLSO:
         return "Reembolso"
-    for f in formas:
-        if f["id"] == forma:
-            return f["nome"]
-    return "PIX"
+    return next((f["nome"] for f in formas if f["id"] == forma),
+                f"Associar cartão · {forma}")
+
+
+def _migrar_formas(conn: sqlite3.Connection) -> None:
+    """Migração auditada, idempotente e conservadora das antigas formas fixas.
+
+    Só a origem de um vínculo real, ou o filtro individual do cadastro,
+    demonstra qual instrumento foi usado. Um rótulo bancário não demonstra
+    cartão nem autoriza unir instrumentos da mesma instituição.
+    """
+    versao = 1
+    if conn.execute("SELECT 1 FROM fixas_migracoes WHERE versao = ?", (versao,)).fetchone():
+        return
+    identidades = cartoes.identidades(conn)
+    tx_contas = {l["transacao_id"]: l["conta_id"] for l in conn.execute(
+        "SELECT transacao_id, conta_id FROM pluggy_transacoes")}
+
+    def instrumento(fonte: str) -> str:
+        return identidades.get(fonte, {}).get("cartaoId", "")
+
+    vinculos: dict[str, set[str]] = {}
+    for linha in conn.execute(
+        "SELECT fixa_id, transacao_id FROM fixas_mes WHERE transacao_id IS NOT NULL"
+    ):
+        fonte = tx_contas.get(linha["transacao_id"], "")
+        # Origem bancária também conta como evidência conflitante: não permite
+        # converter todo o cadastro só porque outro mês foi pago no cartão.
+        if fonte:
+            vinculos.setdefault(linha["fixa_id"], set()).add(instrumento(fonte) or FORMA_PIX)
+
+    for tabela in ("fixas_contas", "fixas_mes", "fixas_descontos"):
+        for linha in conn.execute(f"SELECT rowid AS registro, * FROM {tabela}").fetchall():
+            original = str(linha["forma_pagamento"] or "")
+            nova, evidencia = "", ""
+            if original in identidades:
+                nova, evidencia = instrumento(original), "fonte individual cadastrada"
+            elif original in _FORMAS_LEGADAS:
+                if tabela == "fixas_contas":
+                    fonte = str(linha["conta_id"] or "")
+                    nova = instrumento(fonte)
+                    evidencia = "filtro individual do cadastro" if nova else ""
+                    candidatas = vinculos.get(linha["id"], set())
+                    if not nova and len(candidatas) == 1 and FORMA_PIX not in candidatas:
+                        nova = next(iter(candidatas))
+                        evidencia = "todos os vínculos existentes apontam para o mesmo cartão"
+                else:
+                    fonte = tx_contas.get(linha["transacao_id"], "")
+                    nova = instrumento(fonte)
+                    evidencia = "transação vinculada" if nova else ""
+            else:
+                continue
+            if nova:
+                conn.execute(f"UPDATE {tabela} SET forma_pagamento = ? WHERE rowid = ?",
+                             (nova, linha["registro"]))
+            conn.execute(
+                "INSERT OR IGNORE INTO fixas_formas_migradas "
+                "(versao, tabela, registro_id, forma_original, forma_nova, evidencia) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (versao, tabela, str(linha["registro"]), original, nova or original,
+                 evidencia or "Associação pendente: nenhum cartão individual inequívoco"))
+    conn.execute("INSERT INTO fixas_migracoes (versao, aplicado_em) VALUES (?, ?)",
+                 (versao, datetime.now().isoformat(timespec="seconds")))
 
 
 # --------------------------------------------------------------------------
@@ -293,7 +384,7 @@ def _candidatas_do_mes(conn: sqlite3.Connection, mes_ref: str) -> list[sqlite3.R
 
 
 def _projecoes_do_mes(mes_ref: str) -> dict[str, list[dict[str, Any]]]:
-    """Parcelas de cartão que a fatura do mês vai cobrar, por banco.
+    """Parcelas que a fatura do mês vai cobrar, por cartão ou tag.
 
     Existe só para o mês corrente e os futuros -- em mês passado a fatura já
     fechou e o que vale são as transações reais. Fora dessa janela devolve
@@ -306,21 +397,17 @@ def _projecoes_do_mes(mes_ref: str) -> dict[str, list[dict[str, Any]]]:
     except Exception:
         return {}
     numero_mes = int(mes_ref[5:7])
-    por_banco: dict[str, list[dict[str, Any]]] = {}
+    por_grupo: dict[str, list[dict[str, Any]]] = {}
     for cartao in payload["cartoes"]:
-        nome = str(cartao["nome"]).upper()
-        banco = ("itau" if "ITA" in nome else "nubank" if "NUBANK" in nome
-                 else "inter" if "INTER" in nome else "")
-        if not banco:
-            continue
+        grupo = cartao["id"]
         for item in payload["itens"].get(cartao["id"], []):
             if item["mes"] == numero_mes:
-                por_banco.setdefault(banco, []).append(item)
-    return por_banco
+                por_grupo.setdefault(grupo, []).append(dict(item, grupoId=grupo))
+    return por_grupo
 
 
 def _casar_projecao(termos: list[str], projecoes: dict[str, list[dict[str, Any]]],
-                    usadas: set[int]) -> dict[str, Any] | None:
+                    usadas: set[int], referencia: str = "") -> dict[str, Any] | None:
     """A parcela projetada que estes termos identificam, se houver.
 
     Serve para não contar o mesmo gasto duas vezes num mês futuro: a fatura
@@ -333,15 +420,21 @@ def _casar_projecao(termos: list[str], projecoes: dict[str, list[dict[str, Any]]
     """
     if not termos:
         return None
-    for banco, itens in projecoes.items():
+    for grupo, itens in projecoes.items():
         for item in itens:
             if id(item) in usadas:
+                continue
+            if referencia and referencia not in (
+                grupo, item.get("cartaoId"), item.get("contaId")):
                 continue
             descricao = cam.normalizar(item["descricao"])
             if any(t in descricao for t in termos):
                 usadas.add(id(item))
                 return {
-                    "banco": banco,
+                    "forma": grupo,
+                    "grupoId": grupo,
+                    "cartaoId": item.get("cartaoId", ""),
+                    "banco": grupo,  # alias de leitura para versões anteriores da tela
                     "descricao": item["descricao"],
                     "valor": round(float(item["valor"]), 2),
                     "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
@@ -382,7 +475,8 @@ def _termos_de_regra(termos: list[str]) -> list[str]:
 
 def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
            ja_vinculadas: set[str],
-           termos_por_fixa: dict[str, list[str]] | None = None) -> dict[str, sqlite3.Row]:
+           termos_por_fixa: dict[str, list[str]] | None = None,
+           fontes_por_referencia: dict[str, set[str]] | None = None) -> dict[str, sqlite3.Row]:
     """Aplica a regra CONTÉM de cada conta fixa sobre as transações do mês.
 
     A regra é só texto — é o termo que a pessoa escreveu que manda, não uma
@@ -411,7 +505,9 @@ def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
             descricao = cam.normalizar(tx["descricao"])
             if not any(t in descricao for t in termos):
                 continue
-            if fixa["conta_id"] and tx["conta_id"] != fixa["conta_id"]:
+            referencia = fixa["conta_id"]
+            permitidas = (fontes_por_referencia or {}).get(referencia, {referencia})
+            if referencia and tx["conta_id"] not in permitidas:
                 continue
             distancia = abs(float(tx["valor"] or 0) - previsto) if previsto > 0 else 0.0
             categoria_fixa = fixa["categoria_id"] or ""
@@ -432,12 +528,14 @@ def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
 
 
 def _detalhe_transacao(tx: sqlite3.Row, apelidos: dict[str, str],
-                       categorias: dict[str, sqlite3.Row]) -> dict[str, Any]:
+                       categorias: dict[str, sqlite3.Row],
+                       identidades: dict[str, dict] | None = None) -> dict[str, Any]:
     """Tudo que vale mostrar no painel de detalhe da transação vinculada."""
     cat = categorias.get(tx["categoria_id"] or "")
     parcela = ""
     if tx["parcela_total"]:
         parcela = f"{tx['parcela_numero'] or 1}/{tx['parcela_total']}"
+    identidade = (identidades or {}).get(tx["conta_id"], {})
     return {
         "id": tx["transacao_id"],
         "descricao": tx["descricao"],
@@ -445,6 +543,9 @@ def _detalhe_transacao(tx: sqlite3.Row, apelidos: dict[str, str],
         "valor": float(tx["valor"]),
         "conta": apelidos.get(tx["conta_id"], "Conta"),
         "contaId": tx["conta_id"],
+        "cartaoId": identidade.get("cartaoId", ""),
+        "grupoId": identidade.get("grupo", ""),
+        "cartaoOriginal": identidade.get("nomeOriginal", ""),
         "status": tx["status"] or "",
         "categoria": cat["nome"] if cat else "",
         "categoriaCor": cat["cor"] if cat else "",
@@ -478,7 +579,12 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             for l in conn.execute("SELECT * FROM fixas_mes WHERE mes_ref = ?", (mes_ref,))
         }
 
-        bancos_por_conta = _bancos_por_conta(conn)
+        formas_por_conta = _formas_por_conta(conn)
+        identidades = cartoes.identidades(conn)
+        fontes_por_referencia = {
+            referencia: set(cartoes.resolver_contas(conn, referencia)) or {referencia}
+            for referencia in {f["conta_id"] for f in fixas if f["conta_id"]}
+        }
         linhas_desconto = conn.execute(
             "SELECT * FROM fixas_descontos WHERE mes_ref = ? ORDER BY descricao",
             (mes_ref,),
@@ -490,27 +596,38 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         # Carregados aqui, antes dos descontos, porque o detalhe da transação
         # vinculada a um subdesconto também precisa deles.
         formas = _formas(conn)
+        formas_pendentes = {f["id"] for f in formas if f.get("pendenteAssociacao")}
         apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
 
         descontos: dict[str, list[dict]] = {}
         for l in linhas_desconto:
+            tx_desc = por_id.get(l["transacao_id"]) if l["transacao_id"] else None
+            referencia = l["forma_pagamento"] or (FORMA_REEMBOLSO if l["reembolso"] else FORMA_PIX)
+            referencia = identidades.get(referencia, {}).get("cartaoId", referencia)
             forma = _normalizar_forma(
                 l["forma_pagamento"] or
                 (FORMA_REEMBOLSO if l["reembolso"] else FORMA_PIX),
-                bancos_por_conta,
+                formas_por_conta,
             )
-            tx_desc = por_id.get(l["transacao_id"]) if l["transacao_id"] else None
+            # Uma referência legada ambígua pode ser resolvida para ESTE mês
+            # pelo próprio vínculo, sem alterar o padrão dos demais meses.
+            if forma in formas_pendentes and tx_desc is not None:
+                forma = formas_por_conta.get(tx_desc["conta_id"], forma)
+                referencia = identidades.get(tx_desc["conta_id"], {}).get("cartaoId", referencia)
             descontos.setdefault(l["fixa_id"], []).append({
                 "id": l["id"],
                 "descricao": l["descricao"],
                 "valor": float(l["valor"] or 0),
                 "forma": forma,
+                "formaReferencia": referencia,
+                "formaNome": _nome_forma(forma, formas),
+                "pendenteAssociacao": forma in formas_pendentes,
                 "reembolso": forma == FORMA_REEMBOLSO,
                 # Vínculo próprio: é o que diz se ESTA cobrança já está na
                 # fatura. Herdar do pai errava sempre que o pai não casava.
                 "transacaoId": l["transacao_id"] or "",
-                "transacao": _detalhe_transacao(tx_desc, apelidos, categorias)
+                "transacao": _detalhe_transacao(tx_desc, apelidos, categorias, identidades)
                              if tx_desc is not None else None,
                 # Vinculado mas fora do mês: mantém o id sem fingir que achou.
                 "vinculoPerdido": bool(l["transacao_id"]) and tx_desc is None,
@@ -542,7 +659,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         ]
         termos_por_fixa = _termos_por_fixa(conn)
         automaticos = _casar(sem_vinculo, candidatas, vinculos_manuais,
-                             termos_por_fixa)
+                             termos_por_fixa, fontes_por_referencia)
 
     # Fora do "with": não usa o banco, e cartoes_payload abre a conexão dele.
     # Só o que não casou com transação real disputa a projeção.
@@ -558,9 +675,17 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             )
             if tem_tx:
                 continue
+            referencia = ((linha["forma_pagamento"] if linha else "")
+                          or f["forma_pagamento"] or f["conta_id"])
+            # Legados ainda ambíguos não autorizam escolher uma projeção pelo
+            # nome do banco. A associação deve ser feita na edição da conta.
+            if referencia in formas_pendentes:
+                continue
+            if referencia in identidades:
+                referencia = identidades[referencia]["cartaoId"]
             achado = _casar_projecao(
                 _termos_de_regra(termos_por_fixa.get(f["id"]) or [f["termo"]]),
-                projecoes, projecao_usada)
+                projecoes, projecao_usada, referencia)
             if achado:
                 projecao_por_fixa[f["id"]] = achado
 
@@ -572,8 +697,8 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         # cobrada e muda todo mês, então o casamento duraria um mês só. A
         # identidade da compra não muda -- ver chave_compra em pluggy_extrato.
         por_compra = {
-            item["compraId"]: (banco, item)
-            for banco, itens in projecoes.items() for item in itens
+            item["compraId"]: (grupo, item)
+            for grupo, itens in projecoes.items() for item in itens
         }
         if por_compra:
             with _abrir() as conn2:
@@ -590,10 +715,13 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
                             "|".join(str(p) for p in compra)) if compra else None
                         if not achado or id(achado[1]) in projecao_usada:
                             continue
-                        banco, item = achado
+                        grupo, item = achado
                         projecao_usada.add(id(item))
                         desconto["projecao"] = {
-                            "banco": banco,
+                            "forma": grupo,
+                            "grupoId": grupo,
+                            "cartaoId": item.get("cartaoId", ""),
+                            "banco": grupo,
                             "descricao": item["descricao"],
                             "valor": round(float(item["valor"]), 2),
                             "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
@@ -629,14 +757,23 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         # Forma: escolha do mês > conta da transação > padrão do cadastro > PIX.
         forma_mes = (linha["forma_pagamento"] if linha else "") or FORMA_AUTO
         if forma_mes:
-            forma, origem_forma = _normalizar_forma(forma_mes, bancos_por_conta), "manual"
-        elif tx is not None and tx["conta_id"] in bancos_por_conta:
-            forma, origem_forma = bancos_por_conta[tx["conta_id"]], "transacao"
+            forma, origem_forma = _normalizar_forma(forma_mes, formas_por_conta), "manual"
+            referencia = forma_mes
+            if forma in formas_pendentes and tx is not None:
+                forma = formas_por_conta.get(tx["conta_id"], forma)
+                referencia = identidades.get(tx["conta_id"], {}).get("cartaoId", referencia)
+        elif tx is not None:
+            forma = formas_por_conta.get(tx["conta_id"], FORMA_PIX)
+            referencia = identidades.get(tx["conta_id"], {}).get("cartaoId", FORMA_PIX)
+            origem_forma = "transacao"
         elif f["forma_pagamento"]:
             forma, origem_forma = _normalizar_forma(
-                f["forma_pagamento"], bancos_por_conta), "cadastro"
+                f["forma_pagamento"], formas_por_conta), "cadastro"
+            referencia = f["forma_pagamento"]
         else:
             forma, origem_forma = FORMA_PIX, "padrao"
+            referencia = FORMA_PIX
+        referencia = identidades.get(referencia, {}).get("cartaoId", referencia)
 
         desc = descontos.get(f["id"], [])
         total_desc = sum(d["valor"] for d in desc)
@@ -656,8 +793,9 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             "contaId": f["conta_id"],
             "desde": f["desde"],
             "ate": f["ate"],
-            "formaPadrao": (_normalizar_forma(f["forma_pagamento"], bancos_por_conta)
+            "formaPadrao": (_normalizar_forma(f["forma_pagamento"], formas_por_conta)
                              if f["forma_pagamento"] else ""),
+            "formaPadraoReferencia": f["forma_pagamento"] or "",
             "incluidaCalculos": incluir_calculos,
             "categoria": {"id": f["categoria_id"], "nome": f["cat_nome"],
                           "cor": f["cat_cor"]} if f["categoria_id"] else None,
@@ -668,10 +806,12 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             "pago": pago,
             "origemPago": origem_pago,
             "forma": forma,
+            "formaReferencia": referencia,
             "formaNome": _nome_forma(forma, formas),
+            "pendenteAssociacao": forma in formas_pendentes,
             "origemForma": origem_forma,
 
-            "transacao": _detalhe_transacao(tx, apelidos, categorias) if tx is not None else None,
+            "transacao": _detalhe_transacao(tx, apelidos, categorias, identidades) if tx is not None else None,
             "origemTransacao": origem_tx,
             # Preenchido quando a fatura projetada do mês já inclui esta
             # cobrança: a tela desconta em vez de somar como previsto.
@@ -711,6 +851,9 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             "descontos": soma("totalDescontos"),
             "reembolsos": soma("reembolsos"),
             "conciliadas": sum(1 for i in itens if i["transacao"]),
+            "associacoesPendentes": sum(
+                int(i["pendenteAssociacao"]) + sum(int(d["pendenteAssociacao"]) for d in i["descontos"])
+                for i in itens),
             "porTag": {tag: soma("gasto", lambda i, t=tag: i["tag"] == t) for tag in TAGS},
         },
         "tags": TAGS,
@@ -746,6 +889,7 @@ def candidatas_payload(mes_ref: str, busca: str = "",
                 "WHERE mes_ref = ? AND transacao_id IS NOT NULL", (mes_ref,))
         }
         apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
+        identidades = cartoes.identidades(conn)
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
 
     termo = _termo_de_regra(busca) if como_regra else cam.normalizar(busca)
@@ -753,7 +897,7 @@ def candidatas_payload(mes_ref: str, busca: str = "",
     return {
         "total": len(encontradas),
         "transacoes": [
-            dict(_detalhe_transacao(t, apelidos, categorias),
+            dict(_detalhe_transacao(t, apelidos, categorias, identidades),
                  jaVinculada=t["transacao_id"] in usadas)
             for t in encontradas[:80]
         ],
@@ -793,8 +937,6 @@ def _validar(dados: dict) -> dict:
         return v
 
     forma = str(dados.get("forma") or "").strip()
-    if forma and forma not in (FORMA_PIX, *FORMAS_BANCOS):
-        raise ValueError("Forma de pagamento inválida.")
 
     # Aceita a lista nova e o campo antigo, para uma chamada velha (ou o
     # importador) continuar funcionando sem mudanca.
@@ -845,6 +987,7 @@ def criar(dados: dict) -> dict:
     d = _validar(dados)
     novo = f"fx_{uuid.uuid4().hex[:12]}"
     with _abrir() as conn:
+        d["forma_pagamento"] = _forma_para_gravar(conn, d["forma_pagamento"])
         ordem = conn.execute(
             "SELECT COALESCE(MAX(ordem), 0) + 1 FROM fixas_contas").fetchone()[0]
         # Sem "desde" explícito, a conta passa a existir no mês em que foi
@@ -868,6 +1011,7 @@ def criar(dados: dict) -> dict:
 def atualizar(fixa_id: str, dados: dict) -> dict:
     d = _validar(dados)
     with _abrir() as conn:
+        d["forma_pagamento"] = _forma_para_gravar(conn, d["forma_pagamento"])
         if not conn.execute("SELECT 1 FROM fixas_contas WHERE id = ?",
                             (fixa_id,)).fetchone():
             raise ValueError("Conta fixa não encontrada.")
@@ -904,6 +1048,7 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
         ).fetchone()
         if not fixa:
             raise ValueError(f"Conta fixa {fixa_id} não encontrada.")
+        termos_da_fixa = _termos_por_fixa(conn).get(fixa_id) or [fixa["termo"]]
 
         # Janela: da vigência da conta, limitada ao que existe de extrato.
         limites = conn.execute(
@@ -927,6 +1072,10 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
         }
         apelidos = px.mapa_apelidos(conn, px.contas_ativas(conn))
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
+        identidades = cartoes.identidades(conn)
+        fontes_por_referencia = {
+            fixa["conta_id"]: set(cartoes.resolver_contas(conn, fixa["conta_id"])) or {fixa["conta_id"]}
+        } if fixa["conta_id"] else {}
 
         pagamentos = []
         termos_da_fixa = _termos_por_fixa(conn).get(fixa_id) or [fixa["termo"]]
@@ -939,14 +1088,14 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
                 # Mesma regra do mês, mas só para esta conta: as outras contas
                 # não disputam aqui porque a pergunta é "o que casou com ESTA".
                 achado = _casar([fixa], candidatas, set(),
-                                {fixa_id: termos_da_fixa})
+                                {fixa_id: termos_da_fixa}, fontes_por_referencia)
                 tx = achado.get(fixa_id)
                 origem = "regra" if tx is not None else None
             pagamentos.append({
                 "mes": mes_ref,
                 "pago": tx is not None,
                 "origem": origem,
-                "transacao": _detalhe_transacao(tx, apelidos, categorias)
+                "transacao": _detalhe_transacao(tx, apelidos, categorias, identidades)
                              if tx is not None else None,
             })
 
@@ -1114,8 +1263,7 @@ def ajustar_mes(mes_ref: str, fixa_id: str, dados: dict) -> dict:
             raise ValueError("Transação não encontrada.")
 
         forma = str(escolher("forma", "forma_pagamento") or "")
-        if forma and forma not in (FORMA_PIX, *FORMAS_BANCOS):
-            raise ValueError("Forma de pagamento inválida.")
+        forma = _forma_para_gravar(conn, forma)
         observacao = str(escolher("observacao", "observacao") or "")
 
         vazio = (valor is None and pago is None and not transacao
@@ -1149,8 +1297,6 @@ def salvar_desconto(mes_ref: str, fixa_id: str, dados: dict) -> dict:
         raise ValueError("Valor do desconto inválido.")
 
     forma = str(dados.get("forma") or FORMA_PIX).strip() or FORMA_PIX
-    if forma not in (FORMA_PIX, FORMA_REEMBOLSO, *FORMAS_BANCOS):
-        raise ValueError("Forma de pagamento inválida.")
     # A transação vinculada é o que diz se esta cobrança já entrou na fatura.
     # "" limpa o vínculo; ausente preserva o que já estava (a tela manda só o
     # que o usuário mexeu).
@@ -1159,6 +1305,7 @@ def salvar_desconto(mes_ref: str, fixa_id: str, dados: dict) -> dict:
 
     desconto_id = str(dados.get("id") or "") or f"dc_{uuid.uuid4().hex[:10]}"
     with _abrir() as conn:
+        forma = _forma_para_gravar(conn, forma, reembolso=True)
         if not conn.execute("SELECT 1 FROM fixas_contas WHERE id = ?",
                             (fixa_id,)).fetchone():
             raise ValueError("Conta fixa não encontrada.")

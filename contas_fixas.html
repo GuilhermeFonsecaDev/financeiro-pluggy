@@ -258,6 +258,16 @@ select.forma.herdada { color: var(--text-2); }
 
 .sug-lista { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
 .sug-titulo { margin: 2px 0 6px; color: var(--text-2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+/* Mesmo widget de termos da tela de Regras: a descrição do mesmo pagamento
+   muda de mês para mês, então um termo só deixava a conta sem vínculo
+   justamente nos meses em que o banco mudou o texto. */
+.termo-linha { position:relative; }
+.termo-linha input { width:100%; padding-right:34px; }
+.termo-remover { position:absolute; right:5px; top:50%; transform:translateY(-50%); width:24px; height:24px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--text-3); font-size:16px; line-height:1; cursor:pointer; }
+.termo-remover:hover { background:var(--surface-3); color:var(--vermelho); }
+.termos-lista { display:grid; gap:7px; }
+.termo-add { display:block; width:100%; height:34px; min-height:34px; margin-top:7px; padding:0; border:1px dashed var(--line-forte); border-radius:8px; background:transparent; color:var(--azul); font-size:12.5px; cursor:pointer; }
+.termo-add:hover { border-style:solid; border-color:var(--azul); background:var(--surface-2); }
 .sug-termo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); }
 .sug-termo.errado { color: var(--vermelho); text-decoration: line-through; }
 .sug-item { display: grid; grid-template-columns: minmax(0,1fr) 120px 156px; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2); }
@@ -418,8 +428,10 @@ select.forma.herdada { color: var(--text-2); }
 
       <label class="campo"><span>Forma de pagamento padrão</span><select id="fForma"></select></label>
 
-      <label class="campo full"><span>Vincular à transação cuja descrição CONTÉM</span>
-        <input id="fTermo" type="text" placeholder="ex.: CLARO" autocomplete="off" /></label>
+      <div class="campo full"><span>Vincular à transação cuja descrição CONTÉM</span>
+        <div class="termos-lista" id="fTermos"></div>
+        <button type="button" class="termo-add" id="btnAddTermo">+ Adicionar termo</button>
+      </div>
 
       <label class="campo"><span>Conta/cartão</span><select id="fConta"></select></label>
 
@@ -996,7 +1008,8 @@ function abrirModal(item = null) {
   el("fNome").value = item?.nome ?? "";
   el("fValor").value = fmtValor(item?.valorPrevisto ?? 0);
   el("fDia").value = item?.diaVencimento ?? "";
-  el("fTermo").value = item?.termo ?? "";
+  // Aceita o formato antigo (um termo só) para uma conta ainda não migrada.
+  preencherTermos(item?.termos ?? (item?.termo ? [item.termo] : []));
   el("fDesde").value = item?.desde ?? MES;
   el("fAte").value = item?.ate ?? "";
   el("fIncluirCalculos").checked = item?.incluidaCalculos ?? true;
@@ -1017,29 +1030,85 @@ function abrirModal(item = null) {
   atualizarPrevia();
 }
 
+function criarLinhaTermo(valor = "") {
+  const linha = document.createElement("div");
+  linha.className = "termo-linha";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "f-termo";
+  input.placeholder = "ex.: CLARO";
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Termo de vínculo");
+  input.value = valor;
+  linha.appendChild(input);
+  const remover = document.createElement("button");
+  remover.type = "button";
+  remover.className = "termo-remover";
+  remover.dataset.removeTermo = "";
+  remover.title = "Remover termo";
+  remover.setAttribute("aria-label", "Remover termo");
+  remover.textContent = "×";
+  linha.appendChild(remover);
+  el("fTermos").appendChild(linha);
+  return input;
+}
+
+function preencherTermos(valores) {
+  const lista = (valores || []).filter(v => v != null && String(v).trim());
+  el("fTermos").innerHTML = "";
+  (lista.length ? lista : [""]).forEach(v => criarLinhaTermo(v));
+}
+
+function termosAtuais() {
+  return [...el("fTermos").querySelectorAll(".f-termo")]
+    .map(i => i.value.trim()).filter(Boolean);
+}
+
 function fecharModal() { el("modal").hidden = true; editando = null; }
 
-/** Mostra o que a regra CONTÉM pega no mês — a regra é escrita às cegas se
- *  quem cadastra não vê o resultado antes de salvar. */
+/** Mostra o que os termos pegam no mês — a regra é escrita às cegas se quem
+ *  cadastra não vê o resultado antes de salvar.
+ *
+ *  Com vários termos, o que importa é a UNIÃO deles (a regra casa com
+ *  qualquer um) e, principalmente, QUAL termo não pegou nada: um termo morto
+ *  passa despercebido no meio dos que funcionam. */
 async function atualizarPrevia() {
-  const termo = el("fTermo").value.trim();
+  const termos = termosAtuais();
   const caixa = el("previa");
-  if (!termo) {
+  if (!termos.length) {
     caixa.textContent = "Escreva o termo acima para ver o que ele pega no mês.";
     return;
   }
   try {
     // regra=1: a prévia tem de mostrar o que a REGRA pega, não uma busca
-    // literal — a regra ignora o contador de parcela do termo.
-    const p = await pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(termo)}&regra=1`);
-    if (!p.total) {
-      caixa.innerHTML = `<span class="muted">Nada em ${esc(labelMes(MES))} contém “${esc(termo)}”. A conta fica sem vínculo até aparecer.</span>`;
+    // literal -- a regra ignora o contador de parcela do termo.
+    const respostas = await Promise.all(termos.map(t =>
+      pedir(`/fixas/candidatas?month=${encodeURIComponent(MES)}&q=${encodeURIComponent(t)}&regra=1`)));
+
+    const achadas = new Map();
+    const vazios = [];
+    respostas.forEach((r, i) => {
+      if (!r.total) vazios.push(termos[i]);
+      for (const t of r.transacoes) if (!achadas.has(t.id)) achadas.set(t.id, t);
+    });
+    const lista = [...achadas.values()];
+    const aviso = vazios.length
+      ? `<div class="muted" style="margin-top:6px">Sem correspondência em ${esc(labelMes(MES))}: ${
+          vazios.map(t => `“${esc(t)}”`).join(", ")}.</div>` : "";
+
+    if (!lista.length) {
+      caixa.innerHTML = `<span class="muted">Nada em ${esc(labelMes(MES))} contém ${
+        termos.map(t => `“${esc(t)}”`).join(" ou ")}. A conta fica sem vínculo até aparecer.</span>`;
       return;
     }
     caixa.innerHTML =
-      `<div class="muted" style="margin-bottom:5px">${p.total} transação(ões) em ${esc(labelMes(MES))} contêm “${esc(termo)}”${p.total > 1 ? " — vence a de valor mais próximo do previsto" : ""}:</div>` +
-      p.transacoes.slice(0, 8).map(t =>
-        `<div class="l"><span>${esc(t.descricao)}</span><span>${fmtData(t.data)} · ${fmtBRL(t.valor)}</span></div>`).join("");
+      `<div class="muted" style="margin-bottom:5px">${lista.length} transação(ões) em ${
+        esc(labelMes(MES))} ${lista.length > 1 ? "casam" : "casa"} com ${
+        termos.length > 1 ? "algum dos termos" : `“${esc(termos[0])}”`}${
+        lista.length > 1 ? " — vence a de valor mais próximo do previsto" : ""}:</div>` +
+      lista.slice(0, 8).map(t =>
+        `<div class="l"><span>${esc(t.descricao)}</span><span>${fmtData(t.data)} · ${fmtBRL(t.valor)}</span></div>`).join("") +
+      aviso;
   } catch (e) {
     caixa.innerHTML = `<span class="estado erro">${esc(e.message)}</span>`;
   }
@@ -1260,7 +1329,7 @@ async function salvar() {
     valorPrevisto: lerValor(el("fValor").value),
     diaVencimento: el("fDia").value || null,
     categoriaId: el("fCategoria").value || null,
-    termo: el("fTermo").value.trim(),
+    termos: termosAtuais(),
     contaId: el("fConta").value || "",
     forma: el("fForma").value || "",
     desde: el("fDesde").value || "",
@@ -1581,9 +1650,19 @@ function ligar() {
   el("btnCancelar").addEventListener("click", fecharModal);
   el("btnSalvar").addEventListener("click", salvar);
   el("modal").addEventListener("click", e => { if (e.target.id === "modal") fecharModal(); });
-  el("fTermo").addEventListener("input", () => {
+  // Delegado: os campos de termo nascem e morrem com o modal.
+  el("fTermos").addEventListener("input", () => {
     clearTimeout(previaTimer);
     previaTimer = setTimeout(atualizarPrevia, 300);
+  });
+  el("btnAddTermo").addEventListener("click", () => criarLinhaTermo("").focus());
+  el("fTermos").addEventListener("click", e => {
+    const remover = e.target.closest("[data-remove-termo]");
+    // Sem termo nenhum a conta não casa com nada, então a última linha fica.
+    if (remover && el("fTermos").querySelectorAll(".termo-linha").length > 1) {
+      remover.closest(".termo-linha")?.remove();
+      atualizarPrevia();
+    }
   });
 
   el("btnExcluir").addEventListener("click", async () => {
@@ -1681,7 +1760,8 @@ function ligar() {
       await pedir(`/fixas/${encodeURIComponent(item.id)}`, "PUT", {
         nome: item.nome, tag: b.dataset.usaTag, valorPrevisto: item.valorPrevisto,
         diaVencimento: item.diaVencimento, categoriaId: item.categoria?.id || null,
-        termo: item.termo, contaId: item.contaId, forma: item.formaPadrao,
+        termos: item.termos ?? (item.termo ? [item.termo] : []),
+        contaId: item.contaId, forma: item.formaPadrao,
         desde: item.desde, ate: item.ate,
       });
       await carregar();
@@ -1799,7 +1879,8 @@ function ligar() {
         await pedir(`/fixas/${encodeURIComponent(item.id)}`, "PUT", {
           nome: item.nome, tag: item.tag, valorPrevisto: item.valorPrevisto,
           diaVencimento: item.diaVencimento, categoriaId: item.categoria?.id || null,
-          termo: item.termo, contaId: item.contaId, forma: item.formaPadrao,
+          termos: item.termos ?? (item.termo ? [item.termo] : []),
+        contaId: item.contaId, forma: item.formaPadrao,
           desde: item.desde, ate: MES,
         });
         await carregar();

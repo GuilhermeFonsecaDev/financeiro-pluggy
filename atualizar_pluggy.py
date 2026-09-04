@@ -321,16 +321,17 @@ def atualizar(
         # Investimentos são um produto separado de contas/transações na API.
         # Coletamos depois dos extratos para manter posições, lotes, movimentos
         # e snapshots de variação sempre na mesma rodada de atualização.
-        if sucessos:
-            try:
-                resultado_invest = investimentos.sincronizar(itens)
-                if resultado_invest.get("falhas"):
-                    avisos.append("investimentos: " + " | ".join(resultado_invest["falhas"])[:220])
-            except Exception as exc:  # noqa: BLE001 - extrato atualizado continua válido
-                avisos.append(f"investimentos: {exc}"[:240])
+        # Inclusive corretoras sem conta corrente e rodadas em que o extrato
+        # falhou: investimentos não dependem do sucesso do produto de contas.
+        try:
+            resultado_invest = investimentos.sincronizar(itens)
+            if resultado_invest.get("falhas"):
+                avisos.append("investimentos: " + " | ".join(resultado_invest["falhas"])[:220])
+        except Exception as exc:  # noqa: BLE001 - extrato atualizado continua válido
+            avisos.append(f"investimentos: {exc}"[:240])
 
         if sucessos == 0:
-            return registrar("erro", " || ".join(falhas)[:300])
+            return registrar("erro", " || ".join(falhas + avisos)[:300])
 
         if falhas:
             return registrar("ok_parcial", " || ".join(falhas + avisos)[:300])

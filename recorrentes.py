@@ -311,6 +311,13 @@ def corrigir_termo(fixa_id: str, termo: str) -> dict[str, Any]:
             "UPDATE fixas_contas SET termo = ? WHERE id = ?", (termo, fixa_id))
         if not cursor.rowcount:
             raise ValueError(f"Conta fixa {fixa_id} não encontrada.")
+        # A lista de termos é o que o casamento lê hoje: gravar só a coluna
+        # antiga deixaria a correção sem efeito nenhum. "Corrigir" substitui a
+        # lista -- o termo estava errado, não faltando.
+        conn.execute("DELETE FROM fixas_termos WHERE fixa_id = ?", (fixa_id,))
+        conn.execute(
+            "INSERT INTO fixas_termos (fixa_id, ordem, termo) VALUES (?, 0, ?)",
+            (fixa_id, termo))
         conn.commit()
     return {"ok": True, "fixaId": fixa_id, "termo": termo, **sugestoes_payload()}
 

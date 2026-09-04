@@ -18,12 +18,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import extrato_camada as cam
 
 import banco as fin
+import cartoes as cartoes_id
+import ciclos
 from importar_pluggy import SCHEMA_PLUGGY
 
 SEM_CATEGORIA = "(sem categoria)"
@@ -62,19 +64,6 @@ def _mes_serial(data_iso: str) -> int | None:
 def _ano_mes(serial: int) -> tuple[int, int]:
     ano, indice = divmod(serial, 12)
     return ano, indice + 1
-
-
-def _nome_banco_cartao(linha: sqlite3.Row) -> str:
-    """Nome legivel do banco/produto, sem expor o numero do cartao na grade."""
-    nome = str(linha["nome"] or "Cartão").strip()
-    normalizado = nome.upper()
-    if "ITAU" in normalizado or "ITAÚ" in normalizado:
-        return normalizado.replace("ITAU", "ITAÚ")
-    if normalizado == "GOLD" or "NUBANK" in normalizado:
-        return "NUBANK"
-    if "PLATINUM PRIME DUO" in normalizado or "BANCO INTER" in normalizado:
-        return "INTER"
-    return nome
 
 
 def chave_compra(linha: sqlite3.Row | dict) -> tuple[Any, ...]:
@@ -157,6 +146,10 @@ def _completar_faturas_abertas_e_parcelas(
     mesmo cartao, com a mesma descricao generica e o mesmo numero de parcelas
     (ex.: dois produtos diferentes no mesmo pedido do Mercado Livre).
     """
+    # Mesma definicao de competencia que a view do extrato usa: a tela e a
+    # lista tem de concordar sobre em que fatura cada compra caiu.
+    COMPETENCIA = ciclos.expressao_competencia("t", None)
+
     origens = {conta_id: ["vazio"] * 12 for conta_id in ids_cartoes}
     previstas = {conta_id: [0] * 12 for conta_id in ids_cartoes}
     itens: dict[str, list[dict[str, Any]]] = {conta_id: [] for conta_id in ids_cartoes}
@@ -167,42 +160,44 @@ def _completar_faturas_abertas_e_parcelas(
                 origens[conta_id][indice] = "fechada"
 
     marcadores = ", ".join("?" for _ in ids_cartoes) or "NULL"
+
+    # Competencia de cada fatura fechada sai da propria fatura. Antes era o
+    # mes da ultima compra do ciclo + 1, o que errava em todo cartao que fecha
+    # e vence no mesmo mes (ver ciclos.py).
     vencimento_fatura: dict[tuple[str, str], int] = {}
     ultimo_fechamento: dict[str, int] = {}
     for linha in conn.execute(
         f"""
-        SELECT
-          conta_id,
-          fatura_id,
-          COALESCE(
-            MAX(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN t.data END),
-            MAX(t.data)
-          ) AS ultima
-        FROM pluggy_transacoes t
+        SELECT conta_id, fatura_id, competencia
+        FROM pluggy_faturas
         WHERE conta_id IN ({marcadores}) AND fatura_id <> ''
-        GROUP BY conta_id, fatura_id
         """,
         ids_cartoes,
     ):
-        mes = _mes_serial(linha["ultima"])
+        mes = _mes_serial(linha["competencia"])
         if mes is None:
             continue
-        mes += 1
-        chave = (linha["conta_id"], linha["fatura_id"])
-        vencimento_fatura[chave] = mes
+        vencimento_fatura[(linha["conta_id"], linha["fatura_id"])] = mes
         ultimo_fechamento[linha["conta_id"]] = max(
             ultimo_fechamento.get(linha["conta_id"], mes), mes
         )
 
-    vencimento_aberta: dict[str, int] = {}
+    # Faturas em aberto: as pendentes divididas PELO CICLO em que cairam.
+    #
+    # Antes todas as pendentes do cartao formavam um grupo unico, jogado no mes
+    # da ultima compra + 1. Isso desmontava em toda virada de mes -- a primeira
+    # compra do mes novo levava a fatura inteira para o mes seguinte -- e ainda
+    # juntava dois ciclos num valor so quando havia compra dos dois lados do
+    # fechamento.
+    #
+    # Ciclo que JA tem fatura fechada fica de fora: aquele valor veio do banco,
+    # e somar uma pendente residual ali contaria o mesmo gasto duas vezes.
+    ultimo_aberto: dict[str, int] = {}
     for linha in conn.execute(
         f"""
         SELECT
           t.conta_id,
-          COALESCE(
-            MAX(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN t.data END),
-            MAX(t.data)
-          ) AS ultima,
+          {COMPETENCIA} AS competencia,
           SUM(
             CASE
               WHEN t.tipo = 'DEBIT' THEN ABS(t.valor)
@@ -216,16 +211,24 @@ def _completar_faturas_abertas_e_parcelas(
         WHERE t.conta_id IN ({marcadores})
           AND t.fatura_id = ''
           AND t.status = 'PENDING'
-        GROUP BY t.conta_id
+          AND NOT EXISTS (
+                SELECT 1 FROM pluggy_faturas f
+                WHERE f.conta_id = t.conta_id
+                  AND f.competencia = {COMPETENCIA})
+        GROUP BY t.conta_id, competencia
+        -- Ciclo que so tem pagamento pendente nao e fatura aberta: o
+        -- "PAGAMENTO COM SALDO" que o banco lanca depois do fechamento caia
+        -- num ciclo futuro e o marcava como aberto, cancelando as parcelas
+        -- projetadas dali para frente.
+        HAVING SUM(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN 1 ELSE 0 END) > 0
         """,
         ids_cartoes,
     ):
-        mes = _mes_serial(linha["ultima"])
+        mes = _mes_serial(linha["competencia"])
         if mes is None:
             continue
-        mes += 1
         conta_id = linha["conta_id"]
-        vencimento_aberta[conta_id] = mes
+        ultimo_aberto[conta_id] = max(ultimo_aberto.get(conta_id, mes), mes)
         ano_fatura, mes_fatura = _ano_mes(mes)
         anos_projetados.add(ano_fatura)
         if ano_fatura == ano:
@@ -235,6 +238,9 @@ def _completar_faturas_abertas_e_parcelas(
             origens[conta_id][indice] = "aberta"
 
     series: dict[tuple[Any, ...], sqlite3.Row] = {}
+    # Em que meses cada COMPRA ja tem parcela de verdade. Projetar uma
+    # parcela num mes que ja a contem duplicaria parte da fatura.
+    meses_reais: dict[tuple[Any, ...], set[int]] = {}
     for linha in conn.execute(
         f"""
         SELECT
@@ -246,7 +252,11 @@ def _completar_faturas_abertas_e_parcelas(
           ) AS compra,
           COALESCE(
             JSON_EXTRACT(t.raw_json, '$.creditCardMetadata.cardNumber'), ''
-          ) AS numero_cartao
+          ) AS numero_cartao,
+          {COMPETENCIA} AS competencia_ciclo,
+          (SELECT f.competencia FROM pluggy_faturas f
+            WHERE f.conta_id = t.conta_id
+              AND f.fatura_id = t.fatura_id) AS competencia_fatura
         FROM pluggy_transacoes t
         WHERE t.conta_id IN ({marcadores})
           AND t.tipo = 'DEBIT'
@@ -259,6 +269,11 @@ def _completar_faturas_abertas_e_parcelas(
         ids_cartoes,
     ):
         chave = chave_compra(linha)
+        real = _mes_serial(
+            linha["competencia_fatura"] or linha["competencia_ciclo"] or ""
+        )
+        if real is not None:
+            meses_reais.setdefault(chave, set()).add(real)
         anterior = series.get(chave)
         ordem = (int(linha["parcela_numero"]), linha["data"])
         if anterior is None or ordem > (
@@ -276,22 +291,27 @@ def _completar_faturas_abertas_e_parcelas(
         if linha["fatura_id"]:
             mes_base = vencimento_fatura.get((conta_id, linha["fatura_id"]))
         else:
-            mes_base = vencimento_aberta.get(conta_id)
+            mes_base = _mes_serial(linha["competencia_ciclo"])
         if mes_base is None:
             continue
 
-        # Quando a fatura aberta já veio como PENDING, suas parcelas atuais já
-        # estão incluídas no total acima. Projetá-las novamente nesse mesmo mês
-        # duplicava parte da fatura (especialmente no Inter).
-        if conta_id in vencimento_aberta:
-            primeiro_projetavel = vencimento_aberta[conta_id] + 1
-        else:
-            primeiro_projetavel = ultimo_fechamento.get(
-                conta_id, mes_base - 1
-            ) + 1
+        # Nao projetar parcela em mes que JA tem essa mesma compra lancada.
+        #
+        # Antes o bloqueio era por cartao: qualquer mes ate o ultimo ciclo
+        # aberto ficava sem projecao. Com dois ciclos abertos ao mesmo tempo
+        # (acontece nos primeiros dias do mes, quando o ciclo novo ja tem
+        # compra e o anterior ainda nao fechou na API) isso apagava as
+        # parcelas do ciclo mais novo -- a fatura de outubro aparecia so com
+        # as compras dos primeiros dias, sem nenhuma parcela.
+        ja_lancados = meses_reais.get(chave_compra(linha), set())
+        # Projecao e previsao, nao historico: mes cuja fatura o banco ja
+        # emitiu nao recebe parcela projetada. Sem este piso, cartao com
+        # historico incompleto (conector que parou de entregar as parcelas de
+        # uma compra) ganhava projecao em cima de meses ja fechados.
+        primeiro_projetavel = ultimo_fechamento.get(conta_id, 0) + 1
         for deslocamento in range(1, total - atual + 1):
             mes_previsto = mes_base + deslocamento
-            if mes_previsto < primeiro_projetavel:
+            if mes_previsto in ja_lancados or mes_previsto < primeiro_projetavel:
                 continue
             ano_previsto, numero_mes = _ano_mes(mes_previsto)
             anos_projetados.add(ano_previsto)
@@ -341,6 +361,10 @@ def garantir_tabelas(conn: sqlite3.Connection) -> None:
     if _tabelas_prontas:
         return
     conn.executescript(SCHEMA_PLUGGY)
+    # Os ciclos de fatura sao a base da competencia de cartao. A tela de
+    # Cartoes nao passa pela camada do extrato, entao garante aqui tambem --
+    # uma vez por processo, como o resto.
+    ciclos.reconstruir(conn)
     _tabelas_prontas = True
 
 
@@ -670,7 +694,7 @@ def _chave_conta(linha: sqlite3.Row) -> tuple[str, str]:
     """Identidade da conta no mundo real, para reconhecer a mesma conta vinda
     de conexoes diferentes.
 
-    O numero e o melhor sinal: a mesma conta corrente veio como "07050945-0"
+    O numero e o melhor sinal: a mesma conta corrente veio com e sem o digito
     numa conexao e "70509450" na outra, entao normalizamos para so os digitos,
     sem zeros a esquerda. Sem numero, cai no rotulo.
     """
@@ -772,316 +796,31 @@ def mapa_apelidos(conn: sqlite3.Connection,
     }
 
 
-def _ajustar_faturas_itau_por_pagamento(
+
+
+
+
+def _consolidar_por_grupo(
     conn: sqlite3.Connection,
-    ano: int,
-    cartoes: list[dict[str, Any]],
-    valores: dict[str, list[float]],
-    quantidades: dict[str, list[int]],
-    origens: dict[str, list[str]],
-    previstas: dict[str, list[int]],
-) -> None:
-    """Usa o pagamento pendente como total da fatura atual do Itaú.
-
-    O proxy Meu Pluggy trouxe os cartões Itaú sem as compras completas das
-    faturas históricas, mas trouxe o pagamento final da fatura atual. Somar o
-    histórico parcial produz valores negativos ou deslocados. O pagamento
-    pendente é, neste caso, o único total conciliável com o app do banco.
-    """
-    for cartao in cartoes:
-        if not str(cartao["nome"]).startswith("ITAÚ"):
-            continue
-
-        conta_id = cartao["id"]
-        try:
-            dia_vencimento = int(str(cartao.get("vencimento") or "")[-2:])
-        except ValueError:
-            dia_vencimento = 10
-
-        pagamentos: dict[int, float] = {}
-        for linha in conn.execute(
-            f"""
-            SELECT t.data, ABS(t.valor) AS valor
-            FROM pluggy_transacoes t
-            WHERE t.conta_id = ? AND t.status = 'PENDING'
-              AND {EH_PAGAMENTO_FATURA}
-            """,
-            (conta_id,),
-        ):
-            serial = _mes_serial(linha["data"])
-            if serial is None:
-                continue
-            try:
-                dia_pagamento = int(str(linha["data"])[8:10])
-            except ValueError:
-                dia_pagamento = 1
-            if dia_pagamento > dia_vencimento:
-                serial += 1
-            pagamentos[serial] = max(
-                pagamentos.get(serial, 0.0), float(linha["valor"] or 0)
-            )
-
-        if not pagamentos:
-            continue
-
-        fatura_atual = max(pagamentos)
-        for indice in range(12):
-            serial = ano * 12 + indice
-            if serial <= fatura_atual:
-                valores[conta_id][indice] = 0.0
-                quantidades[conta_id][indice] = 0
-                previstas[conta_id][indice] = 0
-                origens[conta_id][indice] = "vazio"
-
-        ano_fatura, mes_fatura = _ano_mes(fatura_atual)
-        if ano_fatura == ano:
-            indice = mes_fatura - 1
-            valores[conta_id][indice] = pagamentos[fatura_atual]
-            quantidades[conta_id][indice] = 1
-            previstas[conta_id][indice] = 0
-            origens[conta_id][indice] = "pagamento"
-
-
-def _ajustar_faturas_nubank(
-    conn: sqlite3.Connection,
-    ano: int,
     cartoes: list[dict[str, Any]],
     valores: dict[str, list[float]],
     quantidades: dict[str, list[int]],
     origens: dict[str, list[str]],
     previstas: dict[str, list[int]],
     itens: dict[str, list[dict[str, Any]]],
-) -> None:
-    """Reconcilia as faturas Nubank com o saldo e as parcelas da API.
+) -> tuple[list[dict[str, Any]], dict[str, set[str]]]:
+    """Junta numa coluna so os cartoes que compartilham grupo.
 
-    O saldo da conta de cartão representa todo o crédito utilizado, incluindo
-    as parcelas que ainda vencerão. A fatura aberta é, portanto, o saldo menos
-    essas parcelas futuras. As próximas faturas recebem somente as parcelas
-    que efetivamente vencem em cada mês.
+    Quem decide e o registro de identidade (cartoes.py): dois cartoes do mesmo
+    banco vem com o mesmo grupo por padrao e viram uma fatura, e o usuario pode
+    separa-los ou juntar quaisquer outros pela tela. Nao existe regra por nome
+    de banco aqui -- adicionar um cartao novo acrescenta uma coluna sozinho.
 
-    Os itens projetados aqui vêm direto das transações PENDING reais (cada
-    uma já é uma parcela conhecida, sem agrupamento por descrição), por isso
-    substituem por completo qualquer item que o motor genérico
-    (_completar_faturas_abertas_e_parcelas) tenha gerado para este cartão.
+    Devolve tambem quais CONTAS cada coluna representa: a fatura oficial
+    precisa somar as duas contas quando a coluna e consolidada.
     """
-    for cartao in cartoes:
-        if cartao["nome"] != "NUBANK":
-            continue
-        conta_id = cartao["id"]
-        itens[conta_id] = []
-        linhas = conn.execute(
-            f"""
-            WITH transacoes_ciclo AS (
-              SELECT
-                t.*,
-                MAX(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN t.data END)
-                  OVER (PARTITION BY t.conta_id, t.fatura_id) AS ultima_compra
-              FROM pluggy_transacoes t
-              WHERE t.conta_id = ? AND t.fatura_id <> ''
-            ),
-            faturas AS (
-              SELECT
-                t.fatura_id,
-                MIN(
-                  CASE
-                    WHEN NOT {EH_PAGAMENTO_FATURA} AND JSON_EXTRACT(
-                      t.raw_json,
-                      '$.creditCardMetadata.billForecastDate'
-                    ) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'
-                    THEN JSON_EXTRACT(
-                      t.raw_json,
-                      '$.creditCardMetadata.billForecastDate'
-                    )
-                  END
-                ) AS mes_ref_fatura,
-                SUM(
-                  CASE
-                    WHEN t.tipo = 'DEBIT' THEN ABS(t.valor)
-                    WHEN t.tipo = 'CREDIT' AND NOT {EH_PAGAMENTO_FATURA}
-                      THEN -ABS(t.valor)
-                    ELSE 0
-                  END
-                ) - COALESCE((
-                  SUM(
-                    CASE
-                      WHEN {EH_PAGAMENTO_FATURA}
-                        AND t.data <= t.ultima_compra
-                      THEN ABS(t.valor)
-                      ELSE 0
-                    END
-                  ) - MAX(
-                    CASE
-                      WHEN {EH_PAGAMENTO_FATURA}
-                        AND t.data <= t.ultima_compra
-                      THEN ABS(t.valor)
-                      ELSE 0
-                    END
-                  )
-                ), 0) AS gasto,
-                SUM(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN 1 ELSE 0 END)
-                  AS quantidade
-              FROM transacoes_ciclo t
-              GROUP BY t.fatura_id
-            )
-            SELECT
-              CAST(SUBSTR(mes_ref_fatura, 6, 2) AS INTEGER) AS mes,
-              SUM(gasto) AS gasto,
-              SUM(quantidade) AS quantidade
-            FROM faturas
-            WHERE CAST(SUBSTR(mes_ref_fatura, 1, 4) AS INTEGER) = ?
-            GROUP BY mes_ref_fatura
-            ORDER BY mes_ref_fatura
-            """,
-            (conta_id, ano),
-        ).fetchall()
-        if linhas:
-            corrigidos = {
-                int(linha["mes"]) - 1: (
-                    float(linha["gasto"] or 0), int(linha["quantidade"] or 0)
-                )
-                for linha in linhas
-            }
-            ultimo = max(corrigidos)
-            for indice in range(ultimo + 1):
-                gasto, quantidade = corrigidos.get(indice, (0.0, 0))
-                valores[conta_id][indice] = gasto
-                quantidades[conta_id][indice] = quantidade
-                previstas[conta_id][indice] = 0
-                origens[conta_id][indice] = (
-                    "fechada" if quantidade else "vazio"
-                )
-
-        pendentes = conn.execute(
-            """
-            SELECT
-              t.transacao_id, t.conta_id, t.descricao, t.valor,
-              t.parcela_numero, t.parcela_total,
-              JSON_EXTRACT(
-                t.raw_json, '$.creditCardMetadata.billForecastDate'
-              ) AS mes_ref_fatura,
-              SUBSTR(JSON_EXTRACT(
-                t.raw_json, '$.creditCardMetadata.purchaseDate'), 1, 10
-              ) AS compra,
-              COALESCE(JSON_EXTRACT(
-                t.raw_json, '$.creditCardMetadata.cardNumber'), ''
-              ) AS numero_cartao
-            FROM pluggy_transacoes t
-            WHERE t.conta_id = ? AND t.status = 'PENDING'
-              AND t.tipo = 'DEBIT'
-            """,
-            (conta_id,),
-        ).fetchall()
-        meses_abertos = [
-            _mes_serial(linha["mes_ref_fatura"])
-            for linha in pendentes
-            if linha["mes_ref_fatura"]
-        ]
-        meses_abertos = [mes for mes in meses_abertos if mes is not None]
-        if not meses_abertos:
-            continue
-
-        mes_aberto = max(meses_abertos)
-        pendentes_abertos = [
-            linha
-            for linha in pendentes
-            if _mes_serial(linha["mes_ref_fatura"]) == mes_aberto
-        ]
-        projecoes: dict[int, float] = {}
-        quantidades_projetadas: dict[int, int] = {}
-        itens_por_serial: dict[int, list[dict[str, Any]]] = {}
-        total_parcelas_futuras = 0.0
-        for linha in pendentes_abertos:
-            atual = int(linha["parcela_numero"] or 0)
-            total = int(linha["parcela_total"] or 0)
-            if atual <= 0 or total <= atual:
-                continue
-            valor_parcela = abs(float(linha["valor"] or 0))
-            descricao_exibicao = re.sub(
-                r"\s+", " ",
-                re.sub(r"\d+\s*/\s*\d+", "", str(linha["descricao"] or "")),
-            ).strip()
-            restantes = total - atual
-            total_parcelas_futuras += valor_parcela * restantes
-            for deslocamento in range(1, restantes + 1):
-                mes_previsto = mes_aberto + deslocamento
-                projecoes[mes_previsto] = (
-                    projecoes.get(mes_previsto, 0.0) + valor_parcela
-                )
-                quantidades_projetadas[mes_previsto] = (
-                    quantidades_projetadas.get(mes_previsto, 0) + 1
-                )
-                itens_por_serial.setdefault(mes_previsto, []).append({
-                    "transacaoBaseId": linha["transacao_id"],
-                    "compraId": "|".join(str(p) for p in chave_compra(linha)),
-                    "descricao": descricao_exibicao,
-                    "valor": valor_parcela,
-                    "parcelaAtual": atual + deslocamento,
-                    "parcelaTotal": total,
-                })
-
-        conta = conn.execute(
-            "SELECT saldo FROM pluggy_contas WHERE conta_id = ?",
-            (conta_id,),
-        ).fetchone()
-        saldo_utilizado = abs(float(conta["saldo"] or 0)) if conta else 0.0
-        valor_fatura_aberta = round(
-            max(saldo_utilizado - total_parcelas_futuras, 0.0), 2
-        )
-
-        for indice in range(12):
-            serial = ano * 12 + indice
-            if serial < mes_aberto:
-                continue
-            if serial == mes_aberto:
-                valores[conta_id][indice] = valor_fatura_aberta
-                quantidades[conta_id][indice] = len(pendentes_abertos)
-                previstas[conta_id][indice] = 0
-                origens[conta_id][indice] = "aberta"
-                continue
-
-            valor_previsto = round(projecoes.get(serial, 0.0), 2)
-            valores[conta_id][indice] = valor_previsto
-            quantidades[conta_id][indice] = 0
-            previstas[conta_id][indice] = quantidades_projetadas.get(serial, 0)
-            origens[conta_id][indice] = (
-                "projecao" if valor_previsto else "vazio"
-            )
-            itens[conta_id].extend(
-                {**item, "mes": indice + 1}
-                for item in itens_por_serial.get(serial, [])
-            )
-
-
-def _consolidar_cartoes_itau(
-    cartoes: list[dict[str, Any]],
-    valores: dict[str, list[float]],
-    quantidades: dict[str, list[int]],
-    origens: dict[str, list[str]],
-    previstas: dict[str, list[int]],
-    itens: dict[str, list[dict[str, Any]]],
-) -> list[dict[str, Any]]:
-    """Transforma os cartões Itaú em uma única coluna mensal consolidada."""
-    itaus = [cartao for cartao in cartoes if str(cartao["nome"]).startswith("ITAÚ")]
-    if len(itaus) < 2:
-        return cartoes
-
-    id_consolidado = "consolidado:itau"
-    ids = [cartao["id"] for cartao in itaus]
-    valores[id_consolidado] = [
-        sum(valores[conta_id][indice] for conta_id in ids)
-        for indice in range(12)
-    ]
-    quantidades[id_consolidado] = [
-        sum(quantidades[conta_id][indice] for conta_id in ids)
-        for indice in range(12)
-    ]
-    previstas[id_consolidado] = [
-        sum(previstas[conta_id][indice] for conta_id in ids)
-        for indice in range(12)
-    ]
-    itens[id_consolidado] = [
-        item for conta_id in ids for item in itens.get(conta_id, [])
-    ]
+    colunas = cartoes_id.colunas(conn, {cartao["id"] for cartao in cartoes})
+    por_conta = {cartao["id"]: cartao for cartao in cartoes}
 
     prioridade = {
         "vazio": 0,
@@ -1092,99 +831,48 @@ def _consolidar_cartoes_itau(
         "aberta_projecao": 5,
         "pagamento": 6,
     }
-    origens[id_consolidado] = [
-        max(
-            (origens[conta_id][indice] for conta_id in ids),
-            key=lambda origem: prioridade.get(origem, 0),
-        )
-        for indice in range(12)
-    ]
-
-    consolidado = {
-        "id": id_consolidado,
-        "nome": "ITAÚ",
-        "numero": "",
-        "limiteCredito": sum(float(c.get("limiteCredito") or 0) for c in itaus),
-        "limiteDisponivel": sum(
-            float(c.get("limiteDisponivel") or 0) for c in itaus
-        ),
-        "fechamento": "",
-        "vencimento": "",
-        "cartoesConsolidados": [cartao["nome"] for cartao in itaus],
-    }
 
     resultado: list[dict[str, Any]] = []
-    inserido = False
-    for cartao in cartoes:
-        if cartao["id"] in ids:
-            if not inserido:
-                resultado.append(consolidado)
-                inserido = True
+    contas_do_cartao: dict[str, set[str]] = {}
+    for coluna in colunas:
+        contas = [c for c in coluna["contas"] if c in por_conta]
+        if not contas:
             continue
-        resultado.append(cartao)
-    return resultado
+        destino = coluna["id"]
+        contas_do_cartao[destino] = set(contas)
 
+        if destino not in valores:
+            valores[destino] = [
+                sum(valores[c][i] for c in contas) for i in range(12)
+            ]
+            quantidades[destino] = [
+                sum(quantidades[c][i] for c in contas) for i in range(12)
+            ]
+            previstas[destino] = [
+                sum(previstas[c][i] for c in contas) for i in range(12)
+            ]
+            origens[destino] = [
+                max((origens[c][i] for c in contas),
+                    key=lambda origem: prioridade.get(origem, 0))
+                for i in range(12)
+            ]
+            itens[destino] = [item for c in contas for item in itens.get(c, [])]
 
-def _preencher_itau_historico_por_pagamento_principal(
-    conn: sqlite3.Connection,
-    ano: int,
-    cartoes: list[dict[str, Any]],
-    valores: dict[str, list[float]],
-    quantidades: dict[str, list[int]],
-    origens: dict[str, list[str]],
-    previstas: dict[str, list[int]],
-) -> None:
-    """Reconcilia o historico do Itau pelo pagamento do Platinum.
-
-    A conexao do Itau possui dois cartoes. O pequeno ``ITAU MULTIPLO`` gera
-    pagamentos recorrentes de R$ 13,90 que nao fazem parte da fatura principal
-    exibida pelo usuario. Para meses ja pagos, a saida da conta corrente com a
-    descricao ``FATURA PAGA ITAU PLATINU`` e a fonte mais confiavel.
-
-    Pagamentos feitos a partir do dia 25 quitam a fatura do mes seguinte (por
-    exemplo, o pagamento de 30/05 corresponde a fatura de junho).
-    """
-    id_consolidado = "consolidado:itau"
-    if not any(cartao["id"] == id_consolidado for cartao in cartoes):
-        return
-
-    pagamentos: dict[int, float] = {}
-    linhas = conn.execute(
-        """
-        SELECT t.data, t.descricao, ABS(t.valor) AS valor
-        FROM pluggy_transacoes t
-        JOIN pluggy_contas c ON c.conta_id = t.conta_id
-        WHERE c.subtipo = 'CHECKING_ACCOUNT'
-          AND t.tipo = 'DEBIT'
-          AND (UPPER(c.nome) LIKE '%ITAU%' OR UPPER(c.nome) LIKE '%ITAÚ%')
-        ORDER BY t.data
-        """
-    )
-    for linha in linhas:
-        descricao = cam.normalizar(linha["descricao"])
-        if "fatura paga itau platinu" not in descricao:
-            continue
-        serial = _mes_serial(linha["data"])
-        if serial is None:
-            continue
-        try:
-            dia_pagamento = int(str(linha["data"])[8:10])
-        except ValueError:
-            dia_pagamento = 1
-        if dia_pagamento >= 25:
-            serial += 1
-        pagamentos[serial] = max(
-            pagamentos.get(serial, 0.0), float(linha["valor"] or 0)
-        )
-
-    for indice in range(12):
-        serial = ano * 12 + indice
-        if serial not in pagamentos:
-            continue
-        valores[id_consolidado][indice] = round(pagamentos[serial], 2)
-        quantidades[id_consolidado][indice] = 1
-        previstas[id_consolidado][indice] = 0
-        origens[id_consolidado][indice] = "pagamento"
+        primeiro = por_conta[contas[0]]
+        resultado.append({
+            "id": destino,
+            "nome": coluna["nome"],
+            "cor": coluna["cor"],
+            "numero": coluna["numero"],
+            "limiteCredito": coluna["limiteCredito"],
+            "limiteDisponivel": coluna["limiteDisponivel"],
+            "fechamento": primeiro.get("fechamento") if len(contas) == 1 else "",
+            "vencimento": primeiro.get("vencimento") if len(contas) == 1 else "",
+            "cartoesConsolidados": (
+                coluna["apelidos"] if len(contas) > 1 else []
+            ),
+        })
+    return resultado, contas_do_cartao
 
 
 def _aplicar_faturas_oficiais(
@@ -1203,17 +891,15 @@ def _aplicar_faturas_oficiais(
     fatura, nao uma soma reconstruida das transacoes. Por isso roda por
     ultimo: e a autoridade final para todo mes que tem fatura fechada.
 
-    Somar transacoes acerta quando a base esta completa (conferido: bate ao
-    centavo nas 16 faturas de 2026 do Inter e do Nubank), mas erra nas
-    bordas -- no primeiro mes importado faltam as compras anteriores ao
-    inicio do sync, e nos cartoes Itau o conector nem trouxe o historico de
-    compras. Nesses casos a fatura oficial e a unica fonte correta.
+    Somar transacoes so acerta quando a base esta completa, e ela nem sempre
+    esta: no primeiro mes importado faltam as compras anteriores ao inicio do
+    sync, e ha conector que entrega as faturas sem as compras delas. Por isso
+    o valor oficial nao e uma opiniao entre outras -- e a resposta.
 
-    Fica de fora somente quando valor_total = 0: nos cartoes Itau varios
-    ciclos vem zerados pela Pluggy mesmo tendo tido gasto, e zero e ambiguo
-    ("nao coletei" x "nao gastou nada"), entao ali o calculo por
-    transacao/pagamento continua valendo. Valor negativo, ao contrario, e
-    dado real (fatura com saldo credor) e entra normalmente.
+    Fica de fora somente quando valor_total = 0, que e ambiguo ("nao coletei"
+    x "nao gastou nada"): esses meses ficam para _aplicar_faturas_pagas, que
+    usa o pagamento que quitou o ciclo. Valor negativo, ao contrario, e dado
+    real (fatura com saldo credor) e entra normalmente.
 
     A fatura AINDA EM ABERTO nunca chega aqui -- ela nao existe na API
     enquanto o banco nao fecha o ciclo (ver list_bills em pluggy_sync.py),
@@ -1257,6 +943,106 @@ def _aplicar_faturas_oficiais(
             itens[cartao_id] = [
                 item for item in itens[cartao_id] if item["mes"] != indice + 1
             ]
+
+
+def _dias_entre(um: str, outro: str) -> int:
+    """Diferenca em dias entre duas datas ISO (AAAA-MM-DD)."""
+    return (date.fromisoformat(str(um)[:10])
+            - date.fromisoformat(str(outro)[:10])).days
+
+
+def _aplicar_faturas_pagas(
+    conn: sqlite3.Connection,
+    ano: int,
+    ids_cartoes: list[str],
+    valores: dict[str, list[float]],
+    origens: dict[str, list[str]],
+) -> None:
+    """Fatura sem valor na API vale o maior pagamento que a quitou.
+
+    Duas situacoes caem aqui, e nenhuma delas tem valor oficial:
+
+      * a fatura fechou e a API ainda nao a emitiu -- acontece todo mes, entre
+        o fechamento e o /bills aparecer;
+      * a API a emitiu com valor_total = 0, que alguns conectores fazem no
+        historico que nao coletaram.
+
+    Nos dois casos o pagamento e a melhor prova que existe: saiu da conta. E
+    nao e palpite -- nos 14 meses de 2026 em que a API informa valor, o maior
+    pagamento atribuido ao ciclo e IDENTICO a ele, nos tres cartoes.
+
+    Duas decisoes que os dados impuseram:
+
+    MAIOR, nao soma. O mesmo pagamento chega repetido: com duas descricoes
+    ("Pagamento recebido" no dia 1o e "PAGAMENTO COM SALDO" no dia 2), ou
+    literalmente duplicado (um conector manda o mesmo valor tres vezes no
+    mesmo dia). Somar inflava o mes; o maior acerta. Pagamento parcial, que e
+    menor, tambem fica de fora -- ele nao e o total da fatura.
+
+    O ciclo com o fechamento MAIS PROXIMO da data do pagamento, nao o
+    anterior a ela. O pagamento cai as vezes um ou dois dias antes do
+    fechamento (debito automatico do saldo), as vezes dias depois; a
+    proximidade acerta os dois casos, e foi o unico critério que fechou todos
+    os meses conferidos.
+
+    So entra ciclo que ja fechou: fatura ainda aberta nao foi quitada, e um
+    pagamento perto do fechamento futuro nao pode virar o valor dela.
+    """
+    marcadores = ", ".join("?" for _ in ids_cartoes) or "NULL"
+    hoje = datetime.now().strftime("%Y-%m-%d")
+
+    # Ciclos ja fechados de cada cartao, para achar o mais proximo do
+    # pagamento. Sao poucas dezenas de linhas por cartao.
+    fechados: dict[str, list[tuple[str, str]]] = {}
+    for linha in conn.execute(
+        f"""
+        SELECT conta_id, fim, competencia FROM pluggy_ciclos
+        WHERE conta_id IN ({marcadores}) AND fim <= ?
+        ORDER BY fim
+        """,
+        (*ids_cartoes, hoje),
+    ):
+        fechados.setdefault(linha["conta_id"], []).append(
+            (linha["fim"], linha["competencia"])
+        )
+
+    def competencia_do_pagamento(conta_id: str, data: str) -> str | None:
+        ciclos_conta = fechados.get(conta_id)
+        if not ciclos_conta:
+            return None
+        dia = str(data)[:10]
+        return min(
+            ciclos_conta,
+            key=lambda ciclo: (abs(_dias_entre(ciclo[0], dia)), ciclo[0]),
+        )[1]
+
+    pagos: dict[tuple[str, str], float] = {}
+    for linha in conn.execute(
+        f"""
+        SELECT t.conta_id, t.data, ABS(t.valor) AS pago
+        FROM pluggy_transacoes t
+        WHERE t.conta_id IN ({marcadores})
+          AND {EH_PAGAMENTO_FATURA}
+        """,
+        ids_cartoes,
+    ):
+        competencia = competencia_do_pagamento(linha["conta_id"], linha["data"])
+        if not competencia:
+            continue
+        chave = (linha["conta_id"], competencia)
+        pagos[chave] = max(pagos.get(chave, 0.0), float(linha["pago"] or 0))
+
+    for (conta_id, competencia), pago in pagos.items():
+        if conta_id not in valores or not competencia.startswith(f"{ano}-"):
+            continue
+        try:
+            indice = int(competencia[5:7]) - 1
+        except ValueError:
+            continue
+        if not 0 <= indice < 12 or pago <= 0:
+            continue
+        valores[conta_id][indice] = round(pago, 2)
+        origens[conta_id][indice] = "pagamento"
 
 
 def _aplicar_faturas_confirmadas(
@@ -1321,10 +1107,16 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
         garantir_tabelas(conn)
 
         ativas = contas_ativas(conn)
+        # Uma linha por CONTA de cartao; o apelido, a cor e o grupo saem do
+        # registro de identidade (cartoes.py), nunca do nome que o conector
+        # mandou. Cartao novo entra aqui sozinho, sem mudanca de codigo.
+        identidades = cartoes_id.identidades(conn)
         cartoes = [
             {
                 "id": linha["conta_id"],
-                "nome": _nome_banco_cartao(linha),
+                "nome": identidades[linha["conta_id"]]["apelido"],
+                "cor": identidades[linha["conta_id"]]["cor"],
+                "grupo": identidades[linha["conta_id"]]["grupo"],
                 "numero": linha["numero"],
                 "limiteCredito": linha["limite_credito"],
                 "limiteDisponivel": linha["limite_disponivel"],
@@ -1336,6 +1128,7 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                 "ORDER BY nome"
             )
             if linha["conta_id"] in ativas
+            and linha["conta_id"] in identidades
         ]
 
         ids_cartoes = sorted(cartao["id"] for cartao in cartoes)
@@ -1351,11 +1144,11 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
         ]
 
         if agrupamento == "fatura":
-            # A Pluggy agrupa no mesmo fatura_id os lançamentos do ciclo e os
-            # pagamentos. O maior pagamento feito antes do fechamento quita a
-            # fatura anterior; os menores são abatimentos do ciclo. Pagamentos
-            # importados depois da última compra não podem deslocar nem reduzir
-            # uma fatura já fechada.
+            # Soma do ciclo pelo billId, sem tocar em pagamento: pagamento
+            # nao compoe fatura, ele a quita. Esta soma e apenas o piso --
+            # todo mes fechado e substituido depois pelo valor oficial da API
+            # (_aplicar_faturas_oficiais) ou, quando a API veio zerada, pelo
+            # pagamento que quitou o ciclo (_aplicar_faturas_pagas).
             consulta = f"""
                 WITH transacoes_ciclo AS (
                   SELECT
@@ -1371,24 +1164,26 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                   SELECT
                     t.conta_id,
                     t.fatura_id,
-                    CAST(STRFTIME(
-                      '%Y',
-                      DATE(
-                        SUBSTR(
-                          COALESCE(t.ultima_compra, MAX(t.data)), 1, 7
-                        ) || '-01',
-                        '+1 month'
-                      )
-                    ) AS INTEGER) AS ano_fatura,
-                    CAST(STRFTIME(
-                      '%m',
-                      DATE(
-                        SUBSTR(
-                          COALESCE(t.ultima_compra, MAX(t.data)), 1, 7
-                        ) || '-01',
-                        '+1 month'
-                      )
-                    ) AS INTEGER) AS mes_fatura,
+                    -- Mes da fatura: a competencia que o banco emitiu.
+                    -- "ultima compra + 1 mes" errava em cartao que fecha e
+                    -- vence no mesmo mes, e mudava de coluna quando chegava
+                    -- uma compra nova (ver ciclos.py).
+                    CAST(SUBSTR(COALESCE(
+                      (SELECT f.competencia FROM pluggy_faturas f
+                        WHERE f.conta_id = t.conta_id
+                          AND f.fatura_id = t.fatura_id),
+                      STRFTIME('%Y-%m', DATE(SUBSTR(
+                        COALESCE(t.ultima_compra, MAX(t.data)), 1, 7
+                      ) || '-01', '+1 month'))
+                    ), 1, 4) AS INTEGER) AS ano_fatura,
+                    CAST(SUBSTR(COALESCE(
+                      (SELECT f.competencia FROM pluggy_faturas f
+                        WHERE f.conta_id = t.conta_id
+                          AND f.fatura_id = t.fatura_id),
+                      STRFTIME('%Y-%m', DATE(SUBSTR(
+                        COALESCE(t.ultima_compra, MAX(t.data)), 1, 7
+                      ) || '-01', '+1 month'))
+                    ), 6, 2) AS INTEGER) AS mes_fatura,
                     SUM(
                       CASE
                         WHEN t.tipo = 'DEBIT' THEN ABS(t.valor)
@@ -1396,23 +1191,7 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                           THEN -ABS(t.valor)
                         ELSE 0
                       END
-                    ) - COALESCE((
-                      SUM(
-                        CASE
-                          WHEN {EH_PAGAMENTO_FATURA}
-                            AND t.data <= t.ultima_compra
-                          THEN ABS(t.valor)
-                          ELSE 0
-                        END
-                      ) - MAX(
-                        CASE
-                          WHEN {EH_PAGAMENTO_FATURA}
-                            AND t.data <= t.ultima_compra
-                          THEN ABS(t.valor)
-                          ELSE 0
-                        END
-                      )
-                    ), 0) AS gasto,
+                    ) AS gasto,
                     SUM(CASE WHEN NOT {EH_PAGAMENTO_FATURA} THEN 1 ELSE 0 END)
                       AS quantidade
                   FROM transacoes_ciclo t
@@ -1453,26 +1232,10 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                     conn, ano, ids_cartoes, valores, quantidades
                 )
             )
-            _ajustar_faturas_nubank(
-                conn,
-                ano,
-                cartoes,
-                valores,
-                quantidades,
-                origens,
-                quantidades_previstas,
-                itens,
-            )
-            _ajustar_faturas_itau_por_pagamento(
-                conn,
-                ano,
-                cartoes,
-                valores,
-                quantidades,
-                origens,
-                quantidades_previstas,
-            )
             _aplicar_faturas_confirmadas(conn, ano, valores, origens)
+            # Depois da confirmacao: o pagamento e fato consumado, a
+            # confirmacao foi um palpite feito enquanto a fatura estava aberta.
+            _aplicar_faturas_pagas(conn, ano, ids_cartoes, valores, origens)
             anos = sorted(set(anos) | anos_projetados)
         else:
             origens = {
@@ -1487,16 +1250,11 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             }
             itens = {conta_id: [] for conta_id in ids_cartoes}
 
-        # Quais contas reais cada coluna da grade representa. Normalmente e
-        # 1:1, menos nos Itau, que viram uma coluna consolidada -- e a fatura
-        # oficial precisa saber somar as duas contas naquela coluna.
-        contas_do_cartao = {cartao["id"]: {cartao["id"]} for cartao in cartoes}
-        ids_itau = {
-            cartao["id"] for cartao in cartoes
-            if str(cartao["nome"]).startswith("ITAÚ")
-        }
-
-        cartoes = _consolidar_cartoes_itau(
+        # Uma coluna por grupo do registro de identidade, e quais CONTAS cada
+        # coluna representa -- a fatura oficial precisa somar as duas contas
+        # quando a coluna e consolidada.
+        cartoes, contas_do_cartao = _consolidar_por_grupo(
+            conn,
             cartoes,
             valores,
             quantidades,
@@ -1504,25 +1262,8 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             quantidades_previstas,
             itens,
         )
-        if any(cartao["id"] == "consolidado:itau" for cartao in cartoes):
-            contas_do_cartao = {
-                cartao["id"]: (
-                    ids_itau if cartao["id"] == "consolidado:itau"
-                    else {cartao["id"]}
-                )
-                for cartao in cartoes
-            }
 
         if agrupamento == "fatura":
-            _preencher_itau_historico_por_pagamento_principal(
-                conn,
-                ano,
-                cartoes,
-                valores,
-                quantidades,
-                origens,
-                quantidades_previstas,
-            )
             # Por ultimo: onde existe fatura fechada, o valor emitido pelo
             # banco vale mais que qualquer reconstrucao nossa.
             _aplicar_faturas_oficiais(
@@ -1536,10 +1277,16 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                 contas_do_cartao,
             )
 
-    # So um item projetado sobrevive se, depois de todos os ajustes por
-    # banco, o mes correspondente ainda estiver marcado como "projecao" --
-    # meses virados em lump sum (pagamento confirmado, fatura Itau por
-    # pagamento etc.) nao tem decomposicao confiavel e ficam so no total.
+    # Item projetado sobrevive nos meses cujo valor E projecao: "projecao"
+    # (so parcelas futuras) e "aberta_projecao" (fatura aberta que ja tem
+    # compra real mais as parcelas que ainda vao entrar). Esse segundo caso
+    # ficava de fora e era justamente o mes corrente e o seguinte -- a coluna
+    # somava as parcelas e a tela nao tinha como mostrar quais eram.
+    #
+    # Mes cujo valor veio inteiro de outra fonte -- fatura oficial, pagamento
+    # que quitou, valor confirmado -- nao tem decomposicao confiavel: listar
+    # ali apenas as parcelas projetadas daria uma lista que nao soma o total.
+    COM_DETALHE = {"projecao", "aberta_projecao"}
     for cartao in cartoes:
         conta_id = cartao["id"]
         lista = itens.get(conta_id, [])
@@ -1547,7 +1294,7 @@ def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
         itens[conta_id] = [
             item for item in lista
             if 1 <= item["mes"] <= 12
-            and origens_cartao[item["mes"] - 1] == "projecao"
+            and origens_cartao[item["mes"] - 1] in COM_DETALHE
         ]
 
     total_mes = [
@@ -1638,6 +1385,58 @@ def categorias_resumo_payload(filtros: dict[str, Any]) -> dict[str, Any]:
 
     arvore.sort(key=lambda c: -c["total"])
     return {"categorias": arvore, "total": sum(c["total"] for c in arvore)}
+
+
+def _compras_com_parcela_real(
+    conn: sqlite3.Connection,
+    mes_de: str,
+    mes_ate: str,
+) -> dict[str, set[str]]:
+    """Por competencia, as compras que ja tem parcela lancada de verdade.
+
+    Serve para nao injetar a projecao de uma parcela em cima da parcela real
+    dela. O bloqueio anterior era por MES: mes com qualquer transacao real nao
+    recebia projecao nenhuma. Isso apagava a fatura inteira do mes corrente e
+    do seguinte assim que caia a primeira compra do ciclo novo -- a coluna de
+    Cartoes somava oito parcelas e a lista de Transacoes mostrava duas compras.
+
+    A chave e a mesma `chave_compra` que agrupa as parcelas de uma compra, e a
+    competencia sai da definicao compartilhada (ciclos.py), para a lista e a
+    grade concordarem sobre em que fatura cada parcela caiu.
+    """
+    competencia = ciclos.expressao_competencia("t", None)
+    onde = ""
+    parametros: list[Any] = []
+    if mes_de:
+        onde += f" AND {competencia} >= ?"
+        parametros.append(mes_de)
+    if mes_ate:
+        onde += f" AND {competencia} <= ?"
+        parametros.append(mes_ate)
+    saida: dict[str, set[str]] = {}
+    for linha in conn.execute(
+        f"""
+        SELECT
+          {competencia} AS competencia,
+          t.conta_id, t.descricao, t.valor, t.parcela_total,
+          SUBSTR(JSON_EXTRACT(
+            t.raw_json, '$.creditCardMetadata.purchaseDate'), 1, 10
+          ) AS compra,
+          COALESCE(JSON_EXTRACT(
+            t.raw_json, '$.creditCardMetadata.cardNumber'), ''
+          ) AS numero_cartao
+        FROM pluggy_transacoes t
+        JOIN pluggy_contas c ON c.conta_id = t.conta_id
+                            AND c.subtipo = 'CREDIT_CARD'
+        WHERE t.tipo = 'DEBIT' AND t.parcela_total > 1{onde}
+        """,
+        parametros,
+    ):
+        if not linha["competencia"]:
+            continue
+        chave = "|".join(str(parte) for parte in chave_compra(linha))
+        saida.setdefault(linha["competencia"], set()).add(chave)
+    return saida
 
 
 def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
@@ -1990,12 +1789,13 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         ).fetchall()
 
         # Itens projetados (parcelas futuras de cartao) que caem no filtro
-        # atual, so nos meses que nao tem nenhuma transacao real -- nunca
-        # some ou substitui dado real, so preenche o vazio, igual a projecao
-        # acima. Sem periodo selecionado (ex.: busca por texto "Olympikus" em
+        # atual. Nunca somem nem substituem dado real: entram ao lado dele,
+        # menos a parcela cuja compra ja tem lancamento real naquela mesma
+        # fatura. Sem periodo selecionado (ex.: busca por texto "Olympikus" em
         # Todo periodo) varre os 12 meses; com periodo, so o que cai dentro.
         transacoes_extra: list[dict[str, Any]] = []
         por_categoria_extra: list[dict[str, Any]] = []
+        reais_por_mes = _compras_com_parcela_real(conn, mes_de, mes_ate)
         pares = []
         if (
             (permite_projecao_cartoes or permite_projecao_busca)
@@ -2022,11 +1822,14 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                             continue
                         if busca_termo and busca_termo not in item["descricao"].casefold():
                             continue
-                        # Mes com transacao real (mesmo filtro de busca/cartao
-                        # aplicado na tira de evolucao) ja mostra os itens de
-                        # verdade -- nao injeta projecao por cima.
-                        existente = evolucao.get(mes_ref_item)
-                        if existente and existente.get("quantidade"):
+                        # Nao injeta projecao em cima da parcela REAL da
+                        # mesma compra. O bloqueio era por mes -- mes com
+                        # qualquer transacao real nao recebia projecao --, e
+                        # com isso a fatura aberta perdia todas as parcelas
+                        # tao logo caisse a primeira compra do ciclo.
+                        if item["compraId"] in reais_por_mes.get(
+                            mes_ref_item, ()
+                        ):
                             continue
                         pares.append((cartao, item, mes_ref_item))
 
@@ -2037,7 +1840,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 marcadores_base = ", ".join("?" for _ in base_ids)
                 for linha_cat in conn.execute(
                     f"""
-                    SELECT t.transacao_id, t.categoria_id,
+                    SELECT t.transacao_id, t.categoria_id, t.conta_id,
                            cat.nome AS categoria_nome,
                            cat.cor AS categoria_cor,
                            cat.emoji AS categoria_emoji,
@@ -2052,6 +1855,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     base_ids,
                 ):
                     categorias_base[linha_cat["transacao_id"]] = {
+                        "contaId": linha_cat["conta_id"],
                         "id": linha_cat["categoria_id"],
                         "nome": linha_cat["categoria_nome"] or "Outros",
                         "cor": linha_cat["categoria_cor"] or "#9ba1ab",
@@ -2064,6 +1868,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             agregados_categoria: dict[str, dict[str, Any]] = {}
             for cartao, item, mes_ref_item in pares:
                 categoria = categorias_base.get(item["transacaoBaseId"]) or {
+                    "contaId": "",
                     "id": None, "nome": "Outros", "cor": "#9ba1ab", "emoji": "",
                     "raizId": None, "raizNome": "Outros", "raizCor": "#9ba1ab",
                     "raizEmoji": "",
@@ -2093,8 +1898,15 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "parcelaTotal": item["parcelaTotal"],
                     "faturaId": "",
                     "contaId": cartao["id"],
+                    # O nome sai da CONTA que vai ser cobrada -- a mesma da
+                    # parcela real de onde a projecao veio --, e nao do nome da
+                    # coluna: coluna consolidada nao e uma conta, e ali a linha
+                    # aparecia com um rotulo diferente do das reais.
                     "contaNome": NOMES_BANCOS.get(
-                        banco_por_conta.get(cartao["id"]), cartao["nome"]
+                        banco_por_conta.get(categoria.get("contaId") or ""),
+                        apelidos.get(
+                            categoria.get("contaId") or "", cartao["nome"]
+                        ),
                     ),
                     "contaSubtipo": "CREDIT_CARD",
                     "projetada": True,
@@ -2173,11 +1985,13 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
 
     saidas = float(resumo["saidas"])
     saidas_estimativa = False
-    if transacoes_extra and not mes_filtro:
-        # Periodo com mais de um mes (ou nenhum): os itens projetados que caem
-        # em meses futuros (sem transacao real ainda) somam por cima do que a
-        # consulta real ja contou -- cada um so entrou porque aquele mes
-        # especifico estava vazio, ver o filtro de "evolucao" acima.
+    if transacoes_extra:
+        # Parcela projetada que entrou na lista soma no resumo, sempre. Antes
+        # isso valia so para periodo de varios meses: com um mes selecionado, o
+        # resumo usava a projecao apenas se o mes estivesse INTEIRAMENTE vazio.
+        # Resultado: a fatura do mes corrente aparecia listada com dez parcelas
+        # e resumida como duas compras, porque o ciclo novo ja tinha duas
+        # compras reais.
         saidas += sum(item["valor"] for item in transacoes_extra)
         saidas_estimativa = True
     # Mesma projecao de fatura de cartao da serie, para o mes unico
@@ -2209,7 +2023,9 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             "saidas": saidas,
             "saidasEstimativa": saidas_estimativa,
             "resultado": entradas_usar - saidas,
-            "quantidade": resumo["quantidade"],
+            # Conta o que a lista mostra, projecao inclusa -- senao o
+            # cabecalho dizia "2 transacoes" acima de doze linhas.
+            "quantidade": resumo["quantidade"] + len(transacoes_extra),
             "ignoradas": resumo["ignoradas"],
         },
         "porCategoria": por_categoria,

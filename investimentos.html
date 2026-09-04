@@ -16,6 +16,10 @@
 .hero-meta span { display:grid; gap:2px; }
 .hero-meta small { color:#91a7bd; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
 .hero-grade { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+/* Com o card "Aguardando posição" visivel sao quatro: 2x2 preenche a altura do
+   hero em vez de deixar um card sozinho na segunda linha. */
+.hero-grade.com-pendente { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.hero-grade.com-pendente .hero-mini.media-aporte { grid-column:auto; }
 .hero-mini { padding:17px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); }
 .hero-mini .rotulo { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
 .hero-mini strong { display:block; margin-top:7px; font-size:21px; letter-spacing:-.02em; }
@@ -60,7 +64,7 @@
 .filtros-mov button { min-height:30px; padding:4px 11px; border-radius:999px; font-size:12.5px; }
 .filtros-mov button.ativo { border-color:var(--azul); background:var(--azul-suave); color:#9ac8f6; }
 .filtros-mov select { min-height:30px; margin-left:auto; padding-top:4px; padding-bottom:4px; border-radius:999px; font-size:12.5px; }
-@media (max-width:1400px) { .hero-grade { grid-template-columns:repeat(2,minmax(0,1fr)); } .hero-mini.media-aporte { grid-column:1/-1; } }
+@media (max-width:1400px) { .hero-grade { grid-template-columns:repeat(2,minmax(0,1fr)); } .hero-grade:not(.com-pendente) .hero-mini.media-aporte { grid-column:1/-1; } }
 @media (max-width:1200px) { .sec-grid { grid-template-columns:1fr; } }
 @media (max-width:1100px) { .caixinha-hero { grid-template-columns:1fr; } }
 @media (max-width:760px) { .hero-grade { grid-template-columns:1fr 1fr; } .hero-valor { font-size:32px; } }
@@ -75,39 +79,54 @@
     <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><button id="btnAtualizar">Atualizar Pluggy</button></div>
   </header>
 
+  <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
+    <h2>O servidor aberto precisa ser reiniciado</h2>
+    <p>A página foi atualizada, mas o servidor ainda está executando a versão antiga. Por isso, as aplicações identificadas no extrato, como o CDB do BTG, ainda não aparecem.</p>
+    <p>Feche a janela do backend Pluggy, abra novamente <strong>iniciar_pluggy.bat</strong> na pasta FinanceiroPluggy e recarregue esta página.</p>
+  </section>
+
   <section class="caixinha-hero">
     <article class="painel hero-principal">
-      <div class="hero-kicker">Caixinha Itaú · saldo líquido</div>
+      <div class="hero-kicker">Carteira consolidada · saldo líquido</div>
       <div class="hero-valor" id="vLiquido">R$ 0,00</div>
-      <div class="hero-nota">valor atual após impostos, segundo a posição enviada pelo Itaú à Pluggy</div>
+      <div class="hero-nota">posições informadas pelas instituições conectadas; novas conexões entram automaticamente</div>
       <div class="hero-meta">
         <span><small>Referência</small><b id="vReferencia">—</b></span>
-        <span><small>Lotes ativos</small><b id="vLotes">0</b></span>
-        <span><small>Rentabilidade</small><b id="vTaxa">100% do CDI</b></span>
+        <span><small>Taxas informadas</small><b id="vTaxa">—</b></span>
       </div>
     </article>
     <div class="hero-grade">
       <article class="hero-mini"><span class="rotulo">Valor bruto</span><strong id="vBruto">R$ 0,00</strong><small>antes de impostos</small></article>
       <article class="hero-mini"><span class="rotulo">Ganho bruto</span><strong class="positivo" id="vGanhoBruto">R$ 0,00</strong><small id="pGanhoBruto">0,00% sobre o aplicado</small></article>
       <article class="hero-mini media-aporte"><span class="rotulo">Média líquida mensal · 2026</span><strong id="vMediaLiquida2026">R$ 0,00</strong><small id="pMediaLiquida2026">aplicações menos resgates</small></article>
+      <article class="hero-mini" id="painelSemPosicao" hidden><span class="rotulo">Aguardando posição</span><strong id="vSemPosicao">R$ 0,00</strong><small>aplicado sem posição informada</small></article>
     </div>
   </section>
 
   <section class="sec-grid">
     <article class="painel">
       <div class="painel-tit"><div><h2>Valor líquido por mês</h2><div class="sub">aplicações menos resgates em cada mês</div></div></div>
-      <svg id="graficoAportes" class="chart" aria-label="Valor líquido mensal da Caixinha"></svg>
+      <svg id="graficoAportes" class="chart" aria-label="Valor líquido mensal da carteira"></svg>
       <div class="legenda"><span id="aportesInicio">—</span><span id="aportesFim">—</span></div>
     </article>
     <article class="painel">
-      <div class="painel-tit"><div><h2>Evolução do valor total</h2><div class="sub">saldo mensal reconstruído a partir do valor atual e das movimentações</div></div></div>
-      <svg id="graficoTotal" class="chart" aria-label="Evolução do valor total da Caixinha"></svg>
+      <div class="painel-tit"><div><h2>Evolução do saldo informado</h2><div class="sub">reconstrução das posições disponíveis; aplicações aguardando posição ficam fora desta curva</div></div></div>
+      <svg id="graficoTotal" class="chart" aria-label="Evolução do valor total da carteira"></svg>
       <div class="legenda"><span id="totalInicio">—</span><span id="totalFim">—</span></div>
     </article>
   </section>
 
   <section class="painel" style="margin-bottom:14px">
-    <div class="painel-tit"><div><h2>Movimentação por mês</h2><div class="sub">valores confirmados no extrato da conta Itaú</div></div></div>
+    <div class="painel-tit"><div><h2>Por instituição</h2><div class="sub">instituições com valores positivos · última sincronização</div></div></div>
+    <div class="tabela-wrap tabela-scroll-10"><table>
+      <thead><tr><th>Instituição</th><th class="num">Valor aplicado</th><th class="num">Valor bruto</th><th class="num">Saldo líquido</th><th>Posição</th></tr></thead>
+      <tbody id="instituicoes"></tbody>
+    </table></div>
+  </section>
+
+
+  <section class="painel" style="margin-bottom:14px">
+    <div class="painel-tit"><div><h2>Movimentação por mês</h2><div class="sub">aplicações e resgates de todas as instituições conectadas</div></div></div>
     <div class="tabela-wrap tabela-scroll-10"><table>
       <thead><tr><th>Mês</th><th class="num">Aplicações</th><th class="num">Resgates</th><th class="num">Fluxo líquido</th><th class="num">Movimentos</th><th>Intensidade</th></tr></thead>
       <tbody id="meses"></tbody>
@@ -115,7 +134,7 @@
   </section>
 
   <details class="painel detalhes" id="detMovimentos">
-    <summary><div><h2>Todas as movimentações</h2><div class="sub" id="movSub">histórico confirmado no extrato da Pluggy</div></div></summary>
+    <summary><div><h2>Todas as movimentações</h2><div class="sub" id="movSub">histórico das instituições conectadas</div></div></summary>
     <div class="filtros-mov" id="filtrosMovimentos" aria-label="Filtrar movimentações">
       <button class="ativo" data-filtro-mov="todos">Todas</button>
       <button data-filtro-mov="BUY">Aportes</button>
@@ -123,7 +142,7 @@
       <select id="filtroPeriodo" aria-label="Filtrar por mês e ano"><option value="todos">Todos os meses</option></select>
     </div>
     <div class="tabela-wrap tabela-scroll-10"><table>
-      <thead><tr><th>Data</th><th>Movimento</th><th>Descrição do extrato</th><th class="num">Valor</th><th>Conta</th><th>Confirmação</th></tr></thead>
+      <thead><tr><th>Data</th><th>Movimento</th><th>Descrição</th><th class="num">Valor</th><th>Instituição / conta</th><th>Origem</th></tr></thead>
       <tbody id="movimentos"></tbody>
     </table></div>
   </details>
@@ -156,7 +175,12 @@ function desenharGrafico(id, serie, {classe="", zero=true, signed=false}={}) {
   const x = i => L + (W-L-R) * (serie.length===1 ? .5 : i/(serie.length-1));
   const y = v => T + (H-T-B) * (1-(v-min)/faixa);
   const linha = serie.map((p,i) => `${x(i)},${y(p.valor)}`).join(" ");
-  const baseY=y(0);
+  // A area e preenchida ate a altura do zero. Quando o eixo nao comeca no zero
+  // (curva de saldo, que arranca perto do menor valor), y(0) cai muito abaixo
+  // do desenho e o preenchimento vazava para fora do SVG -- que tem
+  // overflow:visible -- por cima do painel de baixo. O piso e o proprio chao
+  // do grafico.
+  const baseY=Math.min(Math.max(y(0),T),H-B);
   const area = `${x(0)},${baseY} ${linha} ${x(serie.length-1)},${baseY}`;
   const grades = [0,.25,.5,.75,1].map(f => { const yy=T+(H-T-B)*f; const valor=max-faixa*f; return `<line class="chart-grid" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="chart-label" x="${L+4}" y="${yy-5}">${esc(fmtBRLCurto(valor))}</text>`; }).join("");
   const dots = serie.map((p,i) => `<circle class="chart-dot ${classe}" cx="${x(i)}" cy="${y(p.valor)}" r="3.5"><title>${esc(p.rotulo)}: ${fmtBRL(p.valor)}</title></circle>`).join("");
@@ -179,17 +203,25 @@ function renderMovimentos() {
   const lista=D.movimentos.filter(m=>(filtroMovimentos==="todos" || m.tipo===filtroMovimentos) && (filtroPeriodo==="todos" || String(m.data).slice(0,7)===filtroPeriodo));
   const nome=filtroMovimentos==="BUY" ? "aportes" : filtroMovimentos==="SELL" ? "resgates" : "operações";
   el("movSub").textContent=`${lista.length} ${nome} · API com fallback do extrato`;
-  el("movimentos").innerHTML=lista.map(m=>`<tr><td class="data">${dataIso(m.data)}</td><td><span class="tipo-mov ${m.tipo==='BUY'?'aporte':'resgate'}">${m.tipo==='BUY'?'Aplicação':m.tipo==='SELL'?'Resgate':esc(m.tipo)}</span></td><td><div class="lote-nome">${esc(m.descricao)}</div></td><td class="num ${m.tipo==='BUY'?'positivo':'negativo'}">${m.tipo==='BUY'?'+':'−'} ${fmtBRL(m.valor)}</td><td>${esc(m.conta||'Itaú')}</td><td><span class="confirmado">${m.origem==='Extrato Itaú'?'Fallback extrato':'API conferida'}</span></td></tr>`).join("");
+  el("movimentos").innerHTML=lista.map(m=>`<tr><td class="data">${dataIso(m.data)}</td><td><span class="tipo-mov ${m.tipo==='BUY'?'aporte':m.tipo==='SELL'?'resgate':''}">${m.tipo==='BUY'?'Aplicação':m.tipo==='SELL'?'Resgate':esc(m.tipo)}</span></td><td><div class="lote-nome">${esc(m.descricao)}</div></td><td class="num ${m.tipo==='BUY'?'positivo':m.tipo==='SELL'?'negativo':''}">${m.tipo==='BUY'?'+':m.tipo==='SELL'?'−':''} ${fmtBRL(m.valor)}</td><td>${esc(m.instituicao || m.conta || 'Instituição')}${m.conta && m.conta!==m.instituicao?`<div class="sub">${esc(m.conta)}</div>`:''}</td><td><span class="${m.confirmadoExtrato?'confirmado':''}">${m.origem==='Extrato da conta'?'Extrato da conta':m.confirmadoExtrato?'API conferida':'API de investimentos'}</span></td></tr>`).join("") || '<tr><td colspan="6" class="sub">Nenhuma movimentação neste período.</td></tr>';
 }
 
 function render() {
   const r = D.resumo;
+  const servidorAtualizado = Array.isArray(D.movimentosSemPosicao);
+  el("avisoServidor").hidden = servidorAtualizado;
+  const aplicadoSemPosicao = Number(r.aplicacoesSemPosicao || 0);
+  const temPendente = aplicadoSemPosicao > 0;
+  el("painelSemPosicao").hidden = !temPendente;
+  document.querySelector(".hero-grade").classList.toggle("com-pendente", temPendente);
+  el("vSemPosicao").textContent = fmtBRL(aplicadoSemPosicao);
   el("vLiquido").textContent=fmtBRL(r.liquido); el("vBruto").textContent=fmtBRL(r.bruto);
   el("vGanhoBruto").textContent=fmtBRL(r.rendimentoBruto);
   el("vReferencia").textContent=dataIso(r.dataReferencia);
-  el("vLotes").textContent=`${r.lotesAtivos} ativos`;
   el("pGanhoBruto").textContent=`${pct(r.original ? r.rendimentoBruto/r.original*100 : 0)} sobre o aplicado`;
-  const taxas=[...new Set(D.lotes.map(l=>`${l.taxa ?? "—"}% ${l.tipoTaxa || ""}`))]; el("vTaxa").textContent=taxas.join(" · ");
+  const taxas=[...new Set(D.lotes.filter(l=>l.taxa!=null).map(l=>`${l.taxa}% ${l.tipoTaxa || ""}`))]; el("vTaxa").textContent=taxas.join(" · ") || 'Não informadas';
+  const instituicoesPositivas=(D.instituicoes||[]).filter(i=>[i.liquido,i.bruto,i.original].some(v=>Number(v)>0) || Number(i.aplicacoesExtrato||0)-Number(i.resgatesExtrato||0)>0);
+  el("instituicoes").innerHTML=instituicoesPositivas.map(i=>`<tr><td>${esc(i.instituicao)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.original)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.bruto)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.liquido)}</td><td class="sub">${i.posicaoPendente?`Aguardando posição · ${fmtBRL(i.aplicacoesExtrato)} em aplicações no extrato`:i.ativos?'Com investimentos ativos':'Posição informada'}</td></tr>`).join('') || '<tr><td colspan="5" class="sub">Nenhuma instituição com valor positivo.</td></tr>';
 
   const meses2026=(D.meses||[]).filter(m=>String(m.mes||"").startsWith("2026-"));
   const mediaLiquida2026=meses2026.length ? meses2026.reduce((s,m)=>s+Number(m.liquido||0),0)/meses2026.length : 0;
@@ -206,7 +238,7 @@ function render() {
   el("filtroPeriodo").value=filtroPeriodo;
   renderMovimentos();
   renderGraficos();
-  setEstado("estado", `posição coletada em ${new Date(r.coletadoEm).toLocaleString('pt-BR')}`, "ok");
+  setEstado("estado", !servidorAtualizado ? "Reinicie o backend para carregar a atualização" : r.coletadoEm ? `posição coletada em ${new Date(r.coletadoEm).toLocaleString('pt-BR')}` : 'Aguardando posições das instituições conectadas', servidorAtualizado ? "ok" : "erro");
 }
 
 async function carregar(){ try { D=await pedir('/investimentos'); render(); } catch(e){ setEstado('estado',e.message,'erro'); } }

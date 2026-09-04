@@ -1,8 +1,9 @@
-"""Investimentos coletados pela Pluggy e visão detalhada da Caixinha Itaú."""
+"""Carteira de investimentos de todas as conexões da Pluggy."""
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 import unicodedata
 from collections import defaultdict
@@ -152,7 +153,7 @@ def _snapshot_mudou(conn, chave: str, inv: dict[str, Any]) -> bool:
 
 
 def sincronizar(item_ids: list[str] | None = None) -> dict[str, Any]:
-    """Coleta posições e movimentos. Snapshots só são gravados quando algo muda."""
+    """Coleta posições, movimentos e snapshots de todas as conexões informadas."""
     if not _trava.acquire(blocking=False):
         return {"ok": True, "resultado": "ja_rodando"}
     try:
@@ -209,7 +210,7 @@ def sincronizar(item_ids: list[str] | None = None) -> dict[str, Any]:
                          agora, json.dumps(inv, ensure_ascii=False)))
                     # Cada coleta precisa conter todos os lotes, inclusive os
                     # que não mudaram. Assim a soma do horário representa o
-                    # valor total real da Caixinha, não só o pedaço alterado.
+                    # valor total real da carteira, não só o pedaço alterado.
                     conn.execute(
                         "INSERT OR IGNORE INTO pluggy_investimento_snapshots (investimento_chave, coletado_em, "
                         "data_referencia, saldo_liquido, valor_bruto, valor_original, disponivel_resgate, status) "
@@ -275,12 +276,66 @@ def _rotulos_itens(conn) -> dict[str, str]:
         elif "inter" in n:
             rotulos[row["item_id"]] = "Inter"
         else:
-            rotulos[row["item_id"]] = row["conector"] or (row["contas"] or "Instituição")
+            rotulos[row["item_id"]] = (
+                row["conector"] if row["conector"] and _norm(row["conector"]) != "meupluggy"
+                else row["contas"] or "Instituição"
+            )
     return rotulos
 
 
 def _soma(linhas, campo: str) -> float:
     return round(sum(float(l[campo] or 0) for l in linhas), 2)
+
+
+def _movimentos_sem_posicao(conn, itens_com_posicao: set[str], rotulos: dict[str, str]) -> list[dict[str, Any]]:
+    """Identifica operações explícitas de renda fixa sem inventar uma posição.
+
+    Transferências, Pix e estornos não são aplicações. A evidência fica
+    separada do saldo/rendimento; quando a conexão passa a entregar posições,
+    a API assume a carteira e esse fallback deixa de ser usado.
+    """
+    movimentos = []
+    for m in conn.execute(
+        "SELECT t.*, c.item_id, c.nome conta FROM pluggy_transacoes t "
+        "JOIN pluggy_contas c ON c.conta_id=t.conta_id "
+        "WHERE c.tipo='BANK' AND t.valor<>0 AND t.status NOT IN ('PENDING','CANCELED','CANCELLED') "
+        "ORDER BY t.data DESC, t.transacao_id DESC"
+    ):
+        if m["item_id"] in itens_com_posicao:
+            continue
+        descricao = _norm(m["descricao"]).strip()
+        operacao = re.match(r"^(emissao|aplicacao|aplic|compra|resgate|venda|vencimento)\b", descricao)
+        produto = re.search(r"\b(cdb|rdb|lci|lca|lc)\b", descricao)
+        if not operacao or not produto or re.search(r"\b(estorno|cancelamento|cancelad[oa])\b", descricao):
+            continue
+        tipo = "BUY" if operacao[1] in {"emissao", "aplicacao", "aplic", "compra"} else "SELL"
+        valor = float(m["valor"])
+        if (tipo == "BUY" and valor >= 0) or (tipo == "SELL" and valor <= 0):
+            continue
+        movimentos.append({
+            "id": m["transacao_id"], "data": m["data"], "liquidacao": m["data"],
+            "tipo": tipo, "descricao": m["descricao"], "valor": abs(valor),
+            "sinal": -valor, "bruto": abs(valor), "quantidade": None, "valorCota": None,
+            "conta": m["conta"], "contaId": m["conta_id"], "itemId": m["item_id"],
+            "instituicao": rotulos.get(m["item_id"], "Instituição"), "moeda": m["moeda"],
+            "origem": "Extrato da conta", "confirmadoExtrato": True, "posicaoPendente": True,
+        })
+    return movimentos
+
+
+def _meses_movimentos(movimentos) -> list[dict[str, Any]]:
+    mensal = defaultdict(lambda: {"aplicacoes": 0.0, "resgates": 0.0, "quantidade": 0})
+    for m in movimentos:
+        dados = mensal[m["data"][:7]]
+        dados["quantidade"] += 1
+        if m["tipo"] == "BUY":
+            dados["aplicacoes"] += m["valor"]
+        elif m["tipo"] == "SELL":
+            dados["resgates"] += m["valor"]
+    return [{"mes": mes, "aplicacoes": round(dados["aplicacoes"], 2),
+             "resgates": round(dados["resgates"], 2), "quantidade": dados["quantidade"],
+             "liquido": round(dados["aplicacoes"] - dados["resgates"], 2)}
+            for mes, dados in sorted(mensal.items())]
 
 
 def payload() -> dict[str, Any]:
@@ -290,58 +345,69 @@ def payload() -> dict[str, Any]:
         posicoes = list(conn.execute(
             "SELECT i.*, (SELECT MIN(substr(m.data,1,10)) FROM pluggy_investimento_movimentos m "
             "WHERE m.investimento_chave=i.investimento_chave AND m.tipo='BUY') AS data_aplicacao "
-            "FROM pluggy_investimentos i ORDER BY status='ACTIVE' DESC, data_referencia DESC"
+            "FROM pluggy_investimentos i ORDER BY importado_em DESC, data_referencia DESC, investimento_chave"
         ))
-        itau_chaves = {p["investimento_chave"] for p in posicoes
-                       if rotulos.get(p["item_id"]) == "Itaú"}
-        itau_item_ids = {p["item_id"] for p in posicoes
-                         if rotulos.get(p["item_id"]) == "Itaú"}
-        itau = [p for p in posicoes if p["investimento_chave"] in itau_chaves]
-        ativos = [p for p in itau if p["status"] == "ACTIVE"]
+        # Usa inclusive as cópias de reconexões para não recriar por extrato
+        # uma posição que já foi reconhecida sob outra chave.
+        itens_com_posicao = {p["item_id"] for p in posicoes}
+        # Reconexões podem repetir o mesmo ID. Todos os componentes da tela
+        # usam a mesma posição mais recente, inclusive lotes e movimentos.
+        unicas = {}
+        for p in posicoes:
+            unicas.setdefault(p["investimento_id"], p)
+        # Importações antigas podem não ter o nome do conector. Uma cópia do
+        # mesmo ID em outra conexão fornece a instituição sem adivinhar pelo
+        # emissor do produto (que pode ser diferente da corretora).
+        for p in posicoes:
+            principal = unicas[p["investimento_id"]]
+            nome = rotulos.get(p["item_id"], "Instituição")
+            if rotulos.get(principal["item_id"], "Instituição") == "Instituição" and nome != "Instituição":
+                rotulos[principal["item_id"]] = nome
+        posicoes = list(unicas.values())
+        chaves = {p["investimento_chave"] for p in posicoes}
+        ativos = [p for p in posicoes if p["status"] == "ACTIVE"]
 
         movimentos_investimento = list(conn.execute(
-            "SELECT m.*, i.nome investimento_nome FROM pluggy_investimento_movimentos m "
+            "SELECT m.*, i.nome investimento_nome, i.item_id FROM pluggy_investimento_movimentos m "
             "JOIN pluggy_investimentos i ON i.investimento_chave=m.investimento_chave "
-            f"WHERE m.investimento_chave IN ({','.join('?' for _ in itau_chaves) or "''"}) "
-            "ORDER BY m.data DESC, m.movimento_id DESC", tuple(itau_chaves)
-        )) if itau_chaves else []
+            "ORDER BY m.data DESC, m.movimento_id DESC"
+        ))
+        movimentos_investimento = [m for m in movimentos_investimento if m["investimento_chave"] in chaves]
 
         # O endpoint de investimentos pode omitir resgates recentes ou desmembrar um
-        # único resgate em vários lotes. Para o fluxo mensal, o extrato da conta é a
-        # fonte de verdade: cada aplicação/resgate COFRINHOS aparece com o valor que
-        # efetivamente entrou ou saiu da conta corrente.
+        # único resgate em vários lotes. O fallback conhecido de COFRINHOS só
+        # concilia uma conexão cuja carteira inteira corresponde a esse produto.
+        # Outros produtos e instituições preservam os movimentos da API.
+        produtos_por_item = defaultdict(set)
+        for p in posicoes:
+            produtos_por_item[p["item_id"]].add(_norm(p["nome"]))
+        itens_cofrinhos = {
+            item for item, produtos in produtos_por_item.items()
+            if all("cofrinh" in nome for nome in produtos)
+            or (rotulos.get(item) == "Itaú" and produtos == {"cdb - itau unibanco s.a."})
+        }
         movimentos_extrato = list(conn.execute(
             "SELECT t.transacao_id, t.data, t.descricao, t.valor, t.tipo, "
-            "c.nome conta, c.item_id FROM pluggy_transacoes t "
+            "c.nome conta, c.conta_id, c.item_id FROM pluggy_transacoes t "
             "JOIN pluggy_contas c ON c.conta_id=t.conta_id "
-            f"WHERE c.item_id IN ({','.join('?' for _ in itau_item_ids) or "''"}) "
-            "AND upper(t.descricao) LIKE '%COFRINH%' AND t.valor <> 0 "
-            "ORDER BY t.data DESC, t.transacao_id DESC", tuple(itau_item_ids)
-        )) if itau_item_ids else []
+            "WHERE upper(t.descricao) LIKE '%COFRINH%' AND t.valor <> 0 "
+            "ORDER BY t.data DESC, t.transacao_id DESC"
+        ))
+        movimentos_extrato = [m for m in movimentos_extrato if m["item_id"] in itens_cofrinhos]
 
         snaps = list(conn.execute(
-            "SELECT s.* FROM pluggy_investimento_snapshots s "
-            f"WHERE s.investimento_chave IN ({','.join('?' for _ in itau_chaves) or "''"}) "
-            "ORDER BY s.coletado_em", tuple(itau_chaves)
-        )) if itau_chaves else []
+            "SELECT s.* FROM pluggy_investimento_snapshots s ORDER BY s.coletado_em, s.id"
+        ))
+        snaps = [s for s in snaps if s["investimento_chave"] in chaves]
+        sem_posicao = _movimentos_sem_posicao(conn, itens_com_posicao, rotulos)
 
-        por_instituicao: dict[str, dict[str, Any]] = {}
-        ids_contados: set[str] = set()
+        por_instituicao: dict[str, dict[str, Any]] = {
+            nome: {"instituicao": nome, "ativos": 0, "encerrados": 0,
+                   "liquido": 0.0, "bruto": 0.0, "original": 0.0}
+            for nome in rotulos.values()
+        }
         for p in posicoes:
-            # Uma conexão antiga do mesmo banco pode devolver os mesmos IDs.
-            # Consolida pelo identificador da Pluggy para não contar em dobro.
-            if p["investimento_id"] in ids_contados:
-                continue
-            ids_contados.add(p["investimento_id"])
             nome = rotulos.get(p["item_id"], "Instituição")
-            if nome == "Instituição":
-                produto = _norm(p["nome"] or "")
-                if "inter" in produto:
-                    nome = "Inter"
-                elif "nu financeira" in produto or "nubank" in produto:
-                    nome = "Nubank"
-                elif "itau" in produto:
-                    nome = "Itaú"
             grupo = por_instituicao.setdefault(nome, {"instituicao": nome, "ativos": 0,
                 "encerrados": 0, "liquido": 0.0, "bruto": 0.0, "original": 0.0})
             if p["status"] == "ACTIVE":
@@ -351,6 +417,11 @@ def payload() -> dict[str, Any]:
                 grupo["original"] += p["valor_original"] or 0
             else:
                 grupo["encerrados"] += 1
+        for m in sem_posicao:
+            grupo = por_instituicao[m["instituicao"]]
+            campo = "aplicacoesExtrato" if m["tipo"] == "BUY" else "resgatesExtrato"
+            grupo[campo] = round(grupo.get(campo, 0) + m["valor"], 2)
+            grupo["posicaoPendente"] = True
 
     bruto = _soma(ativos, "valor_bruto")
     liquido = _soma(ativos, "saldo_liquido")
@@ -365,6 +436,8 @@ def payload() -> dict[str, Any]:
         p_orig = float(p["valor_original"] or 0)
         lotes.append({
             "id": p["investimento_id"], "nome": p["nome"], "tipo": p["tipo"],
+            "itemId": p["item_id"], "instituicao": rotulos.get(p["item_id"], "Instituição"),
+            "moeda": p["moeda"],
             "subtipo": p["subtipo"], "dataReferencia": p["data_referencia"],
             "dataAplicacao": p["data_aplicacao"] or p["data_emissao"],
             "original": p_orig, "bruto": p_bruto, "liquido": p_liq,
@@ -389,7 +462,9 @@ def payload() -> dict[str, Any]:
                              "tipo": tipo, "descricao": m["descricao"], "valor": valor,
                              "sinal": sinal, "bruto": valor, "quantidade": None,
                              "valorCota": None, "conta": m["conta"],
-                             "origem": "Extrato Itaú", "confirmadoExtrato": True})
+                             "itemId": m["item_id"], "contaId": m["conta_id"],
+                             "instituicao": rotulos.get(m["item_id"], "Instituição"),
+                             "origem": "Extrato da conta", "confirmadoExtrato": True})
 
     movs_investimento = []
     for m in movimentos_investimento:
@@ -398,62 +473,74 @@ def payload() -> dict[str, Any]:
         movs_investimento.append({"id": m["movimento_id"], "data": m["data"],
                                   "liquidacao": m["data_liquidacao"], "tipo": tipo,
                                   "descricao": m["descricao"] or m["investimento_nome"],
-                                  "valor": valor, "sinal": valor if tipo == "BUY" else -valor,
+                                  "valor": valor, "sinal": valor if tipo == "BUY" else -valor if tipo == "SELL" else 0,
                                   "bruto": m["valor_bruto"], "quantidade": m["quantidade"],
-                                  "valorCota": m["valor_cota"], "conta": "Itaú",
-                                  "origem": "API de investimentos", "confirmadoExtrato": True})
+                                  "valorCota": m["valor_cota"],
+                                  "itemId": m["item_id"],
+                                  "instituicao": rotulos.get(m["item_id"], "Instituição"),
+                                  "conta": rotulos.get(m["item_id"], "Instituição"),
+                                  "origem": "API de investimentos", "confirmadoExtrato": False})
 
-    # API é a fonte principal. O extrato substitui somente o mês/tipo cujo total
-    # esteja ausente ou diferente, evitando tanto omissões quanto dupla contagem.
-    totais_extrato: dict[tuple[str, str], float] = defaultdict(float)
+    # Nunca cruza conexões, mesmo que sejam do mesmo banco. Sem evidência no
+    # extrato, mantém a API: ausência de extrato não significa movimento zero.
+    def chave_movimento(m):
+        return m["itemId"], m["data"][:7], m["tipo"]
+
+    totais_extrato: dict[tuple[str, str, str], float] = defaultdict(float)
     for m in movs_extrato:
-        totais_extrato[(m["data"][:7], m["tipo"])] += m["valor"]
-    totais_investimento: dict[tuple[str, str], float] = defaultdict(float)
+        totais_extrato[chave_movimento(m)] += m["valor"]
+    totais_investimento: dict[tuple[str, str, str], float] = defaultdict(float)
     for m in movs_investimento:
-        totais_investimento[(m["data"][:7], m["tipo"])] += m["valor"]
+        totais_investimento[chave_movimento(m)] += m["valor"]
 
-    chaves_divergentes = {chave for chave in set(totais_extrato) | set(totais_investimento)
+    chaves_divergentes = {chave for chave in totais_extrato
                           if abs(totais_extrato.get(chave, 0) - totais_investimento.get(chave, 0)) >= .01}
-    movs = ([m for m in movs_investimento if (m["data"][:7], m["tipo"]) not in chaves_divergentes] +
-            [m for m in movs_extrato if (m["data"][:7], m["tipo"]) in chaves_divergentes])
+    for m in movs_investimento:
+        m["confirmadoExtrato"] = chave_movimento(m) in totais_extrato and chave_movimento(m) not in chaves_divergentes
+    movs = ([m for m in movs_investimento if chave_movimento(m) not in chaves_divergentes] +
+            [m for m in movs_extrato if chave_movimento(m) in chaves_divergentes])
+    # A curva do saldo informado não deve subtrair fluxos de aplicações cuja
+    # posição ainda não entrou nesse saldo.
+    meses_posicoes = _meses_movimentos(movs)
+    movs.extend(sem_posicao)
     movs.sort(key=lambda m: (m["data"], m["id"]), reverse=True)
 
-    mensal: dict[str, dict[str, Any]] = defaultdict(lambda: {"aplicacoes": 0.0, "resgates": 0.0, "quantidade": 0})
-    for m in movs:
-        dados = mensal[m["data"][:7]]
-        dados["quantidade"] += 1
-        if m["tipo"] == "BUY": dados["aplicacoes"] += m["valor"]
-        elif m["tipo"] == "SELL": dados["resgates"] += m["valor"]
-    meses = [{"mes": mes, "aplicacoes": round(dados["aplicacoes"], 2),
-              "resgates": round(dados["resgates"], 2), "quantidade": dados["quantidade"],
-              "liquido": round(dados["aplicacoes"] - dados["resgates"], 2)}
-             for mes, dados in sorted(mensal.items())]
+    meses = _meses_movimentos(movs)
 
     divergencias = []
-    for mes, tipo in sorted(chaves_divergentes):
-        divergencias.append({"mes": mes, "tipo": tipo,
-                             "extrato": round(totais_extrato.get((mes, tipo), 0), 2),
-                             "investimentos": round(totais_investimento.get((mes, tipo), 0), 2)})
+    for item_id, mes, tipo in sorted(chaves_divergentes):
+        divergencias.append({"itemId": item_id, "instituicao": rotulos.get(item_id, "Instituição"),
+                             "mes": mes, "tipo": tipo,
+                             "extrato": round(totais_extrato[(item_id, mes, tipo)], 2),
+                             "investimentos": round(totais_investimento.get((item_id, mes, tipo), 0), 2)})
 
     por_coleta: dict[str, dict[str, float]] = defaultdict(lambda: {"liquido": 0, "bruto": 0, "original": 0})
+    ultimos = {}
     for s in snaps:
-        if s["status"] == "ACTIVE":
-            por_coleta[s["coletado_em"]]["liquido"] += s["saldo_liquido"] or 0
-            por_coleta[s["coletado_em"]]["bruto"] += s["valor_bruto"] or 0
-            por_coleta[s["coletado_em"]]["original"] += s["valor_original"] or 0
+        ultimos[s["investimento_chave"]] = s
+        # Uma atualização parcial não zera os investimentos das outras conexões.
+        atuais = [p for p in ultimos.values() if p["status"] == "ACTIVE"]
+        por_coleta[s["coletado_em"]] = {
+            "liquido": _soma(atuais, "saldo_liquido"),
+            "bruto": _soma(atuais, "valor_bruto"),
+            "original": _soma(atuais, "valor_original"),
+        }
 
     return {
         "resumo": {"liquido": liquido, "bruto": bruto, "original": original,
                    "disponivel": disponivel, "rendimentoBruto": round(bruto-original, 2),
                    "rendimentoLiquido": round(liquido-original, 2),
                    "impostosEstimados": round(bruto-liquido, 2), "lotesAtivos": len(ativos),
-                   "lotesEncerrados": len(itau)-len(ativos), "movimentos": len(movs),
+                   "lotesEncerrados": len(posicoes)-len(ativos), "movimentos": len(movs),
+                   "aplicacoesSemPosicao": _soma([m for m in sem_posicao if m["tipo"] == "BUY"], "valor"),
+                   "resgatesSemPosicao": _soma([m for m in sem_posicao if m["tipo"] == "SELL"], "valor"),
                    "dataReferencia": max((p["data_referencia"] for p in ativos), default=""),
-                   "coletadoEm": max((p["importado_em"] for p in itau), default="")},
+                   "coletadoEm": max((p["importado_em"] for p in posicoes), default="")},
         "lotes": lotes, "movimentos": movs, "meses": meses,
+        "movimentosSemPosicao": sem_posicao, "mesesPosicoes": meses_posicoes,
         "confirmacaoExtrato": {"fontePrincipal": "API de investimentos Pluggy",
-                                "fallback": "Extrato Itaú via Pluggy",
-                                "criterio": "total mensal por tipo; descrição contém COFRINHOS",
+                                "fallback": "Extrato da conta via Pluggy, quando conciliável",
+                                "criterio": "por conexão, mês e tipo; fallback COFRINHOS apenas para carteira compatível",
                                 "mesesComDiscrepancia": len({d["mes"] for d in divergencias}),
                                 "divergenciasEndpointInvestimentos": divergencias},
         "snapshots": [{"coletadoEm": k, **{x: round(v, 2) for x, v in d.items()}}

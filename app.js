@@ -30,7 +30,7 @@ function labelMes(mesRef) {
  * duplicar a reconstrução seria manter duas verdades para o mesmo número.
  */
 function serieSaldoInvestimentos(dados) {
-  const meses = dados?.meses || [];
+  const meses = dados?.mesesPosicoes ?? dados?.meses ?? [];
   let saldo = Number(dados?.resumo?.liquido || 0);
   const serie = new Array(meses.length);
   for (let i = meses.length - 1; i >= 0; i--) {

@@ -30,6 +30,28 @@ http://127.0.0.1:8766/transacoes.html
 
 ## Páginas
 
+A carteira em `investimentos.html` consolida posições, lotes, movimentos e
+histórico de todas as conexões. Novas instituições registradas em Conexões
+entram na sincronização automaticamente, conforme os dados disponibilizados
+pela Pluggy. A tabela por instituição também mostra conexões sem posições
+informadas. A Visão geral usa o mesmo consolidado.
+
+Investimentos são coletados mesmo se a sincronização do extrato falhar.
+A API é a fonte principal dos movimentos; a conferência complementar de
+Cofrinhos fica limitada à mesma conexão, mês e tipo, em carteiras compatíveis.
+Ausência de correspondência no extrato não elimina movimentos da API.
+
+Quando uma conexão ainda não entrega nenhuma posição, operações explícitas
+de emissão, aplicação, compra ou resgate de CDB/RDB/LCI/LCA/LC são mostradas
+como **aguardando posição**, com data, conta e valor do extrato. Transferências
+e Pix não contam como aplicação. Esses valores entram no histórico de fluxos,
+mas não são tratados como saldo líquido, rendimento ou lote ativo. A curva
+do saldo usa somente fluxos das posições disponíveis. Assim que a conexão
+entrega posições, a API substitui essa identificação provisória.
+
+Regressões da carteira: `python -m unittest testes_investimentos -v`
+(banco temporário, sem chamadas externas).
+
 - `visao_geral.html`: números do mês, trimestre, semestre ou ano, com o gasto mês a mês.
 - `transacoes.html`: lançamentos com filtros, troca de categoria e exclusão dos cálculos.
 - `contas_fixas.html`: contas recorrentes casadas com as transações reais.

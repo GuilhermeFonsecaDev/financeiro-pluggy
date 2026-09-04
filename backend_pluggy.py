@@ -8,6 +8,7 @@ processo próprio. Os dois podem rodar ao mesmo tempo sem se enxergar.
 
 from __future__ import annotations
 
+import cartoes as cartoes_id
 import argparse
 import json
 import re
@@ -225,6 +226,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(extrato_payload(filtros))
             elif path == "/api/extrato":
                 self.send_json(extrato_payload(self.query_extrato(query)))
+            elif path == "/api/cartoes-identidade":
+                self.send_json(cartoes_id.payload())
             elif path == "/api/visao-geral":
                 self.send_json(visao_geral.payload(
                     (query.get("periodo", ["mes"])[0] or "mes").strip(),
@@ -277,6 +280,9 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             regra_entrada = re.fullmatch(r"/api/extrato/entradas/regras/([\w-]+)", parsed.path)
             if regra_entrada:
                 self.send_json(atualizar_regra_entrada(regra_entrada.group(1), payload))
+                return
+            if parsed.path == "/api/cartoes-identidade":
+                self.send_json(cartoes_id.salvar(payload))
                 return
             if parsed.path == "/api/extrato/entradas/valor-esperado":
                 self.send_json(definir_valor_esperado_entradas(payload))

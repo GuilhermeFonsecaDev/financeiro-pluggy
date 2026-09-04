@@ -24,6 +24,7 @@ import threading
 import unicodedata
 
 import banco as fin
+import ciclos
 
 CATEGORIA_PADRAO = "outros"
 
@@ -419,29 +420,23 @@ EH_PAGAMENTO_FATURA = (
     "))"
 )
 
-_PAGAMENTO_T2 = EH_PAGAMENTO_FATURA.replace("t.", "t2.")
-
 # Mes de VENCIMENTO da fatura em que a transacao caiu.
 #
 # Uma compra de agosto entra na fatura que vence em setembro: por data, o mes
-# de setembro aparecia vazio mesmo tendo fatura para pagar. Mesma regra de
-# cartoes_payload(): ciclo fechado se reconhece pelo billId e vence no mes
-# seguinte a ultima compra dele; a fatura aberta ainda nao tem billId e agrupa
-# os PENDING. Fora do cartao a data ja e a competencia certa, entao cai no
-# mes_ref.
+# de setembro aparecia vazio mesmo tendo fatura para pagar.
+#
+# A regra inteira vive em ciclos.py, numa unica definicao usada tambem pela
+# tela de Cartoes -- duas implementacoes da mesma pergunta era como a lista de
+# lancamentos de um mes acabava discordando do total daquele mes.
+#
+# Fora do cartao a data ja e a competencia certa, entao cai no mes_ref.
 _COMPETENCIA_FATURA = f"""
   CASE
     WHEN (SELECT c.subtipo FROM pluggy_contas c
-           WHERE c.conta_id = t.conta_id) = 'CREDIT_CARD'
+           WHERE c.conta_id = COALESCE(a.conta_id_manual, t.conta_id))
+         = 'CREDIT_CARD'
          AND NOT {EH_PAGAMENTO_FATURA}
-    THEN STRFTIME('%Y-%m', DATE(SUBSTR((
-           SELECT MAX(t2.data) FROM pluggy_transacoes t2
-            WHERE t2.conta_id = t.conta_id
-              AND (CASE WHEN t.fatura_id <> ''
-                        THEN t2.fatura_id = t.fatura_id
-                        ELSE t2.fatura_id = '' AND t2.status = 'PENDING' END)
-              AND NOT {_PAGAMENTO_T2}
-         ), 1, 7) || '-01', '+1 month'))
+    THEN {ciclos.expressao_competencia("t", "a")}
     ELSE SUBSTR(COALESCE(a.data_manual, t.data), 1, 7)
   END
 """
@@ -591,6 +586,16 @@ def _assinatura_extrato(conn: sqlite3.Connection) -> str:
         "ORDER BY categoria_original",
         "SELECT id, operador, termo, ativo, dia_inicio, dia_fim, deslocamento_meses "
         "FROM extrato_regras_entradas ORDER BY id",
+        # A competencia de fatura sai do ciclo do cartao, que nasce dos
+        # fechamentos informados pelo banco. Sem estas duas consultas aqui, a
+        # sincronizacao trazia uma fatura nova (ou reprojetava um ciclo) e o
+        # cache continuava respondendo com a competencia antiga.
+        "SELECT conta_id, fatura_id, competencia, fechamento, vencimento "
+        "FROM pluggy_faturas ORDER BY conta_id, fatura_id",
+        "SELECT conta_id, inicio, fim, competencia, fatura_id, origem "
+        "FROM pluggy_ciclos ORDER BY conta_id, inicio",
+        "SELECT conta_id, acertos, amostras FROM pluggy_cartao_previsao "
+        "ORDER BY conta_id",
     )
     digest = hashlib.sha256()
     digest.update(VIEW.encode("utf-8"))
@@ -1652,5 +1657,11 @@ def _aplicar_camada(conn: sqlite3.Connection) -> None:
         "WHERE NOT EXISTS (SELECT 1 FROM extrato_regra_termos rt "
         "                  WHERE rt.regra_id = r.id)"
     )
+
+    # Os ciclos de fatura precisam existir ANTES da view: e deles que sai a
+    # competencia_fatura de cada transacao de cartao. Reconstruir e barato
+    # (algumas dezenas de linhas) e mantem a janela projetada em dia quando o
+    # banco fecha uma fatura nova.
+    ciclos.reconstruir(conn)
 
     conn.executescript(VIEW)

@@ -28,6 +28,7 @@ importacao bem-sucedida tem mais de INTERVALO_PADRAO_HORAS.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -52,6 +53,39 @@ TIMEOUT_SYNC_SEGUNDOS = int(os.getenv("PLUGGY_TIMEOUT_SEGUNDOS", "300"))
 # Uma atualizacao por vez: o backend e multi-thread e o usuario pode disparar
 # manualmente enquanto a automatica ainda roda.
 _trava = threading.Lock()
+_etapas: dict[str, str] = {}
+CHAVE_CONEXOES = "pluggy_conexoes_estado"
+CHAVE_HISTORICO = "pluggy_conexoes_historico"
+
+
+def validar_item(item_id: str) -> str:
+    if item_id not in itens_conhecidos():
+        raise ValueError("Conexão não encontrada.")
+    return item_id
+
+
+def _json_meta(meta: dict, chave: str, padrao):
+    try:
+        valor = json.loads(meta.get(chave, "null"))
+        return valor if isinstance(valor, type(padrao)) else padrao
+    except (ValueError, TypeError):
+        return padrao
+
+
+def _registrar_conexao(item_id: str, resultado: str, detalhe: str = "") -> None:
+    meta = _ler_meta()
+    estados = _json_meta(meta, CHAVE_CONEXOES, {})
+    historico = _json_meta(meta, CHAVE_HISTORICO, [])
+    anterior = estados.get(item_id, {})
+    agora = datetime.now().isoformat(timespec="seconds")
+    estado = {"resultado": resultado, "detalhe": detalhe[:300],
+              "tentativaEm": agora, "sucessoEm": agora if resultado in {"ok", "aviso"}
+              else anterior.get("sucessoEm")}
+    estados[item_id] = estado
+    historico.insert(0, {"itemId": item_id, **estado})
+    _gravar_meta({CHAVE_CONEXOES: json.dumps(estados),
+                  CHAVE_HISTORICO: json.dumps(historico[:60])})
+    _etapas.pop(item_id, None)
 
 
 # --------------------------------------------------------------------------
@@ -160,12 +194,37 @@ def conexoes_conhecidas() -> list[dict[str, Any]]:
         conexoes = []
         for linha in conn.execute("SELECT * FROM pluggy_itens ORDER BY conector,item_id"):
             produtos = list(conn.execute("SELECT conta_id,nome,subtipo FROM pluggy_contas WHERE item_id=? ORDER BY nome", (linha["item_id"],)))
+            # Data do lancamento mais recente que esta conexao entregou. E
+            # diferente de "importadoEm": a rodada pode terminar com sucesso e
+            # nao trazer nada novo -- e foi assim que descobrimos que o cartao
+            # de um banco simplesmente nao vinha no consentimento.
+            dado = conn.execute(
+                "SELECT MAX(SUBSTR(t.data, 1, 10)) FROM pluggy_transacoes t "
+                "JOIN pluggy_contas a ON a.conta_id = t.conta_id "
+                "WHERE a.item_id = ?",
+                (linha["item_id"],),
+            ).fetchone()[0]
             conexoes.append({
                 "id": linha["item_id"], "idCurto": linha["item_id"][:8],
                 "conector": linha["conector"] or "",
                 "contas": [p["nome"] for p in produtos if p["conta_id"] not in identidades],
                 "cartoes": [identidades[p["conta_id"]]["nomeExibicao"] for p in produtos if p["conta_id"] in fontes],
+                # Para o detalhe: a identidade do instrumento, nao o nome
+                # exibido. Dois cartoes com a mesma tag tem o mesmo
+                # nomeExibicao e apareciam como duas linhas identicas.
+                "cartoesDetalhe": [
+                    {
+                        "nome": " ".join(filter(None, [
+                            (identidades[p["conta_id"]].get("marca") or "").upper(),
+                            f"···· {identidades[p['conta_id']]['numero']}"
+                            if identidades[p["conta_id"]].get("numero") else "",
+                        ])) or identidades[p["conta_id"]]["nomeExibicao"],
+                        "tag": identidades[p["conta_id"]].get("tag") or "",
+                    }
+                    for p in produtos if p["conta_id"] in fontes
+                ],
                 "importadoEm": linha["importado_em"],
+                "dadoMaisRecente": dado,
             })
         return conexoes
 
@@ -173,9 +232,21 @@ def conexoes_conhecidas() -> list[dict[str, Any]]:
 def status() -> dict[str, Any]:
     meta = _ler_meta()
     ultima = ultima_importacao()
+    conexoes = conexoes_conhecidas()
+    estados = _json_meta(meta, CHAVE_CONEXOES, {})
+    ids = {c["id"] for c in conexoes}
+    for item_id in itens_conhecidos():
+        if item_id not in ids:
+            conexoes.append({"id": item_id, "idCurto": item_id[:8], "conector": "",
+                             "contas": [], "cartoes": [], "dadoMaisRecente": None})
+    etapas = _etapas.copy()
+    for conexao in conexoes:
+        conexao["sincronizacao"] = estados.get(conexao["id"], {})
+        conexao["etapa"] = etapas.get(conexao["id"])
     return {
         "itens": len(itens_conhecidos()),
-        "conexoes": conexoes_conhecidas(),
+        "conexoes": conexoes,
+        "historico": _json_meta(meta, CHAVE_HISTORICO, [])[:20],
         "ultimaImportacao": ultima.isoformat(timespec="seconds") if ultima else None,
         "ultimaTentativa": meta.get(CHAVE_TENTATIVA),
         "ultimoResultado": meta.get(CHAVE_RESULTADO),
@@ -242,6 +313,8 @@ def atualizar(
     forcar: bool = False,
     intervalo_horas: float = INTERVALO_PADRAO_HORAS,
     verboso: bool = True,
+    item_id: str | None = None,
+    _reservado: bool = False,
 ) -> dict[str, Any]:
     def registrar(resultado: str, detalhe: str) -> dict[str, Any]:
         agora = datetime.now().isoformat(timespec="seconds")
@@ -258,13 +331,13 @@ def atualizar(
             print(f"[pluggy] {resultado}{f': {detalhe}' if detalhe else ''}")
         return {"resultado": resultado, "detalhe": detalhe, "quando": agora}
 
-    if not _trava.acquire(blocking=False):
+    if not _reservado and not _trava.acquire(blocking=False):
         return {"resultado": "ja_rodando", "detalhe": "", "quando": None}
 
     try:
         fin.ensure_database()
 
-        itens = itens_conhecidos()
+        itens = [validar_item(item_id)] if item_id else itens_conhecidos()
         if not itens:
             return registrar(
                 "sem_itens",
@@ -287,11 +360,14 @@ def atualizar(
         avisos: list[str] = []
         falhas: list[str] = []
         sucessos = 0
+        _etapas.update({item: "fila" for item in itens})
         for item_id in itens:
+            _etapas[item_id] = "baixando"
             if verboso:
                 print(f"[pluggy] sincronizando item {item_id[:8]}...")
             ok, detalhe = _rodar_sync(item_id)
             if not ok:
+                _registrar_conexao(item_id, "erro", detalhe)
                 falhas.append(f"{item_id[:8]}: {detalhe}")
                 if verboso:
                     print(f"[pluggy]   falhou: {detalhe}")
@@ -303,16 +379,20 @@ def atualizar(
             # item. Importar imediatamente evita que o item seguinte apague
             # essa lista antes de ela chegar ao SQLite.
             try:
+                _etapas[item_id] = "importando"
                 codigo = importar_pluggy.importar(
                     importar_pluggy.DATA_DIR_PADRAO, dry_run=False
                 )
             except Exception as exc:  # noqa: BLE001 - manter os demais itens
+                _registrar_conexao(item_id, "erro", "Falha na importação local. Tente novamente.")
                 falhas.append(f"{item_id[:8]}: import falhou: {exc}")
                 continue
             if codigo != 0:
+                _registrar_conexao(item_id, "erro", "A importação local recusou os arquivos.")
                 falhas.append(f"{item_id[:8]}: import recusou os arquivos")
                 continue
             sucessos += 1
+            _registrar_conexao(item_id, "aviso" if detalhe else "ok", detalhe)
 
         # Investimentos são um produto separado de contas/transações na API.
         # Coletamos depois dos extratos para manter posições, lotes, movimentos
@@ -329,26 +409,37 @@ def atualizar(
         if sucessos == 0:
             return registrar("erro", " || ".join(falhas + avisos)[:300])
 
-        if falhas:
+        if falhas or avisos:
             return registrar("ok_parcial", " || ".join(falhas + avisos)[:300])
         return registrar("ok", " | ".join(avisos)[:300])
     finally:
+        _etapas.clear()
         _trava.release()
 
 
 def atualizar_em_background(
     forcar: bool = False,
     intervalo_horas: float = INTERVALO_PADRAO_HORAS,
-) -> threading.Thread:
+    item_id: str | None = None,
+) -> threading.Thread | None:
     """Dispara a atualizacao numa thread daemon. Usado na subida do backend
     para que abrir o dashboard nunca espere a rede."""
+    if item_id:
+        validar_item(item_id)
+    if not _trava.acquire(blocking=False):
+        return None
     thread = threading.Thread(
         target=atualizar,
-        kwargs={"forcar": forcar, "intervalo_horas": intervalo_horas},
+        kwargs={"forcar": forcar, "intervalo_horas": intervalo_horas,
+                "item_id": item_id, "_reservado": True},
         name="atualizar-pluggy",
         daemon=True,
     )
-    thread.start()
+    try:
+        thread.start()
+    except Exception:
+        _trava.release()
+        raise
     return thread
 
 

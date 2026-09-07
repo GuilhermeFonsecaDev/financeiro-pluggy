@@ -68,7 +68,10 @@ def _post(caminho: str, payload: dict[str, Any], api_key: str = "") -> dict[str,
     return corpo
 
 
-def criar_connect_token() -> str:
+def criar_connect_token(item_id: str | None = None) -> str:
+    if item_id:
+        from atualizar_pluggy import validar_item
+        validar_item(item_id)
     client_id, client_secret = _credenciais()
     autenticacao = _post(
         "/auth", {"clientId": client_id, "clientSecret": client_secret}
@@ -80,6 +83,7 @@ def criar_connect_token() -> str:
     conexao = _post(
         "/connect_token",
         {
+            **({"itemId": item_id} if item_id else {}),
             "options": {
                 "clientUserId": "dashboard-financeiro-guilherme",
             }

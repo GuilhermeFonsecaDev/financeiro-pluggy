@@ -1,0 +1,186 @@
+/* Tela de Conexões.
+ *
+ * Duas decisões carregam esta folha, e nenhuma delas é decoração:
+ *
+ * 1. O campo `conector` vem "MeuPluggy" em todas as conexões, então usá-lo como
+ *    título produzia N caixas idênticas e indistinguíveis. O nome é derivado
+ *    dos produtos da própria conexão (ver conexoes.js).
+ *
+ * 2. O conteúdo é pequeno -- poucas instituições e cinco fatos sobre cada uma
+ *    -- numa página de largura inteira. Cards e linhas largas abriam vão no
+ *    meio ou vazio embaixo, e apertar a largura só empurrou o vazio para a
+ *    direita. Tabela resolve: cada coluna encolhe até o conteúdo.
+ */
+
+.cx .topo { align-items: flex-start; flex-wrap: wrap; }
+.cx-botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --------------------------------------------------------------- saúde */
+/* Uma linha no lugar de três painéis: os números desta tela são curtos e só um
+ * deles merece destaque, e só quando não é zero. */
+.cx-saude {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 20px 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--raio);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.cx-saude b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* Bolinha + texto, usada na saúde, na coluna de estado e nas rodadas. */
+.cx-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-3);
+}
+.cx-estado::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.cx-estado.ok { color: var(--verde); }
+.cx-estado.aviso, .cx-estado.erro { color: var(--laranja); }
+.cx-estado.ativo { color: var(--azul); }
+
+/* --------------------------------------------------------------- quadro */
+.cx-quadro { padding: 16px 18px 8px; }
+.cx-titulo { margin-bottom: 14px; }
+.cx-titulo h2 { margin: 0; font-size: 16px; }
+.cx-titulo .sub { margin: 3px 0 0; font-size: 12px; color: var(--text-3); }
+
+.cx table { width: 100%; border-collapse: collapse; }
+.cx thead th {
+  text-align: left;
+  padding: 0 12px 9px;
+  border-bottom: 1px solid var(--line-forte);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cx thead th.num, .cx td.num { text-align: right; }
+.cx td.num { font-variant-numeric: tabular-nums; }
+.cx tbody td { padding: 12px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: middle; }
+.cx tbody tr:last-child td { border-bottom: 0; }
+.cx tbody tr.cautela td:first-child { box-shadow: inset 2px 0 0 var(--laranja); }
+
+.cx-quem { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.cx-quem b { font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
+.cx-marca {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-forte);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cx-vazia { color: var(--text-3); }
+/* Dado que não chega há dias: a coluna avisa sem alarmar. */
+.cx-parado { color: var(--laranja); }
+
+.cx td.acoes { text-align: right; white-space: nowrap; }
+.cx td.acoes button { font-size: 12px; }
+
+/* Linha de detalhe, aberta pelo botão da última coluna. */
+.cx-detalhe-linha > td { padding: 0 12px 14px; border-bottom: 1px solid var(--line); }
+.cx-detalhe {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 13px 15px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--raio);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.cx-detalhe h4 { margin: 0 0 6px; color: var(--text-3); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.cx-detalhe ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.cx-detalhe li { overflow-wrap: anywhere; }
+.cx-detalhe li em { font-style: normal; color: var(--text-3); }
+.cx-detalhe p { margin: 0; overflow-wrap: anywhere; }
+.cx-detalhe code { font-size: 11px; overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------- pendências */
+.cx-pendencias {
+  border: 1px solid var(--line-forte);
+  border-left: 3px solid var(--laranja);
+  background: var(--surface);
+  padding: 13px 17px;
+  border-radius: var(--raio);
+  margin-bottom: 16px;
+}
+.cx-pendencias strong { color: var(--laranja); font-size: 13.5px; }
+.cx-pendencias p { margin: 4px 0 0; color: var(--text-3); font-size: 12.5px; }
+
+/* --------------------------------------------------------------- rodapé */
+.cx-rodape { margin-top: 14px; }
+.cx-ajuda summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+.cx-ajuda ol { padding-left: 19px; display: grid; gap: 13px; margin: 16px 0 0; color: var(--text-3); font-size: 12.5px; }
+.cx-ajuda strong { color: var(--text-2); font-weight: 550; }
+.cx-ajuda ol strong { display: block; }
+.cx-ajuda ol span { display: block; margin-top: 2px; }
+.cx-ajuda .cx-nota { margin: 14px 0 0; border-top: 1px solid var(--line); padding-top: 11px; font-size: 12px; color: var(--text-3); }
+
+/* Uma linha por RODADA, não por instituição: a rodada processa todas as
+ * conexões e registrava N eventos iguais, com o mesmo horário e o mesmo
+ * texto. O detalhe por instituição só aparece quando alguma falhou. */
+.cx-rodada {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.cx-rodada:first-of-type { border-top: 0; margin-top: 12px; }
+.cx-rodada time { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.cx-rodada .quem { color: var(--text-2); overflow-wrap: anywhere; }
+.cx-rodada .quem span { display: block; margin-top: 3px; color: var(--text-3); font-size: 11.5px; }
+
+/* --------------------------------------------------------------- avisos */
+.cx-aviso {
+  padding: 11px 15px;
+  border: 1px solid var(--line-forte);
+  border-radius: var(--raio);
+  background: var(--surface-2);
+  margin-bottom: 14px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.cx-aviso.erro { border-color: #855544; color: var(--laranja); }
+.cx-aviso.ok { color: var(--verde); }
+
+.cx [hidden] { display: none !important; }
+.cx-carregando { padding: 32px 12px; text-align: center; color: var(--text-3); }
+.cx-vazio { padding: 34px 12px; text-align: center; color: var(--text-3); }
+.cx-vazio h3 { color: var(--text); margin: 0 0 8px; font-size: 15px; }
+.cx-vazio p { margin: 0 auto 18px; max-width: 420px; font-size: 13px; }
+
+@media (max-width: 760px) {
+  .cx button { min-height: 44px; }
+  .cx-botoes { width: 100%; }
+  .cx-botoes button { flex: 1; justify-content: center; }
+  .cx-rodada { grid-template-columns: 92px minmax(0, 1fr); }
+}

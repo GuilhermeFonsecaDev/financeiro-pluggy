@@ -5,178 +5,83 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Conexões</title>
 <link rel="stylesheet" href="tema.css" />
-<script src="https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"></script>
-<style>
-.aviso { margin-bottom: 14px; padding: 10px 14px; border-radius: var(--raio); border: 1px solid var(--line-forte); background: var(--surface-2); color: var(--text-2); font-size: 13px; }
-.aviso[hidden] { display: none; }
-.aviso.ok { border-color: rgba(63,191,127,.35); background: rgba(63,191,127,.10); color: #86dcae; }
-.aviso.erro { border-color: rgba(240,106,106,.35); background: rgba(240,106,106,.10); color: #f39c9c; }
-
-.conexao { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--line); }
-.conexao:last-child { border-bottom: 0; }
-.conexao:hover { background: var(--surface-2); }
-.banco-ic { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-2); font-size: 14px; }
-.conexao strong { font-size: 14px; font-weight: 600; }
-.conexao .det { margin-top: 2px; color: var(--text-3); font-size: 12.5px; }
-.id-curto { color: var(--text-3); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-
-.passos { margin-top: 16px; color: var(--text-3); font-size: 13px; }
-.passos ol { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 5px; }
-</style>
+<link rel="stylesheet" href="conexoes.css" />
 </head>
-<body>
+<body class="cx">
 <nav class="nav"></nav>
-
 <main class="container">
-  <header class="topo">
-    <div>
-      <h1>Conexões</h1>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <button id="btnSync">Atualizar agora</button>
-      <button class="primario" id="btnConectar">+ Conectar instituição</button>
-    </div>
-  </header>
 
-  <div class="aviso" id="aviso" hidden role="status"></div>
-
-  <section class="grid grid-4" style="margin-bottom:14px">
-    <div class="metrica"><div class="rotulo">Conexões</div><div class="valor" id="mTotal">0</div><div class="nota">registradas</div></div>
-    <div class="metrica"><div class="rotulo">Última importação</div><div class="valor" id="mUltima" style="font-size:16px">—</div><div class="nota" id="mResultado">—</div></div>
-    <div class="metrica"><div class="rotulo">Sincronização</div><div class="valor" id="mEstado" style="font-size:16px">Parada</div><div class="nota">o app segue utilizável durante ela</div></div>
-    <div class="metrica"><div class="rotulo">Intervalo mínimo</div><div class="valor" id="mIntervalo" style="font-size:16px">—</div><div class="nota">entre buscas automáticas</div></div>
-  </section>
-
-  <section class="painel" style="padding:6px 10px">
-    <div class="painel-tit" style="padding:12px 8px 4px">
-      <h2>Instituições conhecidas</h2>
-      <span class="estado" id="estado">Carregando…</span>
-    </div>
-    <div id="lista"></div>
-  </section>
-
-  <div class="passos">
-    <strong style="color:var(--text-2)">Como funciona</strong>
-    <ol>
-      <li>Clique em “Conectar instituição” e conclua a autorização no banco.</li>
-      <li>A conexão é registrada e a extração começa sozinha.</li>
-      <li>Repita para os outros bancos. Depois disso, abrir o app já atualiza todas.</li>
-    </ol>
+<header class="topo">
+  <div>
+    <h1>Conexões</h1>
+    <p class="sub">Acompanhe seus bancos e os dados que chegam ao seu financeiro.</p>
   </div>
+  <div class="cx-botoes">
+    <button id="btnSync" disabled>↻ Atualizar todas</button>
+    <button class="primario" id="btnConectar">+ Conectar instituição</button>
+  </div>
+</header>
+
+<div class="cx-aviso" id="aviso" hidden role="status"></div>
+
+<!-- Uma linha de saúde no lugar de três painéis: os números desta tela são
+     curtos e só um deles merece destaque, e só quando não é zero. -->
+<section class="cx-saude" aria-label="Situação das conexões">
+  <span class="cx-estado" id="saudeEstado">Consultando…</span>
+  <span id="saudeResumo"></span>
+  <span id="saudeQuando"></span>
+  <span id="saudeIntervalo"></span>
+</section>
+
+<section id="pendencias" class="cx-pendencias" hidden aria-label="Atenção às conexões"></section>
+
+<section class="painel cx-quadro" aria-labelledby="tituloInstituicoes">
+  <div class="cx-titulo">
+    <div>
+      <h2 id="tituloInstituicoes">Suas instituições</h2>
+      <p id="estado" class="sub" role="status">Carregando…</p>
+    </div>
+  </div>
+  <div class="tabela-wrap">
+    <table id="tabela">
+      <thead>
+        <tr>
+          <th>Instituição</th>
+          <th class="num">Contas</th>
+          <th class="num">Cartões</th>
+          <th class="num">Dado mais recente</th>
+          <th class="num">Última importação</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="lista" aria-busy="true">
+        <tr><td colspan="7" class="cx-carregando">Consultando instituições e produtos…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="cx-rodape">
+  <section class="painel cx-ajuda">
+    <details>
+      <summary>Rodadas de atualização e como as conexões funcionam</summary>
+      <div id="historico"><p class="sub">Carregando…</p></div>
+      <ol>
+        <li><strong>Conecte seu banco</strong><span>Conclua a autorização na janela da Pluggy, escolhendo quais produtos compartilhar — conta, cartão, investimentos. Produto que fica fora do consentimento não aparece aqui.</span></li>
+        <li><strong>Acompanhe a importação</strong><span>Contas e cartões aparecem depois que os produtos são identificados.</span></li>
+        <li><strong>Continue usando o financeiro</strong><span>A busca de dados acontece em segundo plano.</span></li>
+      </ol>
+      <p class="cx-nota" id="intervalo"></p>
+      <p class="cx-nota"><strong>Dado mais recente</strong> é a data do último lançamento que a instituição entregou. Ela é diferente da última importação: uma rodada pode terminar com sucesso e não trazer nada novo — é assim que se vê uma conexão que parou de alimentar o financeiro.</p>
+      <p class="cx-nota">Não há botão de renovar acesso por instituição: o conector em uso não aceita renovação pela janela da Pluggy, que responde que os itens só podem ser atualizados manualmente no aplicativo do banco. Para reconectar, use <strong>+ Conectar instituição</strong>.</p>
+    </details>
+  </section>
+</div>
+
 </main>
-
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"></script>
 <script src="app.js"></script>
-<script>
-const el = id => document.getElementById(id);
-let timer = null;
-
-function avisar(texto, tipo = "") {
-  const a = el("aviso");
-  a.textContent = texto;
-  a.className = `aviso ${tipo}`.trim();
-  a.hidden = !texto;
-}
-
-function dataCurta(v) {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v
-    : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function render(st) {
-  const conexoes = st.conexoes || [];
-  el("mTotal").textContent = String(st.itens || 0);
-  el("mUltima").textContent = dataCurta(st.ultimaImportacao);
-  el("mEstado").textContent = st.emAndamento ? "Em andamento" : "Parada";
-  el("mIntervalo").textContent = `${st.intervaloHoras ?? "—"} h`;
-
-  const resultado = {
-    ok: "tudo certo na última",
-    ok_parcial: "uma conexão antiga não respondeu",
-    erro: "a última tentativa falhou",
-    sem_itens: "nenhuma conexão configurada",
-  }[st.ultimoResultado] || "nenhuma atualização registrada";
-  const nota = el("mResultado");
-  nota.textContent = resultado;
-  nota.style.color = st.ultimoResultado === "erro" ? "var(--vermelho)" : "";
-
-  el("estado").textContent = `${conexoes.length} conexão(ões)`;
-  el("lista").innerHTML = conexoes.length ? conexoes.map(c => `
-    <div class="conexao">
-      <span class="banco-ic">◎</span>
-      <div>
-        <strong>${esc(c.conector || "Instituição conectada")}</strong>
-        ${(c.contas || []).length ? `<div class="det">Contas: ${esc(c.contas.join(" · "))}</div>` : ""}
-        ${(c.cartoes || []).length ? `<div class="det">Cartões: ${esc(c.cartoes.join(" · "))}</div>` : ""}
-        ${!(c.contas || []).length && !(c.cartoes || []).length ? '<div class="det">Aguardando identificação dos produtos</div>' : ""}
-      </div>
-      <span class="id-curto">${esc(c.idCurto)}…</span>
-    </div>`).join("")
-    : `<div class="vazio">Nenhuma instituição registrada ainda.</div>`;
-}
-
-async function carregar() {
-  try { render(await pedir("/pluggy-status")); }
-  catch (e) { avisar(`Não consegui consultar o backend: ${e.message}`, "erro"); }
-}
-
-el("btnSync").addEventListener("click", async e => {
-  e.currentTarget.disabled = true;
-  try {
-    await pedir("/pluggy-sync", "POST", {});
-    avisar("Atualização iniciada. Pode continuar usando o app.", "ok");
-    await carregar();
-  } catch (err) { avisar(`Falha ao iniciar: ${err.message}`, "erro"); }
-  finally { e.currentTarget.disabled = false; }
-});
-
-el("btnConectar").addEventListener("click", async e => {
-  const botao = e.currentTarget;
-  let concluida = false;
-  botao.disabled = true;
-  avisar("Gerando acesso seguro para o Pluggy Connect…");
-  try {
-    const { connectToken } = await pedir("/pluggy-connect-token");
-    new PluggyConnect({
-      connectToken,
-      includeSandbox: false,
-      language: "pt",
-      onSuccess: async dados => {
-        concluida = true;
-        try {
-          const item = dados?.item || dados;
-          if (!item?.id && !item?.itemId) throw new Error("a Pluggy não devolveu o identificador da conexão");
-          avisar(`Autorização concluída (${String(item.id || item.itemId).slice(0, 8)}…). Identificando as contas…`);
-          await pedir("/pluggy-items", "POST", { item });
-          avisar("Conexão registrada. A extração começou; o nome do banco aparece quando a Pluggy liberar as contas.", "ok");
-          await carregar();
-        } catch (err) {
-          avisar(`O banco conectou, mas o registro local falhou: ${err.message}`, "erro");
-        } finally { botao.disabled = false; }
-      },
-      onError: err => {
-        avisar(`A conexão não foi concluída: ${JSON.stringify(err)}`, "erro");
-        botao.disabled = false;
-      },
-      onClose: () => {
-        if (!concluida) avisar("A janela fechou sem concluir. Nenhum banco novo foi registrado.", "erro");
-        botao.disabled = false;
-      },
-    }).init();
-  } catch (err) {
-    avisar(`Não consegui abrir o Pluggy Connect: ${err.message}`, "erro");
-    botao.disabled = false;
-  }
-});
-
-montarNav("conexoes_pluggy.html");
-observarIdentidadeCartoes(carregar);
-carregar();
-// Durante uma sincronização o estado muda sozinho; sem polling a tela ficaria
-// mentindo "Parada".
-timer = setInterval(carregar, 4000);
-window.addEventListener("beforeunload", () => clearInterval(timer));
-</script>
+<script src="conexoes.js"></script>
 </body>
 </html>

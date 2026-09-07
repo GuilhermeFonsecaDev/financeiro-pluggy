@@ -256,7 +256,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             elif path == "/api/investimentos":
                 self.send_json(investimentos.payload())
             elif path == "/api/pluggy-connect-token":
-                self.send_json({"connectToken": criar_connect_token()})
+                self.send_json({"connectToken": criar_connect_token(query.get("itemId", [None])[0])})
             elif path == "/api/pluggy-cartoes":
                 try:
                     ano = int(query.get("year", ["0"])[0])
@@ -379,11 +379,12 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                     or ""
                 )
                 registro = registrar_item(item_id, conector)
-                atualizar_em_background(forcar=True, intervalo_horas=0)
-                self.send_json({"ok": True, "registro": registro, "sincronizando": True})
+                thread = atualizar_em_background(forcar=True, intervalo_horas=0, item_id=item_id)
+                self.send_json({"ok": True, "registro": registro, "sincronizando": thread is not None})
             elif parsed.path == "/api/pluggy-sync":
-                atualizar_em_background(forcar=True, intervalo_horas=0)
-                self.send_json({"ok": True, "sincronizando": True})
+                thread = atualizar_em_background(forcar=True, intervalo_horas=0,
+                                                  item_id=str(payload.get("itemId") or "") or None)
+                self.send_json({"ok": True, "sincronizando": True, "jaEmAndamento": thread is None})
             elif parsed.path == "/api/backup":
                 backup = create_database_backup(str(payload.get("reason") or "manual"),
                                                 min_interval_seconds=0)

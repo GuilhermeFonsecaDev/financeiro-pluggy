@@ -12,6 +12,7 @@ import cartoes as cartoes_id
 import argparse
 import json
 import re
+import time
 import webbrowser
 from datetime import datetime
 from http import HTTPStatus
@@ -80,6 +81,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        self.inicio_requisicao = time.perf_counter()
         parsed = urlsplit(self.path)
         if parsed.path == "/":
             self.send_response(HTTPStatus.FOUND)
@@ -98,6 +100,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
         self.handle_api_write()
 
     def do_DELETE(self) -> None:
+        self.inicio_requisicao = time.perf_counter()
         parsed = urlsplit(self.path)
         try:
             ensure_database()
@@ -145,6 +148,10 @@ class PluggyHandler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        inicio = getattr(self, "inicio_requisicao", None)
+        if inicio is not None:
+            self.send_header("Server-Timing", f"api;dur={(time.perf_counter() - inicio) * 1000:.2f}")
+        self.send_header("X-Pluggy-Performance", "2026-09-06")
         self.end_headers()
         self.wfile.write(body)
 
@@ -267,6 +274,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             self.send_error_json(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_api_write(self) -> None:
+        self.inicio_requisicao = time.perf_counter()
         parsed = urlsplit(self.path)
         query = parse_qs(parsed.query)   # as rotas de contas fixas leem ?month=
         try:

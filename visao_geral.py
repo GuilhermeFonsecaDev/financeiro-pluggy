@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any
 
 import fixas
+import banco as fin
 import pluggy_extrato as px
 
 # Quantos meses cada período cobre. A conta é de calendário: "trimestre" é o
@@ -218,6 +219,7 @@ def _detalhe(de: str, ate: str, quantos: int = 15) -> dict[str, Any]:
     }
 
 
+@fin.escopo_leitura
 def payload(periodo: str = "mes", referencia: str = "") -> dict[str, Any]:
     periodo = periodo if periodo in PERIODOS else "mes"
     if not _valido(referencia):

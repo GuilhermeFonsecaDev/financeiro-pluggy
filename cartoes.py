@@ -276,7 +276,9 @@ def garantir(conn):
             fontes[fonte] = cartao
         _reconciliar_fontes(conn, contas)
         if _tabela(conn, "app_meta"):
-            conn.execute("INSERT OR REPLACE INTO app_meta VALUES ('cartoes_schema_versao','2')")
+            versao = conn.execute("SELECT valor FROM app_meta WHERE chave='cartoes_schema_versao'").fetchone()
+            if not versao or versao[0] != "2":
+                conn.execute("INSERT OR REPLACE INTO app_meta VALUES ('cartoes_schema_versao','2')")
         if not transacao_anterior:
             conn.commit()
 

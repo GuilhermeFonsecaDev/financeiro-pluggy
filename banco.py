@@ -16,6 +16,9 @@ import re
 import shutil
 import sqlite3
 import threading
+from contextvars import ContextVar
+from copy import deepcopy
+from functools import wraps
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,10 +29,55 @@ BACKUP_DIR = ROOT / "backups"
 
 _db_lock = threading.RLock()
 _last_backup_at = 0.0
+_leituras = ContextVar("pluggy_leituras", default=None)
+
+
+def escopo_leitura(funcao):
+    """Reutiliza cálculos somente durante uma carga, nunca entre requisições."""
+    @wraps(funcao)
+    def executar(*args, **kwargs):
+        if _leituras.get() is not None:
+            return funcao(*args, **kwargs)
+        token = _leituras.set({})
+        try:
+            return funcao(*args, **kwargs)
+        finally:
+            _leituras.reset(token)
+    return executar
+
+
+def reutilizar_leitura(chave, calcular):
+    cache = _leituras.get()
+    if cache is None:
+        return calcular()
+    def revisao():
+        stat = DATABASE_PATH.stat()
+        return str(DATABASE_PATH), stat.st_ino, stat.st_mtime_ns, stat.st_size
+    antes = revisao()
+    # Não reutilizar resultados durante uma escrita ainda não confirmada.
+    journal = Path(str(DATABASE_PATH) + "-journal")
+    wal = Path(str(DATABASE_PATH) + "-wal")
+    if journal.exists() or wal.exists():
+        return calcular()
+    entrada = cache.get(chave)
+    if entrada and entrada[0] == antes:
+        return deepcopy(entrada[1])
+    resultado = calcular()
+    if revisao() == antes and not journal.exists() and not wal.exists():
+        cache[chave] = (antes, deepcopy(resultado))
+    return resultado
+
+
+class Conexao(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, factory=Conexao)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = DELETE")

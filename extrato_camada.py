@@ -22,6 +22,7 @@ import re
 import sqlite3
 import threading
 import unicodedata
+from functools import lru_cache
 
 import banco as fin
 import ciclos
@@ -34,7 +35,14 @@ CATEGORIA_PADRAO = "outros"
 # --------------------------------------------------------------------------
 
 def normalizar(valor: object) -> str:
-    texto = unicodedata.normalize("NFKD", str(valor or ""))
+    return _normalizar_texto(str(valor or ""))
+
+
+@lru_cache(maxsize=16384)
+def _normalizar_texto(valor: str) -> str:
+    # Regras e descrições se repetem milhares de vezes na mesma consulta SQL.
+    # Cache apenas da função pura; alterações nos dados não exigem invalidação.
+    texto = unicodedata.normalize("NFKD", valor)
     texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
     return " ".join(texto.casefold().split())
 
@@ -462,6 +470,10 @@ _COMPETENCIA_ENTRADA = f"""
 VIEW = f"""
 DROP VIEW IF EXISTS extrato_efetivo;
 CREATE VIEW extrato_efetivo AS
+WITH mapeamentos AS MATERIALIZED (
+  SELECT norm(categoria_original) AS categoria_normalizada, categoria_id
+  FROM extrato_mapeamento_categorias
+)
 SELECT
   t.transacao_id,
   COALESCE(a.conta_id_manual, t.conta_id) AS conta_id,
@@ -520,8 +532,8 @@ SELECT
 
 FROM pluggy_transacoes t
 LEFT JOIN extrato_ajustes a ON a.transacao_id = t.transacao_id
-LEFT JOIN extrato_mapeamento_categorias m
-       ON norm(m.categoria_original) = norm(t.categoria)
+LEFT JOIN mapeamentos m
+       ON m.categoria_normalizada = norm(t.categoria)
 -- Descricao efetiva e competencia de entrada calculadas uma unica vez por
 -- transacao aqui, e reusadas via "de.valor"/"de.competencia_entrada" em todo
 -- lugar que precisar delas (ver _CAMPO). Sem este JOIN, a descricao era
@@ -566,6 +578,13 @@ _CACHE_EXTRATO_CHAVE = "extrato_efetivo_cache_v1"
 
 
 def _assinatura_extrato(conn: sqlite3.Connection) -> str:
+    if conn.in_transaction:
+        return _calcular_assinatura_extrato(conn)
+    return fin.reutilizar_leitura(
+        ("assinatura_extrato", VIEW), lambda: _calcular_assinatura_extrato(conn))
+
+
+def _calcular_assinatura_extrato(conn: sqlite3.Connection) -> str:
     """Assinatura barata e determinística de tudo que altera a view efetiva."""
     consultas = (
         "SELECT transacao_id, conta_id, data, descricao, valor, moeda, tipo, "

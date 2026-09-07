@@ -9,22 +9,45 @@
 /* --- identificacao de cartoes ------------------------------------------- */
 .topo { flex-wrap:wrap; }
 .ident-modal { width:min(760px,100%); }
-.ident-lista { display:grid; gap:10px; padding:12px 18px; max-height:min(60vh,520px); overflow-y:auto; }
-.ident-linha { display:grid; grid-template-columns:34px minmax(0,1.1fr) minmax(0,1fr) 44px; gap:10px; align-items:center; padding:11px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
-.ident-nome { font-size:13px; overflow-wrap:anywhere; }
-.ident-tag { display:flex; gap:5px; }
-.ident-tag input { min-width:0; }
-.ident-tags { display:grid; gap:8px; padding:4px 18px 12px; }
-.ident-tag-linha { display:flex; align-items:center; gap:8px; }
-.ident-tag-linha input { flex:1; min-width:0; }
-.ident-tag-linha button { flex-shrink:0; }
+.ident-modal .modal-topo { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ident-lista { display:grid; gap:8px; padding:12px 18px; max-height:min(60vh,520px); overflow-y:auto; }
+/* Uma linha por cartao, tudo no mesmo eixo: selo, identidade, tag, cor. O nome
+   que o banco mandou vira legenda debaixo do nome do cartao -- antes ocupava
+   uma terceira linha inteira e soltava as linhas umas das outras. */
+.ident-linha { display:grid; grid-template-columns:32px minmax(0,1fr) minmax(0,210px) 32px 26px; gap:12px; align-items:center; padding:10px 12px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.ident-identidade { min-width:0; }
+.ident-nome { display:block; font-size:13px; line-height:1.3; overflow-wrap:anywhere; }
+.ident-tag { display:block; }
+.ident-tag input { width:100%; min-width:0; }
 .ident-linha.inativa { opacity:.55; }
-.ident-selo { width:34px; height:34px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:13px; }
-.ident-origem { grid-column:2 / -1; color:var(--text-3); font-size:11.5px; }
+.ident-selo { width:32px; height:32px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:13px; }
+.ident-origem { display:block; margin-top:2px; color:var(--text-3); font-size:11px; overflow-wrap:anywhere; }
 .ident-linha input[type="text"] { width:100%; }
-.ident-linha input[type="color"] { width:44px; height:34px; padding:3px; cursor:pointer; }
-.ident-rot { color:var(--text-3); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
-@media (max-width:700px) { .ident-linha { grid-template-columns:34px minmax(0,1fr) 44px; } .ident-campo-tag { grid-column:2; grid-row:2; } .ident-linha input[type="color"] { grid-column:3; grid-row:1; } .ident-origem { grid-column:2/-1; } }
+/* Mesmo tamanho e raio do selo da esquerda: os dois marcam a mesma coisa (a
+   cor daquele cartao ou tag), um mostrando e o outro editando. As regras de
+   ::-webkit-color-swatch existem porque o controle nativo desenha borda e
+   respiro proprios e ignoraria o raio. */
+.ident-linha input[type="color"] {
+  width:32px; height:32px; min-height:32px; padding:0; border:1px solid var(--line-forte);
+  border-radius:10px; background:transparent; cursor:pointer; -webkit-appearance:none; appearance:none;
+}
+.ident-linha input[type="color"]::-webkit-color-swatch-wrapper { padding:2px; }
+.ident-linha input[type="color"]::-webkit-color-swatch { border:0; border-radius:8px; }
+.ident-linha input[type="color"]::-moz-color-swatch { border:0; border-radius:8px; }
+.ident-linha input[type="color"]:hover { border-color:var(--text-3); }
+.ident-rot { display:block; color:var(--text-3); font-size:10px; font-weight:650; text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px; }
+/* Limpar a tag: ultima coluna da linha, alinhado com o seletor de cor. Fica
+   apagado quando nao ha tag para limpar -- continua clicavel por teclado, so
+   nao chama atencao. */
+.ident-limpar {
+  width:26px; height:26px; min-height:26px; display:grid; place-items:center; padding:0;
+  border:1px solid transparent; border-radius:8px; background:transparent;
+  color:var(--text-3); font-size:15px; line-height:1; cursor:pointer;
+  transition:background .12s, color .12s, border-color .12s, opacity .12s;
+}
+.ident-limpar:hover, .ident-limpar:focus-visible { background:var(--surface-3); border-color:var(--line-forte); color:var(--text); }
+.ident-linha:has(.i-tag:placeholder-shown) .ident-limpar { opacity:.25; }
+@media (max-width:700px) { .ident-linha { grid-template-columns:32px minmax(0,1fr) 30px; } .ident-campo-tag { grid-column:2 / -1; grid-row:2; } }
 
 /* --- seletor de ano ----------------------------------------------------- */
 /* Antes eram duas setas e um input numerico com spinner: tres alvos para uma
@@ -208,10 +231,6 @@ tbody tr { cursor:pointer; }
       juntos nos resumos. Deixe a tag vazia para mostrar o cartão individual.
     </p>
     <div class="ident-lista" id="identLista"></div>
-    <details style="padding:0 18px"><summary>Renomear uma tag em todos os cartões</summary>
-      <p class="sub">Ao usar o nome de outra tag existente, os cartões passam a formar um único grupo.</p>
-      <div class="ident-tags" id="identTags"></div>
-    </details>
     <p class="estado erro" id="identErro" style="margin:8px 18px 0"></p>
     <footer class="modal-rodape">
       <button class="sutil" id="btnCancelarIdent">Cancelar</button>
@@ -569,20 +588,19 @@ function renderIdent() {
   el("identLista").innerHTML = IDENT.cartoes.map(c => `
     <div class="ident-linha ${c.ativa === false ? "inativa" : ""}" data-cartao="${esc(c.cartaoId || c.id)}">
       <span class="ident-selo" style="background:${corInstrumento(c)}">${esc((nomeInstrumento(c) || "?").trim().charAt(0).toUpperCase())}</span>
-      <strong class="ident-nome">${esc(c.nomeOriginal || nomeInstrumento(c))}</strong>
+      <span class="ident-identidade">
+        <strong class="ident-nome">${esc(c.nomeOriginal || nomeInstrumento(c))}</strong>
+        <span class="ident-origem">
+          ${esc(c.instituicao || c.nomeBanco || "")}${c.ativa === false ? " · cartão inativo" : ""}
+        </span>
+      </span>
       <label class="ident-campo-tag"><span class="ident-rot">Tag opcional</span>
         <span class="ident-tag"><input type="text" class="i-tag" list="listaTags" maxlength="60"
-               value="${esc(c.tag || "")}" placeholder="Sem tag" autocomplete="off" />
-        <button class="icone" type="button" data-remover-tag aria-label="Remover tag">×</button></span></label>
+               value="${esc(c.tag || "")}" placeholder="Sem tag" autocomplete="off" /></span></label>
       <input type="color" class="i-cor" value="${corInstrumento(c)}" aria-label="Cor do cartão ou grupo" title="${c.tag ? "Cor da tag; aplicada a todos os cartões do grupo" : "Cor do cartão"}" />
-      <span class="ident-origem">
-        ${esc(c.instituicao || c.nomeBanco || "")}${c.ativa === false ? " · cartão inativo" : ""}
-      </span>
+      <button class="ident-limpar" type="button" data-remover-tag aria-label="Remover tag" title="Remover tag">×</button>
     </div>`).join("") +
     `<datalist id="listaTags">${(IDENT.tags || []).map(t => `<option value="${esc(t.nome)}"></option>`).join("")}</datalist>`;
-  el("identTags").innerHTML = (IDENT.tags || []).map(t => `<div class="ident-tag-linha" data-tag-id="${esc(t.id)}">
-    <input type="text" value="${esc(t.nome)}" maxlength="60" aria-label="Nome da tag ${esc(t.nome)}" />
-    <button type="button" data-renomear-tag>Renomear</button></div>`).join("") || '<span class="sub">Nenhuma tag criada.</span>';
 }
 
 async function abrirIdent() {
@@ -613,30 +631,6 @@ async function salvarIdent() {
     await recarregar();
   } catch (e) { el("identErro").textContent = e.message; }
   finally { el("btnSalvarIdent").disabled = false; }
-}
-
-async function renomearTag(botao) {
-  const linha = botao.closest("[data-tag-id]");
-  const nome = linha.querySelector("input").value.trim();
-  if (!nome) { el("identErro").textContent = "Preencha o nome da tag."; return; }
-  const normalizar = texto => String(texto).trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
-  const antiga = IDENT.tags.find(t => t.id === linha.dataset.tagId)?.nome;
-  const rascunhos = new Map(identDoFormulario().map(c => [c.cartaoId, c]));
-  botao.disabled = true;
-  try {
-    await api(`/cartoes-tags/${encodeURIComponent(linha.dataset.tagId)}`, "PUT", { nome });
-    IDENT = await api("/cartoes-identidade");
-    // Renomear salva somente a tag; as demais edições continuam no formulário.
-    IDENT.cartoes = IDENT.cartoes.map(c => {
-      const rascunho = rascunhos.get(c.cartaoId);
-      return rascunho ? { ...c, cor: rascunho.cor,
-        tag: normalizar(rascunho.tag) === normalizar(antiga) ? nome : rascunho.tag } : c;
-    });
-    renderIdent();
-    el("identErro").textContent = "";
-    await recarregar();
-  } catch (e) { el("identErro").textContent = e.message; }
-  finally { botao.disabled = false; }
 }
 
 (function iniciar() {
@@ -678,10 +672,6 @@ async function renomearTag(botao) {
       });
       else linha.querySelector(".ident-selo").style.background = e.target.value;
     }
-  });
-  el("identTags").addEventListener("click", e => {
-    const botao = e.target.closest("[data-renomear-tag]");
-    if (botao) renomearTag(botao);
   });
   el("modalCartoes").addEventListener("click", e => {
     if (e.target.id === "modalCartoes") el("modalCartoes").hidden = true;

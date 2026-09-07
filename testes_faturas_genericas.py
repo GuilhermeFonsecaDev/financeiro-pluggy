@@ -124,6 +124,63 @@ class FaturasGenericasTests(unittest.TestCase):
         fora = px.extrato_payload({"mesDe": "2026-11", "mesAte": "2026-11", "cartao": "nenhum"})
         self.assertEqual(fora["transacoes"], [])
 
+    def preparar_mes_misto(self):
+        with banco.connect() as conn:
+            conn.execute(
+                "INSERT INTO pluggy_transacoes (transacao_id,conta_id,data,mes_ref,ano,mes,descricao,valor,"
+                "tipo,status,fatura_id,raw_json,importado_em) "
+                "VALUES ('nova','cartao-b','2026-10-10','2026-10',2026,10,'nova',40,"
+                "'DEBIT','PENDING','','{}','2026-10-10')"
+            )
+        return {"mesDe": "2026-11", "mesAte": "2026-11"}
+
+    def test_mes_misto_resumo_e_evolucao_incluem_parcelas(self):
+        filtros = self.preparar_mes_misto()
+        dados = px.extrato_payload(filtros)
+        self.assertEqual(dados["resumo"]["saidas"], 50)
+        novembro = next(m for m in dados["evolucaoMensal"] if m["mes"] == "2026-11")
+        self.assertEqual(novembro["saidas"], 50)
+        self.assertTrue(novembro["saidasEstimativa"])
+        # A série continua incluindo meses fora do período selecionado.
+        dezembro = next(m for m in dados["evolucaoMensal"] if m["mes"] == "2026-12")
+        self.assertEqual(dezembro["saidas"], 10)
+
+    def test_filtros_preservam_projecoes_correspondentes(self):
+        filtros = self.preparar_mes_misto()
+        dados = px.extrato_payload({**filtros, "tipo": "DEBIT"})
+        self.assertEqual(dados["resumo"]["saidas"], 50)
+        parcela = next(t for t in dados["transacoes"] if t.get("projetada"))
+        categoria = parcela["categoria"]["id"]
+        self.assertIsNotNone(categoria)
+        filtrado = px.extrato_payload({**filtros, "categoria": categoria})
+        self.assertIn(parcela["id"], [t["id"] for t in filtrado["transacoes"]])
+        busca = px.extrato_payload({**filtros, "busca": "parcela-b"})
+        self.assertEqual(busca["resumo"]["saidas"], 10)
+        self.assertEqual(next(m for m in busca["evolucaoMensal"] if m["mes"] == "2026-11")["saidas"], 10)
+        for extra in ({"tipo": "CREDIT"}, {"status": "PENDING"},
+                      {"status": "POSTED"}, {"modo": "mes"}, {"cartao": "nenhum"},
+                      {"categoria": "inexistente"}):
+            d = px.extrato_payload({**filtros, **extra})
+            self.assertFalse(any(t.get("projetada") for t in d["transacoes"]))
+
+    def test_paginacao_preserva_totais_sem_repetir_linhas(self):
+        filtros = self.preparar_mes_misto()
+        completo = px.extrato_payload(filtros)
+        ids = []
+        for offset in range(completo["totalFiltrado"]):
+            pagina = px.extrato_payload({**filtros, "limite": 1, "offset": offset})
+            self.assertEqual(pagina["resumo"], completo["resumo"])
+            self.assertEqual(pagina["porCategoria"], completo["porCategoria"])
+            self.assertEqual(pagina["evolucaoMensal"], completo["evolucaoMensal"])
+            self.assertEqual(pagina["totalFiltrado"], completo["totalFiltrado"])
+            self.assertEqual(len(pagina["transacoes"]), 1)
+            self.assertEqual(pagina["temMais"], offset + 1 < completo["totalFiltrado"])
+            ids.extend(t["id"] for t in pagina["transacoes"])
+        self.assertEqual(ids, [t["id"] for t in completo["transacoes"]])
+        vazio = px.extrato_payload({**filtros, "limite": 1, "offset": len(ids)})
+        self.assertEqual(vazio["transacoes"], [])
+        self.assertEqual(vazio["resumo"], completo["resumo"])
+
     def test_contas_e_cartoes_mesmo_numero_em_bancos_distintos(self):
         filtros = px.filtros_payload()
         self.assertEqual({c["id"] for c in filtros["contas"]}, {"conta-a", "conta-b"})

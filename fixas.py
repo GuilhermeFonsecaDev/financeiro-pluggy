@@ -437,7 +437,7 @@ def _casar_projecao(termos: list[str], projecoes: dict[str, list[dict[str, Any]]
                     "banco": grupo,  # alias de leitura para versões anteriores da tela
                     "descricao": item["descricao"],
                     "valor": round(float(item["valor"]), 2),
-                    "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
+                    "parcela": "mensal" if item.get("recorrente") else f"{item['parcelaAtual']}/{item['parcelaTotal']}",
                 }
     return None
 
@@ -724,7 +724,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
                             "banco": grupo,
                             "descricao": item["descricao"],
                             "valor": round(float(item["valor"]), 2),
-                            "parcela": f"{item['parcelaAtual']}/{item['parcelaTotal']}",
+                            "parcela": "mensal" if item.get("recorrente") else f"{item['parcelaAtual']}/{item['parcelaTotal']}",
                         }
 
     itens = []

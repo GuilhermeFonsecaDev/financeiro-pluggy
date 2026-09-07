@@ -1,28 +1,8 @@
-"""Detecta gastos que se repetem todo mes e sugere cadastro em Contas Fixas.
-
-Nao projeta nada por conta propria: so sugere. Quem decide se aquilo e uma
-conta fixa e a pessoa, no painel de sugestoes.
-
-Por que a classificacao importa mais que a deteccao
----------------------------------------------------
-Achar repeticao e facil -- agrupar por descricao resolve. O problema e que
-"repete todo mes" tem tres causas que pedem tratamento OPOSTO, e tratar as
-tres como conta fixa infla o previsto sem ninguem perceber:
-
-- PARCELAMENTO no cartao (parcela_total > 1): repete porque tem parcela, e
-  acaba. A tira de evolucao JA projeta isso via cartoes_payload, entao
-  cadastrar como conta fixa conta o mesmo gasto duas vezes.
-- ENCERRADO: repetiu por meses e parou. Projetar e inventar gasto.
-- RECORRENTE de verdade: repete, sem fim previsto, e aconteceu agora. Esse
-  e o unico que vale sugerir.
-
-Medido nos dados reais no momento em que isto foi escrito: das 16 repeticoes
-estaveis, 5 eram parcelamento (R$ 648/mes) e 6 tinham parado (R$ 630/mes).
-Sugerir as 16 teria criado R$ 1.278/mes de despesa fantasma.
-"""
+"""Sugestões e previsões mensais independentes de Contas Fixas."""
 
 from __future__ import annotations
 
+import json
 import collections
 import re
 import sqlite3
@@ -33,32 +13,35 @@ from typing import Any
 import extrato_camada as cam
 import pluggy_extrato as px
 
-# Uma repeticao precisa aparecer em pelo menos isto para ser sugerida. Menos
-# que isso pega coincidencia (duas compras no mesmo lugar em meses seguidos).
-MESES_MINIMOS = 4
-# Janela de analise. 12 meses da estabilidade sem carregar historico velho
-# demais, que traria assinaturas ja canceladas.
+# A evidência é medida por ciclos, não por meses-calendário: 01/07, 31/07
+# e 30/08 são três cobranças mensais, apesar de ocuparem apenas dois meses.
+MESES_MINIMOS = 3
 JANELA_MESES = 12
-# Acima disso o valor varia demais para virar "valor previsto" -- e gasto
-# frequente no mesmo lugar (supermercado, restaurante), nao conta fixa.
-CV_MAXIMO = 25.0
-# Sem aparecer no mes corrente nem no anterior, trata como encerrado. Um mes
-# de tolerancia basta (a fatura do mes corrente ainda entra) e evita
-# ressuscitar assinatura cancelada -- na pratica foi isso que separou as duas
-# descricoes da mesma Netflix, quando o lojista trocou de descritor.
-MESES_TOLERANCIA = 1
+CV_MAXIMO = 15.0
+INTERVALO_MINIMO_DIAS = 24
+INTERVALO_MAXIMO_DIAS = 38
+RECENCIA_MAXIMA_DIAS = 45
+REGULARIDADE_MINIMA = 0.8
 
-# Regularidade = meses com lancamento / meses entre o primeiro e o ultimo.
-# Assinatura da ~1.0 (todo mes); comer 3x no mesmo restaurante e voltar meio
-# ano depois da ~0.4. E o que separa recorrencia de coincidencia -- contar
-# quantos meses apareceu, sozinho, nao separa.
-REGULARIDADE_ALTA = 0.8
-REGULARIDADE_MEDIA = 0.6
+REGRAS_SUGESTAO = [
+    "Pelo menos 3 cobranças da mesma conta ou cartão.",
+    "Intervalos de 24 a 38 dias em pelo menos 80% do histórico e nos 2 últimos ciclos.",
+    "Última cobrança nos últimos 45 dias; lançamentos futuros não contam.",
+    "Valor estável ou reajuste sequencial; planos de valores diferentes são separados.",
+    "Parcelas, duplicidades ambíguas e gastos frequentes não geram sugestões.",
+    "Recorrências já cadastradas, recusadas ou cobertas por conta fixa não são sugeridas.",
+]
 
 SCHEMA = """
 -- Sugestao recusada nao volta a aparecer. Sem isto o painel vira ruido: a
 -- mesma coisa que a pessoa ja decidiu que nao e conta fixa reaparece todo
 -- mes, e ela para de olhar o painel.
+CREATE TABLE IF NOT EXISTS recorrentes_previsoes (
+  chave TEXT PRIMARY KEY,
+  dados TEXT NOT NULL,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  atualizado_em TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS recorrentes_ignorados (
   chave TEXT PRIMARY KEY,
   descricao TEXT NOT NULL DEFAULT '',
@@ -66,33 +49,34 @@ CREATE TABLE IF NOT EXISTS recorrentes_ignorados (
 );
 """
 
-_schema_pronto = False
-
-
 def _abrir() -> sqlite3.Connection:
-    global _schema_pronto
     conn = cam.conectar()
     conn.row_factory = sqlite3.Row
     px.garantir_tabelas(conn)
+    conn.create_function("norm", 1, cam.normalizar, deterministic=True)
     cam.garantir_camada(conn)
     px.garantir_extrato_materializado(conn)
-    if not _schema_pronto:
-        conn.executescript(SCHEMA)
-        conn.commit()
-        _schema_pronto = True
+    import fixas
+    conn.executescript(fixas.SCHEMA)
+    conn.executescript(SCHEMA)
+    conn.commit()
     return conn
 
 
 def _chave(descricao: str) -> str:
-    """Descricao reduzida ao que identifica o lojista.
-
-    Tira contador de parcela ("3/12") e numeros longos (id de pedido, doc),
-    que mudam a cada cobranca e fariam a mesma assinatura virar N grupos --
-    o mesmo problema que a projecao de parcelas do cartao ja teve.
-    """
+    """Normalização conservadora; aliases conhecidos não fundem outros lojistas."""
     texto = cam.normalizar(descricao)
+    aliases = {
+        "netflix": r"netflix(?:\.com)?(?: entretenimento)?(?: (?:sao paulo|barueri)(?: bra)?)?",
+        "livelo": r"(?:clube )?livelo(?: clube liv)?(?: (?:santana de pa|sao paulo)(?: bra)?)?",
+    }
+    for marca, padrao in aliases.items():
+        if re.fullmatch(padrao, texto):
+            return marca
     texto = re.sub(r"\d+\s*/\s*\d+", " ", texto)
-    texto = re.sub(r"\b\d{2,}\b", " ", texto)
+    # Números curtos podem identificar o estabelecimento ou plano (Loja 373,
+    # Microsoft 365); somente identificadores longos são removidos.
+    texto = re.sub(r"\b\d{6,}\b", " ", texto)
     return re.sub(r"\s+", " ", texto).strip()
 
 
@@ -120,29 +104,123 @@ def _janela(meses: int) -> tuple[str, str]:
     return f"{inicio // 12:04d}-{inicio % 12 + 1:02d}", atual
 
 
-def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
-    """Recorrentes que valem cadastrar, mais o resumo do que foi descartado.
+def _analisar_series(itens: list) -> tuple[list[dict], str]:
+    """Retorna somente sequências com evidência mensal suficiente.
 
-    O descartado vai no payload de proposito: sem ele o painel diria "achei 4"
-    e a pessoa nao teria como saber que outros 11 foram vistos e recusados por
-    um motivo -- que e justamente a parte em que se confia ou nao no detector.
+    Primeiro avalia a sequência inteira, preservando reajustes. Só separa
+    preços quando cobranças simultâneas impedem uma sequência única. Nenhum
+    lançamento é removido do extrato nem aceito automaticamente.
     """
+    linhas = sorted(itens, key=lambda i: (i["data"], i["transacao_id"]))
+    if len(linhas) < MESES_MINIMOS:
+        return [], "historicoCurto"
+    meses = collections.Counter(str(i["data"])[:7] for i in linhas)
+    if len(linhas) / len(meses) > 3:
+        return [], "frequente"
+
+    def avaliar(banda: list) -> dict | None:
+        banda = sorted(banda, key=lambda i: (i["data"], i["transacao_id"]))
+        if len(banda) < MESES_MINIMOS:
+            return None
+        datas = [datetime.fromisoformat(str(i["data"])[:10]) for i in banda]
+        intervalos = [(b - a).days for a, b in zip(datas, datas[1:])]
+        mensais = [INTERVALO_MINIMO_DIAS <= d <= INTERVALO_MAXIMO_DIAS for d in intervalos]
+        regularidade = sum(mensais) / len(mensais)
+        # Uma falha antiga de sincronização é tolerada em histórico extenso.
+        # Cobranças próximas, bimestrais, semanais ou lacunas recentes não são.
+        if (regularidade < REGULARIDADE_MINIMA or not all(mensais[-2:])
+                or any(d < INTERVALO_MINIMO_DIAS or d > 68 for d in intervalos)
+                or not 27 <= statistics.median(intervalos) <= 34):
+            return None
+        valores = [abs(float(i["valor"])) for i in banda]
+        if min(valores) <= 0:
+            return None
+        media = statistics.mean(valores)
+        cv = statistics.pstdev(valores) / media * 100
+        # Um reajuste é uma mudança de patamar depois de cobranças estáveis,
+        # sem alternar entre preços de dois planos ou flutuar indefinidamente.
+        patamares: list[list[float]] = []
+        for valor in valores:
+            if (not patamares or abs(valor - statistics.median(patamares[-1]))
+                    > max(.5, statistics.median(patamares[-1]) * .12)):
+                patamares.append([valor])
+            else:
+                patamares[-1].append(valor)
+        reajuste = (len(patamares) == 2 and len(patamares[0]) >= 2
+                    and max(valores) / min(valores) <= 1.6)
+        if cv > CV_MAXIMO and not reajuste:
+            return None
+        if len(patamares) > 2:
+            return None
+        return {
+            "itens": banda, "avisos": [], "faixaValor": None, "incerta": False,
+            "evidencia": {
+                "cobrancas": len(banda),
+                "ciclosMensais": 1 + sum(mensais),
+                "intervaloMinDias": min(intervalos),
+                "intervaloMaxDias": max(intervalos),
+                "intervaloMedianoDias": round(statistics.median(intervalos), 1),
+                "regularidade": round(regularidade, 2),
+                "valorReajustado": bool(reajuste),
+            },
+        }
+
+    completa = avaliar(linhas)
+    if completa:
+        return [completa], ""
+    # Sem sobreposição temporal não há motivo para transformar valores
+    # instáveis de compras avulsas em várias supostas assinaturas.
+    datas = [datetime.fromisoformat(str(i["data"])[:10]) for i in linhas]
+    if not any((b - a).days < INTERVALO_MINIMO_DIAS for a, b in zip(datas, datas[1:])):
+        return [], "irregular"
+    bandas = []
+    for item in sorted(linhas, key=lambda i: abs(float(i["valor"]))):
+        valor = abs(float(item["valor"]))
+        banda = next((b for b in bandas if abs(valor - statistics.median(
+            abs(float(x["valor"])) for x in b)) <= max(0.5, valor * 0.08)), None)
+        if banda is None:
+            bandas.append([item])
+        else:
+            banda.append(item)
+    resultado = []
+    for indice, banda in enumerate(bandas):
+        serie = avaliar(banda)
+        if not serie:
+            continue
+        vs = [abs(float(i["valor"])) for i in banda]
+        minimo = min(vs) - max(.5, min(vs) * .12)
+        maximo = max(vs) + max(.5, max(vs) * .12)
+        if indice > 0:
+            minimo = max(minimo, (max(abs(float(i["valor"])) for i in bandas[indice - 1]) + min(vs)) / 2 + .005)
+        if indice + 1 < len(bandas):
+            maximo = min(maximo, (min(abs(float(i["valor"])) for i in bandas[indice + 1]) + max(vs)) / 2 - .005)
+        serie["faixaValor"] = {"min": round(max(0, minimo), 2), "max": round(maximo, 2)}
+        serie["evidencia"]["planoSeparado"] = True
+        resultado.append(serie)
+    return resultado, "frequente" if any((b - a).days < 24 for a, b in zip(datas, datas[1:])) else "irregular"
+
+
+def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
+    """Sugestões elegíveis com evidência resumida, além das recorrências salvas."""
     mes_de, mes_ate = _janela(janela)
+    hoje = datetime.now().date()
     with _abrir() as conn:
         ativas = px.contas_ativas(conn)
         marcadores = ", ".join("?" for _ in ativas) or "NULL"
         linhas = conn.execute(
             f"""
-            SELECT e.descricao, e.valor, e.data, e.competencia_fatura AS mes,
+            SELECT e.transacao_id, e.descricao, e.valor, e.data, SUBSTR(e.data, 1, 7) AS mes,
+                   e.competencia_fatura,
                    e.parcela_total, e.categoria_id, e.conta_id,
                    c.subtipo AS conta_subtipo
             FROM extrato_efetivo_cache e
             JOIN pluggy_contas c ON c.conta_id = e.conta_id
             WHERE e.conta_id IN ({marcadores})
               AND e.tipo = 'DEBIT' AND e.incluida = 1
-              AND e.competencia_fatura BETWEEN ? AND ?
+              AND SUBSTR(e.data, 1, 7) BETWEEN ? AND ?
+              AND SUBSTR(e.data, 1, 10) <= ? AND ABS(e.valor) > 0
             """,
-            [*sorted(ativas), mes_de, mes_ate],
+            [*sorted(ativas), mes_de, mes_ate, hoje.isoformat()],
         ).fetchall()
 
         # Contas fixas ativas, para saber o que já está coberto. Precisa do
@@ -152,18 +230,29 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
         # extrato, não para o nome da conta. Olhar só o termo fazia elas
         # voltarem como "nova", e
         # aceitar a sugestão criaria conta fixa duplicada.
+        import cartoes
+        termos_por_fixa: dict[str, list[str]] = collections.defaultdict(list)
+        for linha in conn.execute("SELECT fixa_id, termo FROM fixas_termos ORDER BY ordem"):
+            termos_por_fixa[linha["fixa_id"]].append(cam.normalizar(linha["termo"]))
         fixas_ativas = [
             {"id": l["id"], "nome": l["nome"],
              "nome_norm": cam.normalizar(l["nome"]),
              "termo": l["termo"], "termo_norm": cam.normalizar(l["termo"]),
+             "termos": termos_por_fixa.get(l["id"]) or [cam.normalizar(l["termo"])],
+             "contas": (cartoes.resolver_contas(conn, l["conta_id"]) or {l["conta_id"]}) if l["conta_id"] else set(),
              "valor": float(l["valor_previsto"] or 0)}
             for l in conn.execute(
-                "SELECT id, nome, termo, valor_previsto FROM fixas_contas WHERE ativo = 1"
+                "SELECT id, nome, termo, valor_previsto, conta_id FROM fixas_contas WHERE ativo = 1 "
+                "AND (desde = '' OR desde <= ?) AND (ate = '' OR ate >= ?)",
+                (mes_ate, mes_ate),
             )
         ]
         ignorados = {
-            l["chave"] for l in conn.execute("SELECT chave FROM recorrentes_ignorados")
+            l["chave"] if "|" in l["chave"] else _chave(l["chave"])
+            for l in conn.execute("SELECT chave FROM recorrentes_ignorados")
         }
+        previsoes = [dict(l) for l in conn.execute("SELECT * FROM recorrentes_previsoes")]
+        cadastradas = {l["chave"] for l in previsoes}
         categorias = {
             l["id"]: {"id": l["id"], "nome": l["nome"], "cor": l["cor"],
                       "emoji": l["emoji"] or ""}
@@ -172,28 +261,41 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
 
     grupos: dict[str, list[sqlite3.Row]] = collections.defaultdict(list)
     for linha in linhas:
-        grupos[_chave(linha["descricao"])].append(linha)
+        descricao = cam.normalizar(linha["descricao"])
+        if ((linha["parcela_total"] or 0) > 1 or re.search(
+                r"\bparcela(?:s|mento)?\b|\b\d+\s*/\s*(?:[2-9]|[1-9]\d+)\b", descricao)):
+            continue
+        if linha["categoria_id"] in {"transferencia_propria", "fatura", "rendimentos"}:
+            continue
+        movimento_financeiro = (linha["categoria_id"] in {"transferencias", "tarifas", "emprestimos"}
+                                or re.search(r"\b(?:pix|ted|doc|transferencia|iof|juros|encargos|tarifa|taxa)\b|pagamento de fatura", descricao))
+        mensalidade_explicita = re.search(
+            r"\b(?:mensalidade|assinatura|clube|aluguel|condominio)\b|(?:pacote|cesta) de servicos", descricao)
+        if movimento_financeiro and not mensalidade_explicita:
+            continue
+        lojista = _chave(linha["descricao"])
+        if lojista:
+            grupos[linha["conta_id"] + "|" + lojista].append(linha)
 
-    limite_ativo = _recuar(_mes_atual(), MESES_TOLERANCIA)
     sugestoes: list[dict[str, Any]] = []
     vinculos_quebrados: list[dict[str, Any]] = []
     descartados = collections.Counter()
 
-    def _cobertura(chave: str) -> tuple[dict | None, dict | None]:
+    def _cobertura(chave: str, itens: list) -> tuple[dict | None, dict | None]:
         """(fixa cujo termo pega, fixa cujo nome bate mas o termo nao pega).
 
         Nome curto casaria com qualquer coisa ("Mae" dentro de "maetra..."),
         entao substring so vale de 6 letras pra cima; abaixo disso exige
         igualdade.
         """
-        pelo_termo = next(
-            (f for f in fixas_ativas if f["termo_norm"] and f["termo_norm"] in chave),
-            None,
-        )
+        elegiveis = [f for f in fixas_ativas if not f["contas"] or itens[-1]["conta_id"] in f["contas"]]
+        descricoes = [cam.normalizar(i["descricao"]) for i in itens[-3:]]
+        pelo_termo = next((f for f in elegiveis if any(
+            termo and termo in descricao for termo in f["termos"] for descricao in descricoes)), None)
         if pelo_termo:
             return pelo_termo, None
         pelo_nome = next(
-            (f for f in fixas_ativas
+            (f for f in elegiveis
              if f["nome_norm"] and (
                  f["nome_norm"] == chave
                  or (len(f["nome_norm"]) >= 6 and f["nome_norm"] in chave))),
@@ -201,32 +303,57 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
         )
         return None, pelo_nome
 
-    for chave, itens in grupos.items():
-        meses = sorted({i["mes"] for i in itens})
-        if len(meses) < MESES_MINIMOS:
-            continue          # não é repetição, nem entra na contagem
-        por_mes = collections.Counter(i["mes"] for i in itens)
-        if max(por_mes.values()) > 1:
-            descartados["frequente"] += 1
+    candidatos = []
+    for chave_grupo, linhas_grupo in grupos.items():
+        series, motivo = _analisar_series(linhas_grupo)
+        if not series:
+            if len({i["mes"] for i in linhas_grupo}) >= 2:
+                descartados[motivo] += 1
             continue
+        for serie in series:
+            chave = chave_grupo
+            if serie["faixaValor"]:
+                centro = statistics.median(abs(float(i["valor"])) for i in serie["itens"])
+                chave += f"|valor:{centro:.2f}"
+            candidatos.append((chave, chave_grupo, serie))
 
+    for chave, chave_grupo, serie in candidatos:
+        itens = serie["itens"]
+        meses = sorted({i["mes"] for i in itens})
         valores = [abs(float(i["valor"] or 0)) for i in itens]
         media = statistics.mean(valores)
-        cv = (statistics.pstdev(valores) / media * 100) if media else 0.0
-        if cv >= CV_MAXIMO:
-            descartados["valorInstavel"] += 1
-            continue
-        if meses[-1] < limite_ativo:
+        cv = statistics.pstdev(valores) / media * 100 if media else 0
+        avisos = list(serie["avisos"])
+        idade_dias = (hoje - datetime.fromisoformat(str(itens[-1]["data"])[:10]).date()).days
+        if idade_dias > RECENCIA_MAXIMA_DIAS:
             descartados["encerrado"] += 1
             continue
-        if any((i["parcela_total"] or 0) > 1 for i in itens):
-            descartados["parcelamento"] += 1
+        lojista = chave_grupo.split("|", 1)[1]
+        ja_prevista = any(
+            salva.get("contaId") == itens[-1]["conta_id"] and _chave(salva.get("lojista") or salva.get("descricao", "")) == lojista
+            and (not salva.get("faixaValor") or salva["faixaValor"]["min"] <= statistics.median(valores) <= salva["faixaValor"]["max"])
+            for salva in (json.loads(p["dados"]) for p in previsoes)
+        )
+        if chave in cadastradas or chave_grupo in cadastradas or ja_prevista:
+            descartados["jaPrevisto"] += 1
             continue
-        if chave in ignorados:
+        faixa_ignorada = False
+        prefixo_faixa = chave_grupo + "|faixa:"
+        for ignorado in ignorados:
+            if not ignorado.startswith(prefixo_faixa):
+                continue
+            try:
+                minimo, maximo = map(float, ignorado[len(prefixo_faixa):].split(":"))
+            except (ValueError, TypeError):
+                continue
+            if minimo <= statistics.median(valores) <= maximo:
+                faixa_ignorada = True
+                break
+        if chave in ignorados or chave_grupo in ignorados or lojista in ignorados or faixa_ignorada:
             descartados["ignorado"] += 1
             continue
 
-        pelo_termo, pelo_nome = _cobertura(chave)
+        pelo_termo, pelo_nome = _cobertura(lojista, itens)
         if pelo_termo:
             descartados["jaCadastrado"] += 1
             continue
@@ -238,22 +365,16 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
             i["categoria_id"] for i in itens if i["categoria_id"]
         ).most_common(1)
         dias = [int(str(i["data"])[8:10]) for i in itens if len(str(i["data"])) >= 10]
-        # Regularidade em vez de corte seco: o irregular continua aparecendo,
-        # só marcado. Esconder custaria caro num caso real -- a assinatura que
-        # troca de descritor fica irregular nas duas metades, e sumir com ela
-        # seria pior que mostrar com aviso.
-        vao = _serial(meses[-1]) - _serial(meses[0]) + 1
-        regularidade = len(meses) / vao if vao else 1.0
-        if regularidade >= REGULARIDADE_ALTA:
-            confianca = "alta"
-        elif regularidade >= REGULARIDADE_MEDIA:
-            confianca = "media"
-        else:
-            confianca = "baixa"
+        evidencia = {**serie["evidencia"], "diasDesdeUltima": idade_dias}
+        regularidade = evidencia["regularidade"]
+        confianca = "alta" if regularidade == 1 else "media"
         sugestao = {
             "chave": chave,
             "descricao": recente["descricao"],
-            "termoSugerido": _termo_sugerido(chave),
+            "termoSugerido": _termo_sugerido(lojista),
+            "lojista": lojista,
+            "contaId": recente["conta_id"],
+            "transacaoBaseId": recente["transacao_id"],
             "valorMedio": round(media, 2),
             "valorUltimo": round(abs(float(recente["valor"] or 0)), 2),
             "variacao": round(cv, 1),
@@ -263,7 +384,13 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
             "ultimoMes": meses[-1],
             "regularidade": round(regularidade, 2),
             "confianca": confianca,
-            "diaTipico": statistics.mode(dias) if dias else None,
+            "evidencia": evidencia,
+            "resumoEvidencia": f"{len(itens)} cobranças · a cada {evidencia['intervaloMedianoDias']:g} dias · última em {str(recente['data'])[8:10]}/{str(recente['data'])[5:7]}",
+            "avisos": avisos,
+            "faixaValor": serie["faixaValor"],
+            "historico": [{"data": str(i["data"])[:10], "valor": abs(float(i["valor"])),
+                            "descricao": i["descricao"]} for i in reversed(itens[-12:])],
+            "diaTipico": round(statistics.median(dias[-6:])) if dias else None,
             "categoria": categorias.get(
                 categoria_id[0][0] if categoria_id else None
             ),
@@ -283,15 +410,19 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
         else:
             sugestoes.append(sugestao)
 
-    ordem_confianca = {"alta": 0, "media": 1, "baixa": 2}
+    ordem_confianca = {"alta": 0, "media": 1}
     chave_ordem = lambda s: (ordem_confianca[s["confianca"]], -s["valorMedio"])
     sugestoes.sort(key=chave_ordem)
     vinculos_quebrados.sort(key=chave_ordem)
     return {
         "janela": {"de": mes_de, "ate": mes_ate, "meses": janela},
         "sugestoes": sugestoes,
+        "possiveis": [],
+        "regrasSugestao": REGRAS_SUGESTAO,
+        "previsoes": _previsoes_payload(previsoes),
+        "contasPagamento": _contas_pagamento_payload(),
         "vinculosQuebrados": vinculos_quebrados,
-        "totalMensal": round(sum(s["valorMedio"] for s in sugestoes), 2),
+        "totalMensal": round(sum(s["valorUltimo"] for s in sugestoes), 2),
         "descartados": dict(descartados),
     }
 
@@ -366,3 +497,39 @@ def ignorados_payload() -> dict[str, Any]:
                 )
             ]
         }
+
+
+def salvar_previsao(chave: str, ativa: bool = True) -> dict[str, Any]:
+    from recorrencias_gestao import salvar
+    return salvar(chave, ativa)
+
+
+def criar_previsao(dados: dict) -> dict[str, Any]:
+    from recorrencias_gestao import criar
+    return criar(dados)
+
+
+def editar_previsao(chave: str, dados: dict) -> dict[str, Any]:
+    from recorrencias_gestao import editar
+    return editar(chave, dados)
+
+
+def excluir_previsao(chave: str) -> dict[str, Any]:
+    from recorrencias_gestao import excluir
+    return excluir(chave)
+
+
+def projetados(conn: sqlite3.Connection, ano: int) -> list[dict]:
+    from recorrencias_gestao import projetados as calcular
+    return calcular(conn, ano)
+
+
+def _previsoes_payload(linhas: list) -> list[dict]:
+    from recorrencias_gestao import previsoes_payload
+    return previsoes_payload(linhas)
+
+
+def _contas_pagamento_payload() -> list[dict]:
+    from recorrencias_gestao import contas_pagamento
+    with _abrir() as conn:
+        return contas_pagamento(conn)

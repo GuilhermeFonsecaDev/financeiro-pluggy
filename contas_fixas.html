@@ -253,11 +253,42 @@ select.forma.herdada { color: var(--text-2); }
 .hist-tag { margin-left: 6px; padding: 1px 5px; border-radius: 999px; background: var(--surface-3); color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 @media (max-width: 620px) { .hist-linha { grid-template-columns: 1fr 1fr; } .hist-desc { display: none; } }
 
-/* ------------------------------------------- sugestões de recorrentes */
+/* -------------------------------------------------------- recorrências */
 .badge-sug { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--azul); color: #fff; font-size: 11px; font-weight: 700; }
-
-.sug-lista { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
-.sug-titulo { margin: 2px 0 6px; color: var(--text-2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.rec-modal { width: min(880px, 100%); }
+.rec-intro { margin: 0 0 18px; max-width: 66ch; color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
+.rec-barra { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.rec-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--surface-2); }
+.rec-tabs button { min-height: 34px; padding: 6px 10px; border: 0; font-size: 12.5px; background: transparent; color: var(--text-3); }
+.rec-tabs button[aria-selected="true"] { color: var(--text-1); background: var(--surface-3); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.rec-tabs span { margin-left: 5px; font-variant-numeric: tabular-nums; opacity: .7; }
+.sug-lista { display: grid; gap: 9px; }
+.rec-vazio { padding: 30px 20px; border: 1px dashed var(--line-forte); border-radius: 12px; color: var(--text-3); font-size: 13px; text-align: center; line-height: 1.7; }
+.rec-vazio strong { display: block; color: var(--text-2); font-weight: 600; }
+.rec-regras { margin: 0 0 18px; color: var(--text-3); font-size: 12px; }
+.rec-regras summary, .rec-evidencias summary { cursor: pointer; color: var(--text-2); }
+.rec-regras ul { padding-left: 20px; line-height: 1.8; }
+.rec-evidencias { grid-column: 1 / -1; color: var(--text-3); font-size: 11.5px; }
+.rec-evidencias[open] { border-top: 1px solid var(--line); padding-top: 10px; }
+.rec-evidencias p { margin: 10px 0; line-height: 1.6; }
+.rec-historico { margin-top: 10px; }
+.rec-cobranca { display: grid; grid-template-columns: 92px minmax(0, 1fr) 86px; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); }
+.rec-cobranca span { overflow-wrap: anywhere; }
+.rec-cobranca strong { color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.rec-status { color: var(--verde); }
+.rec-alerta { color: var(--laranja); }
+.rec-excluir { color: var(--vermelho); }
+.rec-confirmacao { grid-column: 1 / -1; padding: 13px; border: 1px solid rgba(240,106,106,.3); border-radius: 9px; background: rgba(240,106,106,.05); }
+.rec-confirmacao p { margin: 0 0 10px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.rec-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.rec-form-grid .full { grid-column: 1 / -1; }
+.rec-form-grid input, .rec-form-grid select { width: 100%; }
+.rec-form-grid small { color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
+.rec-form-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 22px; }
+#modalSug [hidden] { display: none !important; }
+#sAviso { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#modalSug button:focus-visible, #modalSug summary:focus-visible { outline: 2px solid var(--azul); outline-offset: 3px; }
+#sErro:not(:empty) { padding: 10px 12px; border: 1px solid rgba(240,106,106,.3); border-radius: 8px; }
 /* Mesmo widget de termos da tela de Regras: a descrição do mesmo pagamento
    muda de mês para mês, então um termo só deixava a conta sem vínculo
    justamente nos meses em que o banco mudou o texto. */
@@ -268,25 +299,25 @@ select.forma.herdada { color: var(--text-2); }
 .termos-lista { display:grid; gap:7px; }
 .termo-add { display:block; width:100%; height:34px; min-height:34px; margin-top:7px; padding:0; border:1px dashed var(--line-forte); border-radius:8px; background:transparent; color:var(--azul); font-size:12.5px; cursor:pointer; }
 .termo-add:hover { border-style:solid; border-color:var(--azul); background:var(--surface-2); }
-.sug-termo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); }
-.sug-termo.errado { color: var(--vermelho); text-decoration: line-through; }
-.sug-item { display: grid; grid-template-columns: minmax(0,1fr) 120px 156px; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2); }
-.sug-item.saindo { opacity: .35; }
+.sug-item { display: grid; grid-template-columns: minmax(0,1fr) 112px auto; gap: 12px 16px; align-items: center; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .sug-nome { font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
-.sug-meta { margin-top: 3px; color: var(--text-3); font-size: 11.5px; }
+.sug-meta { margin-top: 5px; color: var(--text-3); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
 .sug-meta b { color: var(--text-2); font-weight: 600; }
 .sug-valor { text-align: right; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sug-valor small { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; font-weight: 500; }
-.sug-acoes { display: flex; gap: 6px; justify-content: flex-end; }
-.sug-acoes button { min-height: 30px; padding: 5px 10px; font-size: 12.5px; }
-
-/* Confiança = regularidade do intervalo. "baixa" não é erro: é aviso de que
-   o gasto aparece com falhas, e aí só a pessoa sabe se é assinatura mesmo. */
-.sug-conf { display: inline-flex; padding: 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.sug-conf.alta { background: rgba(63,191,127,.14); color: var(--verde); }
-.sug-conf.media { background: rgba(232,149,74,.14); color: var(--laranja); }
-.sug-conf.baixa { background: rgba(240,106,106,.13); color: var(--vermelho); }
-@media (max-width: 680px) { .sug-item { grid-template-columns: 1fr; } .sug-valor, .sug-acoes { text-align: left; justify-content: flex-start; } }
+.sug-acoes { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; }
+.sug-acoes button { min-height: 32px; padding: 5px 8px; font-size: 12px; }
+@media (max-width: 680px) {
+  #modalSug { padding: 12px; }
+  .rec-modal { padding: 18px; max-height: 92vh; }
+  .rec-barra { align-items: stretch; }
+  .rec-tabs { flex: 1; }
+  .rec-tabs button { flex: 1; padding: 6px 7px; }
+  .sug-item { grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+  .sug-acoes { grid-column: 1 / -1; justify-content: flex-start; }
+  .rec-form-grid { grid-template-columns: 1fr; }
+  .rec-cobranca { grid-template-columns: 78px minmax(0,1fr) 72px; gap: 8px; }
+}
 </style>
 </head>
 <body>
@@ -299,8 +330,8 @@ select.forma.herdada { color: var(--text-2); }
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
-      <button id="btnSugerir" title="Procura gastos que se repetem todo mês e ainda não estão cadastrados">
-        ⌕ Sugerir recorrentes<span id="badgeSugestoes" class="badge-sug" hidden></span>
+      <button id="btnSugerir" title="Gerenciar recorrências e previsões mensais">
+        Recorrências<span id="badgeSugestoes" class="badge-sug" hidden></span>
       </button>
       <button class="primario" id="btnNova">+ Nova conta</button>
     </div>
@@ -480,7 +511,7 @@ select.forma.herdada { color: var(--text-2); }
     <p class="estado erro" id="dErro" style="margin:8px 0 0"></p>
     <div class="modal-rodape">
       <button class="sutil" id="dCancelar">Cancelar</button>
-      <button class="primario" id="dSalvar">Adicionar</button>
+      <button class="primario" id="dSalvar">Prever mensalmente</button>
     </div>
   </div>
 </div>
@@ -502,28 +533,49 @@ select.forma.herdada { color: var(--text-2); }
   </div>
 </div>
 
-<!-- Gastos que se repetem todo mês e ainda não são conta fixa. Só sugere:
-     quem decide se aquilo é conta fixa é a pessoa, um a um. -->
+<!-- Gestão de previsões recorrentes; a cobrança real substitui a previsão. -->
 <div class="modal-fundo" id="modalSug" hidden>
-  <div class="modal" style="width:min(820px,100%)">
+  <div class="modal rec-modal" role="dialog" aria-modal="true" aria-labelledby="sTitulo" aria-describedby="sResumo" tabindex="-1">
     <div class="modal-tit">
-      <h2>Gastos recorrentes detectados</h2>
-      <button class="icone" id="sFechar" aria-label="Fechar">×</button>
+      <h2 id="sTitulo">Recorrências</h2>
+      <button class="icone" id="sFechar" aria-label="Fechar recorrências">×</button>
     </div>
-    <p class="muted" id="sResumo" style="margin:0 0 12px;font-size:12.5px"></p>
-    <div id="sQuebradosBloco" hidden>
-      <div class="sug-titulo">Cadastradas, mas o vínculo não está pegando</div>
-      <p class="muted" style="margin:0 0 8px;font-size:12px">
-        A conta existe e o gasto acontece, mas o termo de vínculo não casa com a
-        transação — então ela fica pendente todo mês. Corrigir o termo resolve.
-      </p>
-      <div id="sQuebrados" class="sug-lista" style="margin-bottom:14px"></div>
-      <div class="sug-titulo">Não cadastradas</div>
+    <p class="rec-intro" id="sResumo">Antecipe cobranças mensais no cartão ou na conta. Quando a transação for identificada, ela substitui a previsão daquele mês. Recorrências não criam contas fixas.</p>
+    <div id="sGerenciar">
+      <div class="rec-barra">
+        <div class="rec-tabs" role="tablist" aria-label="Recorrências">
+          <button id="sTabAtivas" role="tab" aria-selected="true" aria-controls="sPainelAtivas" data-rec-tab="ativas">Ativas<span id="sTotalAtivas">0</span></button>
+          <button id="sTabSugestoes" role="tab" aria-selected="false" aria-controls="sPainelSugestoes" tabindex="-1" data-rec-tab="sugestoes">Sugestões<span id="sTotalSugestoes">0</span></button>
+          <button id="sTabPausadas" role="tab" aria-selected="false" aria-controls="sPainelPausadas" tabindex="-1" data-rec-tab="pausadas">Pausadas<span id="sTotalPausadas">0</span></button>
+        </div>
+        <button id="sNova">+ Nova recorrência</button>
+      </div>
+      <p id="sCarregando" class="muted" role="status" hidden>Carregando recorrências…</p>
+      <section id="sPainelAtivas" role="tabpanel" aria-labelledby="sTabAtivas" tabindex="0">
+        <div id="sPrevisoes" class="sug-lista"></div>
+      </section>
+      <section id="sPainelSugestoes" role="tabpanel" aria-labelledby="sTabSugestoes" tabindex="0" hidden>
+        <details class="rec-regras" id="sRegras"><summary>Como identificamos uma recorrência</summary><ul id="sRegrasLista"></ul></details>
+        <div id="sLista" class="sug-lista"></div>
+      </section>
+      <section id="sPainelPausadas" role="tabpanel" aria-labelledby="sTabPausadas" tabindex="0" hidden>
+        <div id="sPausadas" class="sug-lista"></div>
+      </section>
     </div>
-    <div id="sLista" class="sug-lista"></div>
-    <p class="muted" id="sDescartados" style="margin:12px 0 0;font-size:12px"></p>
-    <p class="estado erro" id="sErro" style="margin:8px 0 0"></p>
-    <div class="modal-rodape">
+    <form id="sFormulario" hidden>
+      <div class="rec-form-grid">
+        <label class="campo full"><span>Nome da recorrência</span><input id="sNome" required maxlength="160" placeholder="Ex.: Netflix" autocomplete="off" /></label>
+        <label class="campo full"><span>Identificação no extrato</span><input id="sLojista" required maxlength="250" aria-describedby="sLojistaAjuda" autocomplete="off" /><small id="sLojistaAjuda">Use a descrição completa da cobrança no extrato. A comparação usa a identificação normalizada, sem procurar palavras isoladas dentro de outras descrições.</small></label>
+        <label class="campo full"><span>Forma de pagamento</span><select id="sConta" required aria-describedby="sContaAjuda"></select><small id="sContaAjuda">A previsão entra neste cartão ou conta, e a cobrança é procurada somente nele.</small></label>
+        <label class="campo"><span>Valor da previsão</span><select id="sModoValor"><option value="ultimo">Usar o último valor cobrado</option><option value="fixo">Usar valor definido</option></select></label>
+        <label class="campo"><span id="sValorRotulo">Valor inicial (R$)</span><input id="sValor" inputmode="decimal" required placeholder="0,00" aria-describedby="sValorAjuda" /><small id="sValorAjuda">Usado enquanto não houver cobrança identificada.</small></label>
+        <label class="campo"><span>Dia habitual da cobrança</span><input id="sDia" type="number" min="1" max="31" step="1" required /></label>
+      </div>
+      <div class="rec-form-acoes"><button type="button" class="sutil" id="sVoltar">Cancelar</button><button type="submit" class="primario" id="sSalvar">Salvar recorrência</button></div>
+    </form>
+    <p class="estado erro" id="sErro" role="alert" style="margin:12px 0 0"></p>
+    <p id="sAviso" class="sr-only" role="status" aria-live="polite"></p>
+    <div class="modal-rodape" id="sRodape">
       <button class="sutil" id="sCancelar">Fechar</button>
     </div>
   </div>
@@ -1184,159 +1236,268 @@ function renderHistorico(p) {
        </div>`;
 }
 
-/* ------------------------------------------ sugestões de recorrentes */
+/* ------------------------------------------------------- recorrências */
 
-let SUGESTOES = [], QUEBRADOS = [];
+let SUGESTOES = [], RECORRENCIAS = [], REC_CONTAS = [];
+let recAba = "ativas", recEditando = null, recExcluindo = null;
+let recSalvando = false, recPedido = 0, recFocoAnterior = null, recFocoEditor = null;
+const REC_ABAS = { ativas: "Ativas", sugestoes: "Sugestoes", pausadas: "Pausadas" };
 
-const MOTIVO_DESCARTE = {
-  frequente: "acontecem várias vezes no mesmo mês (gasto frequente, não conta fixa)",
-  parcelamento: "são parcelamento no cartão (a projeção de fatura já conta)",
-  valorInstavel: "têm valor instável demais para virar previsto",
-  encerrado: "pararam de acontecer",
-  jaCadastrado: "já estão cadastrados",
-  ignorado: "você já recusou antes",
-};
-
-function itemSugestao(s) {
-  const cat = s.categoria
-    ? `${s.categoria.emoji || ""} ${esc(s.categoria.nome)}`.trim() : "sem categoria";
-  const meses = `<b>${s.meses}</b> dos últimos ${s.mesesJanela} meses`;
-  const dia = s.diaTipico ? ` · dia <b>${s.diaTipico}</b>` : "";
-  const variacao = s.variacao >= 1 ? ` · varia <b>${s.variacao}%</b>` : " · valor fixo";
-  return `
-    <div class="sug-item" data-chave="${esc(s.chave)}">
-      <div>
-        <div class="sug-nome">
-          ${esc(s.descricao)}
-          <span class="sug-conf ${s.confianca}" title="Regularidade ${s.regularidade} — quanto mais perto de 1, mais mensal">${s.confianca}</span>
-        </div>
-        <div class="sug-meta">${meses}${dia}${variacao} · ${cat} · ${s.noCartao ? "cartão" : "conta"}</div>
-      </div>
-      <div class="sug-valor">
-        ${fmtBRL(s.valorMedio)}
-        <small>último ${fmtBRL(s.valorUltimo)}</small>
-      </div>
-      <div class="sug-acoes">
-        <button class="primario" data-sug-add="${esc(s.chave)}">Adicionar</button>
-        <button class="sutil" data-sug-nao="${esc(s.chave)}" title="Não mostrar de novo">Não</button>
-      </div>
-    </div>`;
+function pagamentoRecorrencia(s) {
+  const conta = REC_CONTAS.find(c => String(c.id) === String(s.contaId));
+  const nome = conta?.nome || s.contaNome;
+  return nome ? `${s.noCartao ? "Cartão" : "Conta"} · ${nome}` : "Pagamento não definido";
 }
 
-/** Conta fixa que existe, o gasto acontece, mas o termo não casa com ele.
- *  A ação aqui é corrigir o termo -- cadastrar de novo criaria duplicata. */
-function itemQuebrado(s) {
-  return `
-    <div class="sug-item" data-chave="${esc(s.chave)}">
-      <div>
-        <div class="sug-nome">${esc(s.fixaNome)}</div>
-        <div class="sug-meta">
-          termo <span class="sug-termo errado">${esc(s.termoAtual || "(vazio)")}</span>
-          → <span class="sug-termo">${esc(s.termoSugerido)}</span>
-          · <b>${s.meses}</b> dos últimos ${s.mesesJanela} meses
-        </div>
-      </div>
-      <div class="sug-valor">
-        ${fmtBRL(s.valorMedio)}
-        <small>previsto ${fmtBRL(s.valorCadastrado)}</small>
-      </div>
-      <div class="sug-acoes">
-        <button class="primario" data-sug-corrigir="${esc(s.chave)}">Corrigir termo</button>
-      </div>
-    </div>`;
+function itemSugestao(s) {
+  const historico = s.historico || [];
+  const evidencia = historico.length ? `${historico.length} cobranças analisadas` : `${s.meses || 0} meses com cobrança`;
+  const variacao = Number(s.variacao) >= 1 ? `Variação de ${Number(s.variacao).toLocaleString("pt-BR")}%` : "Valor estável";
+  return `<article class="sug-item" data-chave="${esc(s.chave)}">
+    <div><div class="sug-nome">${esc(s.descricao)}</div>
+      <div class="sug-meta">${esc(pagamentoRecorrencia(s))}${s.diaTipico ? ` · dia ${esc(String(s.diaTipico))}` : ""}</div>
+      <div class="sug-meta">${esc(evidencia)} · frequência mensal</div>
+    </div>
+    <div class="sug-valor">${fmtBRL(s.valorUltimo)}<small>por mês</small></div>
+    <div class="sug-acoes">
+      <button class="primario" data-sug-add="${esc(s.chave)}" aria-label="Ativar ${esc(s.descricao)}">Ativar</button>
+      <button class="sutil" data-sug-nao="${esc(s.chave)}" title="Não sugerir novamente" aria-label="Dispensar sugestão ${esc(s.descricao)}">Dispensar</button>
+    </div>
+    <details class="rec-evidencias"><summary>Ver evidências</summary>
+      <p>${esc(variacao)} · média ${fmtBRL(s.valorMedio)}.${s.categoria?.nome ? ` ${esc(s.categoria.nome)}.` : ""}</p>
+      ${(s.avisos || []).length ? `<p>${s.avisos.map(esc).join("<br>")}</p>` : ""}
+      <div class="rec-historico">${historico.map(h => `<div class="rec-cobranca"><span>${esc(fmtData(h.data))}</span><span>${esc(h.descricao || s.descricao)}</span><strong>${fmtBRL(h.valor)}</strong></div>`).join("")}</div>
+    </details>
+  </article>`;
+}
+
+function itemRecorrencia(s) {
+  const contaDisponivel = REC_CONTAS.some(c => String(c.id) === String(s.contaId));
+  const proxima = s.proximaPrevisao;
+  const status = !s.ativa ? "Previsões pausadas" : !contaDisponivel ? "Edite para escolher uma conta ou cartão disponível."
+    : s.statusPrevisao || (proxima ? `Próxima previsão em ${labelMes(proxima.mes)}` : "Aguardando a próxima cobrança");
+  const valor = proxima?.valor ?? s.valorAtual ?? (s.modoValor === "fixo" ? s.valorPrevisto : s.valorUltimo ?? s.valorPrevisto);
+  const excluindo = recExcluindo === s.chave;
+  return `<article class="sug-item" data-chave="${esc(s.chave)}">
+    <div><div class="sug-nome">${esc(s.descricao)}</div>
+      <div class="sug-meta">${esc(pagamentoRecorrencia(s))}${s.diaTipico ? ` · dia ${esc(String(s.diaTipico))}` : ""}</div>
+      <div class="sug-meta"><span class="${s.ativa ? contaDisponivel ? "rec-status" : "rec-alerta" : ""}">${esc(status)}</span></div>
+    </div>
+    <div class="sug-valor">${fmtBRL(valor)}<small>${s.modoValor === "fixo" ? "valor definido" : "última cobrança"}</small></div>
+    <div class="sug-acoes">
+      <button class="sutil" data-rec-editar="${esc(s.chave)}" aria-label="Editar ${esc(s.descricao)}">Editar</button>
+      <button class="sutil" data-sug-prever="${esc(s.chave)}" data-ativa="${!s.ativa}" aria-label="${s.ativa ? "Pausar" : "Retomar"} ${esc(s.descricao)}">${s.ativa ? "Pausar" : "Retomar"}</button>
+      <button class="sutil rec-excluir" data-rec-excluir="${esc(s.chave)}" aria-expanded="${excluindo}" aria-label="Excluir ${esc(s.descricao)}">Excluir</button>
+    </div>
+    ${excluindo ? `<div class="rec-confirmacao" role="group" aria-label="Confirmar exclusão">
+      <p>Excluir <strong>${esc(s.descricao)}</strong>? As previsões serão removidas. As transações já registradas serão preservadas.</p>
+      <div class="sug-acoes"><button class="sutil" data-rec-cancelar-exclusao="${esc(s.chave)}">Cancelar</button><button class="rec-excluir" data-rec-confirmar-exclusao="${esc(s.chave)}">Excluir recorrência</button></div>
+    </div>` : ""}
+  </article>`;
+}
+
+function renderListaRecorrencias() {
+  const ativas = RECORRENCIAS.filter(s => s.ativa), pausadas = RECORRENCIAS.filter(s => !s.ativa);
+  el("sPrevisoes").innerHTML = ativas.map(itemRecorrencia).join("") || '<div class="rec-vazio"><strong>Nenhuma recorrência ativa.</strong>Ative uma sugestão ou cadastre uma nova recorrência.</div>';
+  el("sPausadas").innerHTML = pausadas.map(itemRecorrencia).join("") || '<div class="rec-vazio"><strong>Nenhuma recorrência pausada.</strong>Ao pausar uma recorrência, as próximas previsões deixam de ser geradas.</div>';
+  el("sTotalAtivas").textContent = ativas.length;
+  el("sTotalPausadas").textContent = pausadas.length;
 }
 
 function renderSugestoes(p) {
-  SUGESTOES = p.sugestoes || [];
-  QUEBRADOS = p.vinculosQuebrados || [];
-  const badge = el("badgeSugestoes");
-  const total = SUGESTOES.length + QUEBRADOS.length;
-  badge.hidden = !total;
-  badge.textContent = total;
+  SUGESTOES = (p.sugestoes || []).filter(s => s.confianca !== "baixa");
+  RECORRENCIAS = p.previsoes || [];
+  REC_CONTAS = p.contasPagamento || [];
+  el("badgeSugestoes").hidden = !SUGESTOES.length;
+  el("badgeSugestoes").textContent = SUGESTOES.length;
+  el("badgeSugestoes").setAttribute("aria-label", `${SUGESTOES.length} sugestões`);
+  el("sTotalSugestoes").textContent = SUGESTOES.length;
+  el("sLista").innerHTML = SUGESTOES.map(itemSugestao).join("") || '<div class="rec-vazio"><strong>Nenhuma nova sugestão com evidência mensal suficiente.</strong>Você pode cadastrar uma recorrência a qualquer momento.</div>';
+  el("sRegrasLista").innerHTML = (p.regrasSugestao || []).map(r => `<li>${esc(r)}</li>`).join("");
+  el("sRegras").hidden = !(p.regrasSugestao || []).length;
+  renderListaRecorrencias();
+  selecionarAbaRecorrencias(recAba);
+  ocuparRecorrencias(recSalvando);
+}
 
-  el("sQuebradosBloco").hidden = !QUEBRADOS.length;
-  el("sQuebrados").innerHTML = QUEBRADOS.map(itemQuebrado).join("");
+function selecionarAbaRecorrencias(aba, focar = false) {
+  if (!REC_ABAS[aba]) return;
+  recAba = aba;
+  for (const [chave, nome] of Object.entries(REC_ABAS)) {
+    const selecionada = chave === aba, tab = el(`sTab${nome}`);
+    tab.setAttribute("aria-selected", String(selecionada));
+    tab.tabIndex = selecionada ? 0 : -1;
+    el(`sPainel${nome}`).hidden = !selecionada;
+    if (selecionada && focar) tab.focus();
+  }
+  el("sErro").textContent = "";
+}
 
-  el("sResumo").innerHTML = SUGESTOES.length
-    ? `Gastos que se repetem entre ${labelMes(p.janela.de)} e ${labelMes(p.janela.ate)} e ainda não são conta fixa —
-       somam <b>${fmtBRL(p.totalMensal)}/mês</b>. Adicionar já preenche valor, categoria, dia e o termo de vínculo.`
-    : `Nenhum gasto recorrente novo entre ${labelMes(p.janela.de)} e ${labelMes(p.janela.ate)}.`;
-
-  el("sLista").innerHTML = SUGESTOES.length
-    ? SUGESTOES.map(itemSugestao).join("")
-    : `<div class="muted" style="padding:20px;text-align:center">Tudo que se repete já está cadastrado ou foi recusado.</div>`;
-
-  // O que foi descartado entra no rodapé: sem isso o painel diria "achei 7" e
-  // não haveria como saber que outros foram vistos e recusados por um motivo.
-  const partes = Object.entries(p.descartados || {})
-    .filter(([, n]) => n)
-    .map(([k, n]) => `<b>${n}</b> ${MOTIVO_DESCARTE[k] || k}`);
-  el("sDescartados").innerHTML = partes.length
-    ? `Também encontrei, e deixei de fora: ${partes.join("; ")}.` : "";
+function fecharRecorrencias() {
+  if (recSalvando) return;
+  el("modalSug").hidden = true;
+  el("sErro").textContent = "";
+  if (recFocoAnterior?.isConnected) recFocoAnterior.focus();
 }
 
 async function carregarSugestoes({ abrir = false } = {}) {
+  if (recSalvando) return;
+  const pedido = ++recPedido;
+  if (abrir) {
+    recFocoAnterior = document.activeElement;
+    recExcluindo = null;
+    voltarRecorrencias(false);
+    selecionarAbaRecorrencias("ativas");
+    renderListaRecorrencias();
+    el("modalSug").hidden = false;
+    el("sCarregando").hidden = false;
+    el("sTabAtivas").focus();
+  }
   try {
     const p = await pedir("/fixas/recorrentes");
+    if (pedido === recPedido) renderSugestoes(p);
+  } catch (e) {
+    if (pedido === recPedido && abrir) el("sErro").textContent = e.message;
+  } finally {
+    if (pedido === recPedido) el("sCarregando").hidden = true;
+  }
+}
+
+function ocuparRecorrencias(ocupada) {
+  recSalvando = ocupada;
+  el("modalSug").querySelector('[role="dialog"]').setAttribute("aria-busy", String(ocupada));
+  el("modalSug").querySelectorAll("button, input, select").forEach(c => { c.disabled = ocupada; });
+  el("sSalvar").textContent = ocupada ? "Salvando…" : recEditando ? "Salvar alterações" : "Criar recorrência";
+}
+
+async function alterarRecorrencia(rota, dados, { aba = recAba, mensagem = "Recorrência atualizada.", fecharEditor = false } = {}) {
+  if (recSalvando) return;
+  ++recPedido; // Impede uma consulta anterior de restaurar um cadastro já alterado.
+  ocuparRecorrencias(true);
+  el("sErro").textContent = "";
+  el("sAviso").textContent = "Salvando…";
+  let salva = false;
+  try {
+    const p = await pedir(`/fixas/recorrentes/${rota}`, "POST", dados);
+    salva = true;
+    recExcluindo = null;
+    recAba = aba;
+    if (fecharEditor) voltarRecorrencias(false);
     renderSugestoes(p);
-    if (abrir) el("modalSug").hidden = false;
-  } catch (e) {
-    if (abrir) {
-      el("modalSug").hidden = false;
-      el("sErro").textContent = e.message;
-    }
-  }
-}
-
-/** Adiciona a sugestão como conta fixa, já preenchida. Cai no mesmo POST que
- *  o cadastro manual usa -- nada de caminho paralelo de gravação. */
-async function adicionarSugestao(chave) {
-  const s = SUGESTOES.find(x => x.chave === chave);
-  if (!s) return;
-  const linha = el("sLista").querySelector(`[data-chave="${CSS.escape(chave)}"]`);
-  linha?.classList.add("saindo");
-  el("sErro").textContent = "";
-  try {
-    await pedir("/fixas", "POST", {
-      // Nome vem da descrição do banco, que é o que a pessoa reconhece; ela
-      // pode renomear depois no cadastro.
-      nome: s.descricao.trim().slice(0, 60),
-      tag: TAGS[0],
-      valorPrevisto: s.valorMedio,
-      diaVencimento: s.diaTipico || null,
-      categoriaId: s.categoria?.id || null,
-      termo: s.termoSugerido,
-      incluirCalculos: true,
-    });
-    // Recarrega as duas coisas: a conta nova entra na lista e sai das
-    // sugestões (o backend passa a considerá-la "jaCadastrado").
-    await Promise.all([carregar(), carregarSugestoes()]);
-  } catch (e) {
-    linha?.classList.remove("saindo");
-    el("sErro").textContent = e.message;
-  }
-}
-
-async function corrigirTermoSugerido(chave) {
-  const s = QUEBRADOS.find(x => x.chave === chave);
-  if (!s) return;
-  el("sQuebrados").querySelector(`[data-chave="${CSS.escape(chave)}"]`)?.classList.add("saindo");
-  el("sErro").textContent = "";
-  try {
-    renderSugestoes(await pedir("/fixas/recorrentes/corrigir-termo", "POST",
-      { fixaId: s.fixaId, termo: s.termoSugerido }));
-    // O vínculo passa a casar: a linha do mês precisa refletir isso.
+    el("sAviso").textContent = mensagem;
+    // Atualiza também os valores previstos nos cartões da página.
     await carregar();
-  } catch (e) { el("sErro").textContent = e.message; }
+  } catch (e) {
+    el("sErro").textContent = salva ? `Alteração salva. Não foi possível atualizar os totais da página: ${e.message}` : e.message;
+    el("sAviso").textContent = salva ? mensagem : "Não foi possível salvar.";
+  } finally {
+    ocuparRecorrencias(false);
+    el("sCarregando").hidden = true;
+    if (salva) el(`sTab${REC_ABAS[recAba]}`).focus();
+    else if (!el("sFormulario").hidden) el("sSalvar").focus();
+  }
 }
 
-async function recusarSugestao(chave) {
-  const s = SUGESTOES.find(x => x.chave === chave);
-  el("sLista").querySelector(`[data-chave="${CSS.escape(chave)}"]`)?.classList.add("saindo");
-  try {
-    renderSugestoes(await pedir("/fixas/recorrentes/ignorar", "POST",
-      { chave, descricao: s?.descricao || "" }));
-  } catch (e) { el("sErro").textContent = e.message; }
+function abrirEditorRecorrencia(chave = null) {
+  if (recSalvando) return;
+  const s = chave ? RECORRENCIAS.find(r => r.chave === chave) : null;
+  if (chave && !s) return;
+  recFocoEditor = document.activeElement;
+  recEditando = s?.chave || null;
+  el("sTitulo").textContent = s ? "Editar recorrência" : "Nova recorrência";
+  el("sGerenciar").hidden = true;
+  el("sRodape").hidden = true;
+  el("sFormulario").hidden = false;
+  el("sErro").textContent = "";
+  el("sNome").value = s?.descricao || "";
+  el("sLojista").value = s?.lojista || s?.descricao || "";
+  const disponivel = s && REC_CONTAS.some(c => String(c.id) === String(s.contaId));
+  const placeholder = s && !disponivel ? "Pagamento anterior indisponível — escolha outro" : "Escolha a conta ou o cartão";
+  el("sConta").innerHTML = `<option value="">${placeholder}</option>` + REC_CONTAS.map(c => `<option value="${esc(String(c.id))}">${esc(`${c.noCartao ? "Cartão" : "Conta"} · ${c.nome}`)}</option>`).join("");
+  el("sConta").value = disponivel ? String(s.contaId) : "";
+  el("sContaAjuda").textContent = REC_CONTAS.length ? "A previsão entra neste cartão ou conta, e a cobrança é procurada somente nele." : "Nenhuma conta ou cartão disponível. Conecte uma conta para cadastrar previsões.";
+  el("sModoValor").value = s?.modoValor === "fixo" ? "fixo" : "ultimo";
+  el("sValor").value = s ? fmtValor(s.valorPrevisto ?? s.valorUltimo) : "";
+  el("sDia").value = s?.diaTipico || "";
+  el("sValor").setCustomValidity("");
+  atualizarModoValorRecorrencia();
+  ocuparRecorrencias(false);
+  el("sNome").focus();
+}
+
+function voltarRecorrencias(focar = true) {
+  recEditando = null;
+  el("sFormulario").hidden = true;
+  el("sGerenciar").hidden = false;
+  el("sRodape").hidden = false;
+  el("sTitulo").textContent = "Recorrências";
+  el("sErro").textContent = "";
+  if (focar) {
+    if (recFocoEditor?.isConnected) recFocoEditor.focus();
+    else el(`sTab${REC_ABAS[recAba]}`).focus();
+  }
+}
+
+function atualizarModoValorRecorrencia() {
+  const fixo = el("sModoValor").value === "fixo";
+  el("sValorRotulo").textContent = fixo ? "Valor mensal (R$)" : "Valor inicial (R$)";
+  el("sValorAjuda").textContent = fixo ? "Este valor será mantido nas próximas previsões." : "Usado enquanto não houver cobrança identificada.";
+}
+
+function salvarRecorrencia(e) {
+  e.preventDefault();
+  if (recSalvando) return;
+  const textoValor = el("sValor").value.trim();
+  const valor = lerValor(textoValor);
+  el("sValor").setCustomValidity(/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(textoValor) && valor > 0 ? "" : "Informe um valor maior que zero, por exemplo 29,90.");
+  if (!el("sFormulario").reportValidity()) return;
+  const dados = {
+    descricao: el("sNome").value.trim(), lojista: el("sLojista").value.trim(),
+    contaId: el("sConta").value, modoValor: el("sModoValor").value,
+    valorPrevisto: valor, diaTipico: Number(el("sDia").value),
+  };
+  if (!dados.descricao || !dados.lojista) {
+    el("sErro").textContent = "Preencha o nome e a identificação no extrato.";
+    return;
+  }
+  const existente = RECORRENCIAS.find(r => r.chave === recEditando);
+  if (recEditando) dados.chave = recEditando;
+  alterarRecorrencia(recEditando ? "editar" : "criar", dados, {
+    aba: existente && !existente.ativa ? "pausadas" : "ativas", fecharEditor: true,
+    mensagem: recEditando ? "Recorrência atualizada." : "Recorrência criada e ativada.",
+  });
+}
+
+function tecladoRecorrencias(e) {
+  if (el("modalSug").hidden) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    if (recSalvando) return;
+    if (!el("sFormulario").hidden) return voltarRecorrencias();
+    if (recExcluindo) {
+      const chave = recExcluindo;
+      recExcluindo = null;
+      renderListaRecorrencias();
+      el("modalSug").querySelector(`[data-rec-excluir="${CSS.escape(chave)}"]`)?.focus();
+      return;
+    }
+    return fecharRecorrencias();
+  }
+  const tab = e.target.closest("[data-rec-tab]");
+  if (tab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+    e.preventDefault();
+    if (recSalvando) return;
+    const abas = Object.keys(REC_ABAS), atual = abas.indexOf(tab.dataset.recTab);
+    const indice = e.key === "Home" ? 0 : e.key === "End" ? abas.length - 1 : (atual + (e.key === "ArrowRight" ? 1 : -1) + abas.length) % abas.length;
+    return selecionarAbaRecorrencias(abas[indice], true);
+  }
+  if (e.key !== "Tab") return;
+  const focaveis = [...el("modalSug").querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [tabindex="0"]')].filter(n => n.getClientRects().length && n.tabIndex >= 0);
+  if (!focaveis.length) { e.preventDefault(); return; }
+  const primeiro = focaveis[0], ultimo = focaveis[focaveis.length - 1];
+  if (e.shiftKey && (document.activeElement === primeiro || !focaveis.includes(document.activeElement))) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && (document.activeElement === ultimo || !focaveis.includes(document.activeElement))) { e.preventDefault(); primeiro.focus(); }
 }
 
 async function salvar() {
@@ -1694,21 +1855,49 @@ function ligar() {
   el("histCancelar").addEventListener("click", fecharHist);
   el("modalHist").addEventListener("click", e => { if (e.target.id === "modalHist") fecharHist(); });
 
-  // Sugestões de recorrentes
-  const fecharSug = () => { el("modalSug").hidden = true; el("sErro").textContent = ""; };
+  // Gestão de recorrências: ativas primeiro, edição e confirmação na mesma janela.
   el("btnSugerir").addEventListener("click", () => carregarSugestoes({ abrir: true }));
-  el("sFechar").addEventListener("click", fecharSug);
-  el("sCancelar").addEventListener("click", fecharSug);
-  el("modalSug").addEventListener("click", e => { if (e.target.id === "modalSug") fecharSug(); });
-  el("sLista").addEventListener("click", e => {
+  el("sFechar").addEventListener("click", fecharRecorrencias);
+  el("sCancelar").addEventListener("click", fecharRecorrencias);
+  el("sNova").addEventListener("click", () => abrirEditorRecorrencia());
+  el("sVoltar").addEventListener("click", () => { if (!recSalvando) voltarRecorrencias(); });
+  el("sFormulario").addEventListener("submit", salvarRecorrencia);
+  el("sModoValor").addEventListener("change", atualizarModoValorRecorrencia);
+  el("sValor").addEventListener("input", () => el("sValor").setCustomValidity(""));
+  el("modalSug").addEventListener("keydown", tecladoRecorrencias);
+  el("modalSug").addEventListener("click", e => {
+    if (recSalvando) return;
+    if (e.target.id === "modalSug") return fecharRecorrencias();
+    const tab = e.target.closest("[data-rec-tab]");
+    if (tab) return selecionarAbaRecorrencias(tab.dataset.recTab);
+    const editar = e.target.closest("[data-rec-editar]");
+    if (editar) return abrirEditorRecorrencia(editar.dataset.recEditar);
+    const excluir = e.target.closest("[data-rec-excluir]");
+    if (excluir) {
+      recExcluindo = excluir.dataset.recExcluir;
+      renderListaRecorrencias();
+      el("modalSug").querySelector(`[data-rec-cancelar-exclusao="${CSS.escape(recExcluindo)}"]`)?.focus();
+      return;
+    }
+    const cancelar = e.target.closest("[data-rec-cancelar-exclusao]");
+    if (cancelar) {
+      const chave = cancelar.dataset.recCancelarExclusao;
+      recExcluindo = null;
+      renderListaRecorrencias();
+      el("modalSug").querySelector(`[data-rec-excluir="${CSS.escape(chave)}"]`)?.focus();
+      return;
+    }
+    const confirmar = e.target.closest("[data-rec-confirmar-exclusao]");
+    if (confirmar) return alterarRecorrencia("excluir", { chave: confirmar.dataset.recConfirmarExclusao }, { mensagem: "Recorrência excluída. Transações preservadas." });
+    const prever = e.target.closest("[data-sug-prever]");
+    if (prever) return alterarRecorrencia("prever", { chave: prever.dataset.sugPrever, ativa: prever.dataset.ativa === "true" }, { mensagem: prever.dataset.ativa === "true" ? "Recorrência retomada." : "Recorrência pausada." });
     const add = e.target.closest("[data-sug-add]");
-    if (add) return adicionarSugestao(add.dataset.sugAdd);
+    if (add) return alterarRecorrencia("prever", { chave: add.dataset.sugAdd, ativa: true }, { aba: "ativas", mensagem: "Recorrência ativada." });
     const nao = e.target.closest("[data-sug-nao]");
-    if (nao) return recusarSugestao(nao.dataset.sugNao);
-  });
-  el("sQuebrados").addEventListener("click", e => {
-    const corrigir = e.target.closest("[data-sug-corrigir]");
-    if (corrigir) return corrigirTermoSugerido(corrigir.dataset.sugCorrigir);
+    if (nao) {
+      const s = SUGESTOES.find(r => r.chave === nao.dataset.sugNao);
+      return alterarRecorrencia("ignorar", { chave: nao.dataset.sugNao, descricao: s?.descricao || "" }, { mensagem: "Sugestão dispensada." });
+    }
   });
 
   el("dFechar").addEventListener("click", () => { el("modalDesc").hidden = true; });

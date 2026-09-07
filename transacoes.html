@@ -448,7 +448,7 @@ function marcaCategoria(cat, tamanho = 13) {
 
 function chipCategoria(tx) {
   if (tx.projetada) {
-    return `<span class="chip" style="opacity:.7;cursor:default" title="Projeção: parcela futura ainda não lançada pelo banco, categoria herdada da compra original">
+    return `<span class="chip" style="opacity:.7;cursor:default" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">
       ${marcaCategoria(tx.categoria)}${esc(tx.categoria.nome)}
     </span>`;
   }
@@ -489,9 +489,9 @@ function linha(tx) {
   const det = [];
   if (tx.parcelaTotal > 1) det.push(`parcela ${tx.parcelaNumero}/${tx.parcelaTotal}`);
   if (!tx.incluidaNosCalculos) det.push(tx.motivoExclusao || "fora dos cálculos");
-  if (tx.projetada) det.push("projetado");
+  if (tx.projetada) det.push(tx.recorrente ? "recorrente previsto" : "parcela projetada");
   const acoes = tx.projetada
-    ? `<span class="icone" style="opacity:.5;cursor:default" title="Projeção: parcela futura ainda não lançada pelo banco, não editável">≈</span>`
+    ? `<span class="icone" style="opacity:.5;cursor:default" title="Projeção: cobrança futura ainda não lançada pelo banco, não editável">≈</span>`
     : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
   return `
     <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""}">
@@ -605,7 +605,7 @@ function renderMetricas(r, serie = []) {
         const estimado = i.entradasEstimativa || i.saidasEstimativa;
         const avisos = [];
         if (i.entradasEstimativa) avisos.push(`entradas projetadas ${origemEntradasTexto(i.entradasOrigem)} (recebido até agora: ${fmtBRL(i.entradasRecebidas)})`);
-        if (i.saidasEstimativa) avisos.push("saídas projetadas pela fatura de cartão em aberto");
+        if (i.saidasEstimativa) avisos.push("saídas previstas: parcelas e recorrências");
         const titulo = avisos.length ? avisos.join(" · ") : "";
         return `<button class="mes-evolucao ${mesNoPeriodo(i.mes) ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
                 data-mes-evolucao="${i.mes}" ${titulo ? `title="${esc(titulo)}"` : ""}>
@@ -629,7 +629,7 @@ function renderMetricas(r, serie = []) {
       <span class="evolucao-stat ${r.saidasEstimativa ? "com-nota" : ""}">
         <span>Saídas <strong class="negativo">${fmtBRL(r.saidas)}</strong></span>
         ${r.saidasEstimativa
-          ? `<span class="estimativa-nota" title="Fatura de cartão ainda em aberto">≈ projetado pela fatura em aberto</span>` : ""}
+          ? `<span class="estimativa-nota" title="Inclui parcelas ou recorrências ainda não lançadas">≈ inclui gastos previstos</span>` : ""}
       </span>
       <span class="evolucao-stat">Resultado <strong class="${r.resultado >= 0 ? "positivo" : "negativo"}">${fmtSinal(r.resultado)}</strong></span>
     </div>`;

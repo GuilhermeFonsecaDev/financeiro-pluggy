@@ -318,6 +318,19 @@ class PluggyHandler(SimpleHTTPRequestHandler):
 
             # Recorrentes detectados: recusar tira a sugestão do painel para
             # sempre; reconsiderar traz de volta.
+            if parsed.path == "/api/fixas/recorrentes/criar":
+                self.send_json(recorrentes.criar_previsao(payload))
+                return
+            if parsed.path == "/api/fixas/recorrentes/editar":
+                self.send_json(recorrentes.editar_previsao(str(payload.get("chave") or ""), payload))
+                return
+            if parsed.path == "/api/fixas/recorrentes/excluir":
+                self.send_json(recorrentes.excluir_previsao(str(payload.get("chave") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/prever":
+                self.send_json(recorrentes.salvar_previsao(
+                    str(payload.get("chave") or ""), payload.get("ativa", True) is True))
+                return
             if parsed.path == "/api/fixas/recorrentes/ignorar":
                 self.send_json(recorrentes.ignorar(
                     str(payload.get("chave") or ""),

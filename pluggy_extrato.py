@@ -345,6 +345,23 @@ def _completar_faturas_abertas_e_parcelas(
                 "parcelaTotal": total,
             })
 
+    import recorrentes
+    for item in recorrentes.projetados(conn, ano):
+        conta_id = item["contaId"]
+        if conta_id not in itens:
+            continue
+        indice = item["mes"] - 1
+        if origens[conta_id][indice] == "fechada":
+            continue
+        valores[conta_id][indice] += item["valor"]
+        previstas[conta_id][indice] += 1
+        origens[conta_id][indice] = (
+            "aberta_projecao" if origens[conta_id][indice] in {"aberta", "aberta_projecao"}
+            else "projecao"
+        )
+        itens[conta_id].append(item)
+        anos_projetados.add(ano)
+
     return origens, previstas, anos_projetados, itens
 
 
@@ -1096,7 +1113,14 @@ def _aplicar_faturas_confirmadas(
             origens[conta_id][indice] = "confirmada"
 
 
+@fin.escopo_leitura
 def cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
+    fin.ensure_database()
+    return fin.reutilizar_leitura(
+        ("cartoes", ano, agrupamento), lambda: _cartoes_payload(ano, agrupamento))
+
+
+def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
     """Grade 12 meses x cartoes de credito, no mesmo formato da pagina manual
     de faturas.
 
@@ -1436,6 +1460,7 @@ def _compras_com_parcela_real(
     return saida
 
 
+@fin.escopo_leitura
 def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
     limite = min(int(filtros.get("limite") or LIMITE_PADRAO), LIMITE_MAXIMO)
     offset = max(int(filtros.get("offset") or 0), 0)
@@ -1582,30 +1607,14 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         sem_filtro_estreito = not any(
             filtros.get(k) for k in ("conta", "cartao", "categoria", "status", "tipo", "busca")
         )
-        # Filtrar por UM cartao (sem mais nenhum filtro estreito) ainda deixa
-        # a projecao de fatura fazer sentido -- so precisa ser a fatia daquele
-        # cartao, nao o total de todos. Categoria/status/tipo/busca nao tem
-        # equivalente projetavel, entao esses continuam bloqueando.
-        apenas_cartao_filtrado = bool(filtros.get("cartao")) and not any(
-            filtros.get(k) for k in ("conta", "categoria", "status", "tipo", "busca")
-        )
-        # A projecao (fatura aberta + parcelas que ainda vao vencer) so existe
-        # no modo "fatura" -- no modo "mes" a tela mostra a data real da
-        # compra, e uma parcela que ainda nao foi cobrada nao tem "data de
-        # compra futura" nenhuma pra mostrar.
+        # Projeções são saídas de cartão. Status bancário filtra somente
+        # lançamentos recebidos; PROJECTED não equivale a PENDING/POSTED.
         permite_projecao_cartoes = (
-            (sem_filtro_estreito or apenas_cartao_filtrado) and modo == "fatura"
+            modo == "fatura"
+            and filtros.get("tipo") != "CREDIT"
+            and not filtros.get("status")
         )
-        # Buscar por texto TEM equivalente projetavel: os itens projetados
-        # (parcelas futuras) tem descricao real, dai da pra casar contra o
-        # termo buscado mesmo sem mes selecionado -- so bloqueia se algum
-        # filtro sem equivalente (conta/categoria/status/tipo) tambem estiver
-        # ativo.
         busca_termo = (filtros.get("busca") or "").strip().casefold()
-        permite_projecao_busca = (
-            bool(busca_termo) and modo == "fatura"
-            and not any(filtros.get(k) for k in ("conta", "categoria", "status", "tipo"))
-        )
         # Cadastrado manualmente na tela de Entradas ("valor esperado"), tem
         # prioridade sobre a media: quem cadastrou sabe quanto espera receber
         # melhor do que uma media de meses passados, principalmente logo apos
@@ -1632,21 +1641,11 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     return media, entradas_reais, True, "media"
             return entradas_reais, entradas_reais, False, ""
 
-        # Mes sem nenhuma transacao ainda pode ter fatura de cartao projetada:
-        # uma compra parcelada em 5/12 so vira linha no banco quando a Pluggy
-        # realmente cobra aquela parcela -- as parcelas 6..12 nao existem como
-        # transacao enquanto o mes delas nao chega. cartoes_payload ja sabe
-        # projetar isso (mesma conta de Cartoes Pluggy), entao reaproveita em
-        # vez de duplicar a logica de fatura aberta + parcelamento aqui. So
-        # PREENCHE um mes que a view não achou nada; nunca sobrescreve um mes
-        # com dado real, mesmo que os dois numeros um dia divirjam.
-        # Vai ano a ano enquanto houver fatura projetada: um parcelamento em
-        # 12x contratado em dezembro estoura o ano corrente, e a tira precisa
-        # continuar mostrando enquanto existir fatura para mostrar. Para no
-        # primeiro ano sem nada -- e o cap existe para o loop nunca depender
-        # so de dado bem-comportado.
+        # Usa as parcelas de Cartões como fonte única das projeções.
+        # Os itens filtrados alimentam lista, resumo, categorias e evolução.
+        # Continua nos anos seguintes enquanto houver parcelas conhecidas.
         projecoes_cartoes: list[dict[str, Any]] = []
-        if permite_projecao_cartoes or permite_projecao_busca:
+        if permite_projecao_cartoes:
             ano_base = int(mes_atual[:4])
             for ano_projecao in range(ano_base, ano_base + ANOS_PROJECAO_MAX):
                 try:
@@ -1660,40 +1659,6 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 ):
                     break
                 projecoes_cartoes.append(payload_ano)
-
-        def _valores_do_ano(payload: dict[str, Any]) -> list[float]:
-            """Fatia da projecao que corresponde ao filtro de cartao atual.
-
-            Sem filtro: soma todos os cartoes (totalMes ja vem pronto). Com
-            filtro de UM cartao, so a fatia dos cartoes daquele grupo -- mesma
-            resolucao banco->contas que o _onde usa, pra bater com o que a
-            tela mostra quando filtra por esse cartao.
-            """
-            if sem_filtro_estreito:
-                return payload["totalMes"]
-            return [
-                sum(
-                    payload["valores"].get(conta_id, [0.0] * 12)[indice]
-                    for conta_id in fontes_filtro_cartao
-                )
-                for indice in range(12)
-            ]
-
-        if permite_projecao_cartoes:
-            for payload_ano in projecoes_cartoes:
-                ano_projecao = payload_ano["ano"]
-                for indice, total in enumerate(_valores_do_ano(payload_ano)):
-                    if total <= 0:
-                        continue
-                    chave = f"{ano_projecao}-{indice + 1:02d}"
-                    item = evolucao.get(chave)
-                    if item and (item["quantidade"] or item["saidas"]):
-                        continue
-                    evolucao[chave] = {
-                        "entradas": 0.0, "qtdEntradas": 0,
-                        "saidas": float(total), "quantidade": 0,
-                        "saidasEstimativa": True,
-                    }
 
         # So a categoria-pai aparece aqui -- uma transacao na subcategoria
         # "Livraria e educacao" soma dentro de "Compras". A lista de
@@ -1765,29 +1730,6 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 for item in por_categoria
             ]
 
-        linhas = conn.execute(
-            f"""
-            SELECT t.transacao_id, t.data, t.mes_ref, t.descricao, t.valor,
-                   CASE WHEN t.tipo = 'DEBIT' THEN -ABS(t.valor)
-                        ELSE ABS(t.valor) END AS valor_normalizado,
-                   t.moeda, t.tipo, t.status,
-                   t.categoria_original, t.categoria_id,
-                   t.origem_categorizacao, t.incluida, t.motivo_exclusao,
-                   t.entrada_considerada, t.editada_manualmente,
-                   cat.nome AS categoria_nome, cat.cor AS categoria_cor,
-                   cat.emoji AS categoria_emoji,
-                   t.parcela_numero, t.parcela_total, t.fatura_id,
-                   c.nome AS conta_nome, c.subtipo AS conta_subtipo,
-                   t.conta_id
-            FROM extrato_efetivo_cache t
-            JOIN pluggy_contas c ON c.conta_id = t.conta_id
-            LEFT JOIN extrato_categorias cat ON cat.id = t.categoria_id{onde}
-            ORDER BY t.data DESC, t.ordem DESC, t.transacao_id
-            LIMIT ? OFFSET ?
-            """,
-            [*params, limite, offset],
-        ).fetchall()
-
         # Itens projetados (parcelas futuras de cartao) que caem no filtro
         # atual. Nunca somem nem substituem dado real: entram ao lado dele,
         # menos a parcela cuja compra ja tem lancamento real naquela mesma
@@ -1795,23 +1737,19 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         # Todo periodo) varre os 12 meses; com periodo, so o que cai dentro.
         transacoes_extra: list[dict[str, Any]] = []
         por_categoria_extra: list[dict[str, Any]] = []
-        reais_por_mes = _compras_com_parcela_real(conn, mes_de, mes_ate)
+        reais_por_mes = _compras_com_parcela_real(conn, "", "")
         pares = []
         if (
-            (permite_projecao_cartoes or permite_projecao_busca)
-            and projecoes_cartoes and offset == 0
+            permite_projecao_cartoes
+            and projecoes_cartoes
         ):
             for payload_ano in projecoes_cartoes:
                 ano_projecao_itens = payload_ano["ano"]
                 for cartao in payload_ano["cartoes"]:
                     for item in payload_ano["itens"].get(cartao["id"], []):
-                        if item["contaId"] not in fontes_filtro_cartao:
+                        if filtros.get("conta") or item["contaId"] not in fontes_filtro_cartao:
                             continue
                         mes_ref_item = f"{ano_projecao_itens}-{item['mes']:02d}"
-                        if mes_de and mes_ref_item < mes_de:
-                            continue
-                        if mes_ate and mes_ref_item > mes_ate:
-                            continue
                         if busca_termo and busca_termo not in item["descricao"].casefold():
                             continue
                         # Nao injeta projecao em cima da parcela REAL da
@@ -1825,6 +1763,18 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                             continue
                         pares.append((cartao, item, mes_ref_item))
 
+        if permite_projecao_cartoes:
+            import recorrentes
+            for ano_recorrente in range(int(mes_atual[:4]), int(mes_atual[:4]) + 2):
+                for item in recorrentes.projetados(conn, ano_recorrente):
+                    if item["noCartao"] or filtros.get("cartao") not in (None, "", "nenhum"):
+                        continue
+                    if filtros.get("conta") and item["contaId"] not in grupos.get(filtros["conta"], set()):
+                        continue
+                    if busca_termo and busca_termo not in item["descricao"].casefold():
+                        continue
+                    pares.append(({"nome": apelidos.get(item["contaId"], "Conta")}, item,
+                                  f"{ano_recorrente}-{item['mes']:02d}"))
         if pares:
             base_ids = sorted({item["transacaoBaseId"] for _, item, _ in pares})
             categorias_base: dict[str, dict[str, Any]] = {}
@@ -1865,13 +1815,28 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "raizId": None, "raizNome": "Outros", "raizCor": "#9ba1ab",
                     "raizEmoji": "",
                 }
+                if filtros.get("categoria") and filtros["categoria"] not in (
+                    categoria["id"], categoria["raizId"]
+                ):
+                    continue
                 valor = round(float(item["valor"]), 2)
+                mensal = evolucao.setdefault(mes_ref_item, {
+                    "entradas": 0.0, "qtdEntradas": 0,
+                    "saidas": 0.0, "quantidade": 0,
+                })
+                mensal["saidas"] += valor
+                mensal["quantidade"] += 1
+                mensal["saidasEstimativa"] = True
+                if mes_de and mes_ref_item < mes_de:
+                    continue
+                if mes_ate and mes_ref_item > mes_ate:
+                    continue
                 transacoes_extra.append({
                     "id": (
-                        f"projetada:{item['transacaoBaseId']}:"
-                        f"{item['parcelaAtual']}"
+                        f"projetada:{item['compraId'] if item.get('recorrente') else item['transacaoBaseId']}:"
+                        f"{mes_ref_item}:{item['parcelaAtual']}"
                     ),
-                    "data": f"{mes_ref_item}-01",
+                    "data": item.get("data") or f"{mes_ref_item}-01",
                     "mesRef": mes_ref_item,
                     "descricao": item["descricao"],
                     "valor": valor,
@@ -1892,8 +1857,9 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "contaId": item["contaId"],
                     "contaNome": apelidos.get(item["contaId"], cartao["nome"]),
                     **_dados_instrumento(item["contaId"], identidades),
-                    "contaSubtipo": "CREDIT_CARD",
+                    "contaSubtipo": "CREDIT_CARD" if item.get("noCartao", True) else "CHECKING_ACCOUNT",
                     "projetada": True,
+                    "recorrente": item.get("recorrente", False),
                 })
                 chave_categoria = categoria["raizId"] or "outros"
                 agregado = agregados_categoria.setdefault(chave_categoria, {
@@ -1906,12 +1872,51 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 })
                 agregado["total"] += valor
                 agregado["quantidade"] += 1
+                if filtros.get("categoria") and categoria["id"] != categoria["raizId"]:
+                    filhos = filhos_por_pai.setdefault(categoria["raizId"], [])
+                    filho = next((f for f in filhos if f["categoriaId"] == categoria["id"]), None)
+                    if filho is None:
+                        filho = {"categoriaId": categoria["id"], "categoria": categoria["nome"],
+                                 "cor": categoria["cor"], "emoji": categoria["emoji"],
+                                 "total": 0.0, "quantidade": 0}
+                        filhos.append(filho)
+                    filho["total"] += valor
+                    filho["quantidade"] += 1
             transacoes_extra.sort(key=lambda t: t["data"], reverse=True)
             por_categoria_extra = sorted(
                 agregados_categoria.values(),
                 key=lambda item: item["total"],
                 reverse=True,
             )
+
+        # Pagina a sequência projetadas + reais; os agregados usam o conjunto
+        # completo do filtro e permanecem iguais em todas as páginas.
+        pagina_extra = transacoes_extra[offset:offset + limite]
+        limite_reais = limite - len(pagina_extra)
+        offset_reais = max(0, offset - len(transacoes_extra))
+        linhas = conn.execute(
+            f"""
+            SELECT t.transacao_id, t.data, t.mes_ref, t.descricao, t.valor,
+                   CASE WHEN t.tipo = 'DEBIT' THEN -ABS(t.valor)
+                        ELSE ABS(t.valor) END AS valor_normalizado,
+                   t.moeda, t.tipo, t.status,
+                   t.categoria_original, t.categoria_id,
+                   t.origem_categorizacao, t.incluida, t.motivo_exclusao,
+                   t.entrada_considerada, t.editada_manualmente,
+                   cat.nome AS categoria_nome, cat.cor AS categoria_cor,
+                   cat.emoji AS categoria_emoji,
+                   t.parcela_numero, t.parcela_total, t.fatura_id,
+                   c.nome AS conta_nome, c.subtipo AS conta_subtipo,
+                   t.conta_id
+            FROM extrato_efetivo_cache t
+            JOIN pluggy_contas c ON c.conta_id = t.conta_id
+            LEFT JOIN extrato_categorias cat ON cat.id = t.categoria_id{onde}
+            ORDER BY t.data DESC, t.ordem DESC, t.transacao_id
+            LIMIT ? OFFSET ?
+            """,
+            [*params, limite_reais, offset_reais],
+        ).fetchall()
+
 
     transacoes = [
         {
@@ -1947,8 +1952,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         for linha in linhas
     ]
 
-    if transacoes_extra:
-        transacoes = transacoes_extra + transacoes
+    transacoes = pagina_extra + transacoes
     if por_categoria_extra:
         # Mescla por categoria: com mes unico selecionado o real ja vem
         # vazio (mes sem transacao), mas numa busca sem mes o real pode ter
@@ -1965,6 +1969,13 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             por_categoria_mapa.values(), key=lambda item: item["total"], reverse=True
         )
 
+    if filtros.get("categoria"):
+        por_categoria = [
+            {**item, "filhos": sorted(filhos_por_pai.get(item["categoriaId"], []),
+                                     key=lambda f: f["total"], reverse=True)}
+            for item in por_categoria
+        ]
+
     saidas = float(resumo["saidas"])
     saidas_estimativa = False
     if transacoes_extra:
@@ -1976,15 +1987,6 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         # compras reais.
         saidas += sum(item["valor"] for item in transacoes_extra)
         saidas_estimativa = True
-    # Mesma projecao de fatura de cartao da serie, para o mes unico
-    # selecionado no filtro -- sem isto, escolher outubro no seletor mostraria
-    # vazio mesmo com a tira de evolucao ja mostrando a fatura projetada.
-    if permite_projecao_cartoes and mes_filtro and not (resumo["quantidade"] or saidas):
-        projetado = evolucao.get(mes_filtro)
-        if projetado and projetado.get("saidasEstimativa"):
-            saidas = float(projetado["saidas"])
-            saidas_estimativa = True
-
     # A mesma projecao da serie, para o mes unico selecionado no filtro: sem
     # isto, escolher setembro no seletor mostraria a mesma queda que a tira de
     # evolucao ja nao mostra mais.

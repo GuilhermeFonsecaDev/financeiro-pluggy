@@ -68,6 +68,33 @@
 @media (max-width:1200px) { .sec-grid { grid-template-columns:1fr; } }
 @media (max-width:1100px) { .caixinha-hero { grid-template-columns:1fr; } }
 @media (max-width:760px) { .hero-grade { grid-template-columns:1fr 1fr; } .hero-valor { font-size:32px; } }
+
+/* --- identificacao de fundos -------------------------------------------- */
+.fundo-modal { width:min(760px,100%); }
+/* Sem rolagem propria: a .modal ja rola em 88vh, e duas barras aninhadas
+   deixavam o campo de busca preso fora da area visivel dos resultados. */
+.fundo-corpo { display:grid; gap:12px; padding:0 18px; }
+.fundo-modal textarea { width:100%; min-height:76px; padding:10px 12px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); color:var(--text); font:inherit; font-size:13px; resize:vertical; }
+.fundo-acoes { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:0 18px; }
+.fundo-acoes .fundo-fontes { margin-left:auto; color:var(--text-3); font-size:11px; text-align:right; }
+/* Um cartao por CNPJ consultado. A borda esquerda diz o desfecho sem
+   depender de ler o texto: achou, achou por ponte, ou nao achou. */
+.fundo-item { padding:12px 14px; border:1px solid var(--line); border-left:3px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); }
+.fundo-item.achou { border-left-color:var(--verde); }
+.fundo-item.ponte { border-left-color:var(--laranja,#e8954a); }
+.fundo-item.nao-achou { border-left-color:var(--vermelho); }
+.fundo-item h3 { margin:0 0 2px; font-size:14px; line-height:1.35; }
+.fundo-cnpj { color:var(--text-3); font-size:11.5px; font-variant-numeric:tabular-nums; }
+.fundo-meta { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.fundo-oficial { margin:8px 0 0; color:var(--text-2); font-size:12px; }
+.fundo-aviso { margin:8px 0 0; color:#f0b980; font-size:12px; }
+.fundo-links { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+.fundo-links a.primario { display:inline-flex; align-items:center; min-height:32px; padding:0 13px; border-radius:var(--raio); background:var(--azul); color:#0b1622; font-size:12.5px; font-weight:650; text-decoration:none; }
+.fundo-links a.primario:hover { background:#5aa0ee; }
+.fundo-alternativas { display:grid; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+.fundo-alternativa { display:flex; align-items:center; gap:10px; font-size:12.5px; }
+.fundo-alternativa a { color:var(--azul); }
+.fundo-alternativa span { color:var(--text-3); font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -76,7 +103,7 @@
 <main class="container">
   <header class="topo">
     <div><h1>Investimentos</h1></div>
-    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><button id="btnAtualizar">Atualizar Pluggy</button></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><button id="btnFundos">Identificar fundo</button><button id="btnAtualizar">Atualizar Pluggy</button></div>
   </header>
 
   <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
@@ -147,6 +174,33 @@
     </table></div>
   </details>
 </main>
+
+<div class="modal-fundo" id="modalFundos" hidden>
+  <div class="modal fundo-modal">
+    <header class="modal-topo">
+      <h2>Identificar fundo</h2>
+      <button class="icone" id="btnFecharFundos" aria-label="Fechar">×</button>
+    </header>
+    <p class="sub" style="padding:0 18px">
+      Cole o CNPJ que a assessoria indicou — ou a mensagem inteira, com vários — e
+      abra a página do fundo no BTG. Também aceita parte do nome. A consulta é
+      local, contra cópias do catálogo público do BTG e do cadastro da CVM.
+    </p>
+    <div class="fundo-corpo">
+      <textarea id="fundoConsulta" placeholder="12.345.678/0001-99, ou o texto da indicação" spellcheck="false"></textarea>
+      <div id="fundoResultados"></div>
+    </div>
+    <p class="estado erro" id="fundoErro" style="margin:8px 18px 0"></p>
+    <div class="fundo-acoes" style="margin-top:10px">
+      <button class="sutil" id="btnAtualizarFundos">Atualizar catálogos</button>
+      <span class="fundo-fontes" id="fundoFontes"></span>
+    </div>
+    <footer class="modal-rodape">
+      <button class="sutil" id="btnFecharFundos2">Fechar</button>
+      <button class="primario" id="btnBuscarFundos">Identificar</button>
+    </footer>
+  </div>
+</div>
 
 <script src="app.js"></script>
 <script>
@@ -250,6 +304,175 @@ el("filtrosMovimentos").addEventListener("click",e=>{
 });
 el("filtroPeriodo").addEventListener("change",e=>{ filtroPeriodo=e.target.value; renderMovimentos(); });
 el("btnAtualizar").addEventListener("click",async e=>{ e.currentTarget.disabled=true; try{ await pedir('/pluggy-sync','POST',{}); setEstado('estado','atualização iniciada; a tela continua disponível','ok'); }catch(err){setEstado('estado',err.message,'erro');}finally{e.currentTarget.disabled=false;} });
+/* ------------------------------------------------- identificar fundo */
+
+let FUNDOS = null;
+// A abertura do modal dispara uma consulta vazia só para saber a idade dos
+// catálogos. Se o usuário já tiver pedido uma busca, essa resposta chegava
+// depois e apagava o resultado -- cada pedido carrega um número e só o
+// último manda na tela.
+let FUNDO_PEDIDO = 0;
+
+function fundoDataHora(iso) {
+  if (!iso) return "nunca";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function fundoChips(b) {
+  const chips = [];
+  if (b.categoria) chips.push(b.subcategoria ? `${b.categoria} · ${b.subcategoria}` : b.categoria);
+  if (b.risco) chips.push(b.risco.toLowerCase());
+  if (b.aplicacaoMinima) chips.push(`mínimo ${fmtBRL(b.aplicacaoMinima)}`);
+  if (b.diasResgate != null) chips.push(`resgate D+${b.diasResgate}`);
+  // O público-alvo explica o caso mais comum de "a assessoria indicou e eu não
+  // acho": fundo restrito não aparece para todo mundo. Só que o rótulo do BTG
+  // para fundo aberto é "Investidores em geral (Não qualificados)" -- procurar
+  // "qualificado" solto marcava justamente quem não é restrito.
+  const restrito = /qualificado|profissional/i.test(b.publico || "")
+    && !/n[ãa]o[- ]qualificado|\(n[ãa]o/i.test(b.publico || "");
+  if (restrito) chips.push(b.publico);
+  return chips.map(c => `<span class="chip">${esc(c)}</span>`).join("");
+}
+
+const FUNDO_COMO = {
+  cnpj: "", classe: "encontrado pela classe deste fundo",
+  fundo: "encontrado pelo fundo desta classe", nome: "semelhança de nome",
+};
+
+function fundoAlternativas(lista) {
+  if (!lista.length) return "";
+  return `<div class="fundo-alternativas">
+    ${lista.map(a => `<div class="fundo-alternativa">
+      <a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.nome)}</a>
+      <span>${esc(a.cnpjFormatado)}</span>
+    </div>`).join("")}
+  </div>`;
+}
+
+function fundoCartao(r) {
+  const b = r.btg;
+  const estado = !b ? "nao-achou" : b.como === "cnpj" ? "achou" : "ponte";
+  const titulo = b ? b.nome : (r.cvm ? r.cvm.denominacao : r.entrada);
+  // Sem acerto no BTG o título já é a denominação da CVM: repetir o nome não
+  // informa nada, mas gestor e situação sim.
+  const nomeCvmNoTitulo = !b || r.cvm && r.cvm.denominacao === titulo;
+  const detalheCvm = r.cvm ? [
+    nomeCvmNoTitulo ? "" : `Na CVM: ${esc(r.cvm.denominacao)}`,
+    r.cvm.tipo === "classe" ? "classe do fundo" : "",
+    r.cvm.gestor ? `gestor ${esc(r.cvm.gestor)}` : "",
+    r.cvm.situacao && !r.situacaoAtencao ? esc(r.cvm.situacao.toLowerCase()) : "",
+  ].filter(Boolean).join(" · ") : "";
+  const oficial = detalheCvm ? `<p class="fundo-oficial">${detalheCvm}</p>` : "";
+  const cnpjLinha = [
+    r.cnpjFormatado ? `consultado ${esc(r.cnpjFormatado)}` : "",
+    b && b.cnpj !== r.cnpj ? `página ${esc(b.cnpjFormatado)}` : "",
+    b && FUNDO_COMO[b.como] ? esc(FUNDO_COMO[b.como]) : "",
+  ].filter(Boolean).join(" · ");
+  return `<article class="fundo-item ${estado}">
+    <h3>${esc(titulo)}</h3>
+    <div class="fundo-cnpj">${cnpjLinha}</div>
+    ${b ? `<div class="fundo-meta">${fundoChips(b)}</div>` : ""}
+    ${oficial}
+    ${r.cnpjInvalido ? `<p class="fundo-aviso">Os dígitos verificadores deste CNPJ não fecham; confirme o número com a assessoria.</p>` : ""}
+    ${r.situacaoAtencao ? `<p class="fundo-aviso">Na CVM este cadastro está "${esc(r.situacaoAtencao)}", não em funcionamento normal.</p>` : ""}
+    ${r.aviso ? `<p class="fundo-aviso">${esc(r.aviso)}</p>` : ""}
+    ${b ? `<div class="fundo-links">
+      <a class="primario" href="${esc(b.url)}" target="_blank" rel="noopener">Abrir no BTG</a>
+      <button class="sutil" data-copiar="${esc(b.nome)}">Copiar nome</button>
+    </div>` : `<div class="fundo-links">
+      <a class="primario" href="${esc(FUNDOS.catalogoBtg)}" target="_blank" rel="noopener">Abrir catálogo do BTG</a>
+      ${r.cvm ? `<button class="sutil" data-copiar="${esc(r.cvm.denominacao)}">Copiar nome da CVM</button>` : ""}
+    </div>`}
+    ${fundoAlternativas(r.alternativas || [])}
+    ${(r.parecidosCvm || []).length ? `<div class="fundo-alternativas">
+      ${r.parecidosCvm.map(c => `<div class="fundo-alternativa">
+        <button class="chip" data-consultar="${esc(c.cnpj)}">${esc(c.denominacao)}</button>
+        <span>${esc(c.cnpjFormatado)}</span></div>`).join("")}
+    </div>` : ""}
+  </article>`;
+}
+
+function renderFundos() {
+  if (!FUNDOS) return;
+  const f = FUNDOS.fontes || {};
+  el("fundoFontes").innerHTML =
+    `catálogo BTG: ${f.btg ? f.btg.total : 0} fundos · ${fundoDataHora(f.btg && f.btg.atualizadoEm)}<br>` +
+    `cadastro CVM: ${f.cvm ? f.cvm.total.toLocaleString("pt-BR") : 0} registros · ${fundoDataHora(f.cvm && f.cvm.atualizadoEm)}`;
+  const r = FUNDOS.resultados || [];
+  el("fundoResultados").innerHTML = !FUNDOS.consulta
+    ? ""
+    : r.length ? r.map(fundoCartao).join("")
+      : `<p class="sub">Nenhum CNPJ ou nome reconhecido no texto colado.</p>`;
+}
+
+async function buscarFundos(consulta) {
+  const texto = consulta !== undefined ? consulta : el("fundoConsulta").value;
+  if (consulta !== undefined) el("fundoConsulta").value = consulta;
+  el("fundoErro").textContent = "";
+  el("btnBuscarFundos").disabled = true;
+  el("btnBuscarFundos").textContent = "Identificando…";
+  const pedido = ++FUNDO_PEDIDO;
+  try {
+    const dados = await pedir(`/fundos?consulta=${encodeURIComponent(texto)}`);
+    if (pedido !== FUNDO_PEDIDO) return;
+    FUNDOS = dados;
+    renderFundos();
+  } catch (e) { if (pedido === FUNDO_PEDIDO) el("fundoErro").textContent = e.message; }
+  finally {
+    if (pedido === FUNDO_PEDIDO) {
+      el("btnBuscarFundos").disabled = false;
+      el("btnBuscarFundos").textContent = "Identificar";
+    }
+  }
+}
+
+async function abrirFundos() {
+  el("modalFundos").hidden = false;
+  el("fundoConsulta").focus();
+  if (!FUNDOS) await buscarFundos("");
+}
+
+el("btnFundos").addEventListener("click", abrirFundos);
+el("btnFecharFundos").addEventListener("click", () => { el("modalFundos").hidden = true; });
+el("btnFecharFundos2").addEventListener("click", () => { el("modalFundos").hidden = true; });
+el("btnBuscarFundos").addEventListener("click", () => buscarFundos());
+el("fundoConsulta").addEventListener("keydown", e => {
+  // Enter busca; Shift+Enter continua quebrando linha, porque o campo aceita
+  // a mensagem inteira da assessoria colada.
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); buscarFundos(); }
+});
+el("fundoResultados").addEventListener("click", async e => {
+  const copiar = e.target.closest("[data-copiar]");
+  if (copiar) {
+    try {
+      await navigator.clipboard.writeText(copiar.dataset.copiar);
+      const antes = copiar.textContent;
+      copiar.textContent = "Copiado";
+      setTimeout(() => { copiar.textContent = antes; }, 1400);
+    } catch { el("fundoErro").textContent = "O navegador não liberou a área de transferência."; }
+    return;
+  }
+  const consultar = e.target.closest("[data-consultar]");
+  if (consultar) buscarFundos(consultar.dataset.consultar);
+});
+el("btnAtualizarFundos").addEventListener("click", async e => {
+  const botao = e.currentTarget;
+  botao.disabled = true;
+  botao.textContent = "Atualizando…";
+  el("fundoErro").textContent = "";
+  try {
+    const r = await pedir("/fundos/atualizar", "POST", {});
+    const erros = Object.entries(r.resultado || {}).filter(([, v]) => v.erro);
+    if (erros.length) el("fundoErro").textContent = erros.map(([k, v]) => `${k}: ${v.erro}`).join(" · ");
+    await buscarFundos();
+  } catch (err) { el("fundoErro").textContent = err.message; }
+  finally { botao.disabled = false; botao.textContent = "Atualizar catálogos"; }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !el("modalFundos").hidden) el("modalFundos").hidden = true;
+});
+
 montarNav("investimentos.html"); carregar();
 let resizeGrafico;
 window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) renderGraficos(); },120); });

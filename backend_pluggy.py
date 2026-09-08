@@ -42,6 +42,7 @@ from extrato_camada import (
 )
 import emprestimos
 import fixas
+import fundos
 import investimentos
 import recorrentes
 import visao_geral
@@ -255,6 +256,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(pluggy_status())
             elif path == "/api/investimentos":
                 self.send_json(investimentos.payload())
+            elif path == "/api/fundos":
+                self.send_json(fundos.payload(query.get("consulta", [""])[0]))
             elif path == "/api/pluggy-connect-token":
                 self.send_json({"connectToken": criar_connect_token(query.get("itemId", [None])[0])})
             elif path == "/api/pluggy-cartoes":
@@ -318,6 +321,12 @@ class PluggyHandler(SimpleHTTPRequestHandler):
 
             # Recorrentes detectados: recusar tira a sugestão do painel para
             # sempre; reconsiderar traz de volta.
+            if parsed.path == "/api/fundos/atualizar":
+                fontes = payload.get("fontes")
+                self.send_json(fundos.atualizar_payload(
+                    [str(f) for f in fontes] if isinstance(fontes, list) else None))
+                return
+
             if parsed.path == "/api/fixas/recorrentes/criar":
                 self.send_json(recorrentes.criar_previsao(payload))
                 return

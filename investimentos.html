@@ -70,9 +70,10 @@
 @media (max-width:760px) { .hero-grade { grid-template-columns:1fr 1fr; } .hero-valor { font-size:32px; } }
 
 /* --- identificacao de fundos -------------------------------------------- */
-/* Link com aparencia de botao, para acompanhar os vizinhos do topo. */
-.botao-link { display:inline-flex; align-items:center; min-height:34px; padding:0 13px; border:1px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); color:var(--text-2); font-size:13px; text-decoration:none; }
-.botao-link:hover { border-color:var(--azul); color:var(--text); }
+/* .btn do tema da a medida exata dos botoes vizinhos; a versao anterior tinha
+   34px e ficava dois pixels mais baixa que eles. */
+.topo .btn { text-decoration:none; color:var(--text-2); }
+.topo .btn:hover { color:var(--text); }
 
 .fundo-modal { width:min(720px,100%); }
 /* Sem rolagem propria: a .modal ja rola em 88vh, e duas barras aninhadas
@@ -130,7 +131,7 @@
 <main class="container">
   <header class="topo">
     <div><h1>Investimentos</h1></div>
-    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><a class="botao-link" href="carteira.html">Calculadora de aportes</a><button id="btnFundos">Identificar fundo</button><button id="btnAtualizar">Atualizar Pluggy</button></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><a class="btn" href="carteira.html">Calculadora de aportes</a><button id="btnFundos">Identificar fundo</button><button id="btnAtualizar">Atualizar Pluggy</button></div>
   </header>
 
   <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>

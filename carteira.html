@@ -7,23 +7,25 @@
 <link rel="stylesheet" href="tema.css" />
 <style>
 /* --- aporte no cabecalho do painel --------------------------------------- */
-/* O campo vive junto da tabela que ele alimenta. Antes ficava numa fila
-   propria, com tres cartoes de total que repetiam o rodape da tabela. */
-.painel-tit .aporte-campo { display:flex; align-items:center; gap:9px; }
-.painel-tit .aporte-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
-.aporte-entrada { display:flex; align-items:center; min-width:0; width:170px; min-height:38px; padding:0 11px; border:1px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); }
+/* Uma linha, na altura dos botoes: rotulo a esquerda e a caixa do valor ao
+   lado. O par "R$ 50.000" e centralizado como um bloco -- com o input
+   ocupando a largura toda, o R$ colava na borda e o valor saia do meio. Por
+   isso a largura do input acompanha o texto, em ch, e o flex centraliza os
+   dois juntos. */
+.painel-tit .aporte-campo { display:flex; align-items:center; gap:8px; }
+.painel-tit .aporte-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.07em; white-space:nowrap; cursor:text; }
+.aporte-entrada { display:flex; align-items:center; justify-content:center; gap:5px; width:146px; min-height:36px; padding:0 10px; border:1px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); }
 .aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
-.aporte-entrada > span { color:var(--text-3); font-size:13px; }
-/* min-width:0 porque o <input> tem largura intrinseca de ~20 caracteres e,
-   sem isso, estoura a caixa em vez de encolher. */
-.aporte-entrada input { flex:1; width:100%; min-width:0; padding:0 0 0 7px; border:0; background:transparent; color:var(--text); font:inherit; font-size:17px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.aporte-entrada > span { color:var(--text-3); font-size:12.5px; }
+.aporte-entrada input { width:5ch; min-width:0; padding:0; border:0; background:transparent; color:var(--text); font:inherit; font-size:16px; font-weight:700; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 .aporte-entrada input:focus { outline:none; }
+.aporte-entrada input::placeholder { color:var(--text-3); font-weight:600; }
 
 /* --- tabela da carteira -------------------------------------------------- */
 /* A coluna do fundo fica fixa: em tela estreita, quando a tabela rola, perder
    de vista de quem e a linha torna o resto inutil. */
 .carteira-wrap { overflow-x:auto; overscroll-behavior-x:contain; }
-.carteira { min-width:820px; }
+.carteira { min-width:700px; }
 .carteira th, .carteira td { padding:7px 10px; vertical-align:middle; }
 .carteira th { position:sticky; top:0; z-index:2; background:var(--surface); }
 .carteira .col-fundo { position:sticky; left:0; z-index:3; min-width:290px; max-width:340px; background:var(--surface); }
@@ -57,8 +59,11 @@
 }
 .carteira input:hover, .carteira select:hover { border-color:var(--line); background:var(--surface-2); }
 .carteira input:focus, .carteira select:focus { border-color:var(--azul); background:var(--surface-2); outline:none; }
-.carteira input.pct { width:64px; text-align:right; font-variant-numeric:tabular-nums; }
-.carteira input.anbima { width:100%; min-width:210px; }
+/* Numero e unidade juntos, alinhados a direita da coluna: o campo tem a
+   largura do numero e o "%" ou "dias" fica fora dele, como legenda. */
+.carteira .com-unidade { display:inline-flex; align-items:baseline; gap:3px; }
+.carteira .com-unidade i { color:var(--text-3); font-size:10.5px; font-style:normal; }
+.carteira input.pct, .carteira input.dias { width:4.2ch; text-align:right; font-variant-numeric:tabular-nums; }
 .carteira select.iq { width:66px; }
 .carteira .acoes { display:flex; gap:4px; justify-content:flex-end; }
 .carteira .abrir { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); color:var(--azul); font-size:13px; text-decoration:none; }
@@ -67,6 +72,16 @@
 .carteira tfoot td { border-top:1px solid var(--line-forte); font-weight:700; }
 .carteira tfoot .desalinhado { color:#f0b980; }
 .carteira-vazia { padding:26px 0; color:var(--text-3); font-size:13px; text-align:center; }
+
+/* O link do topo usa .btn do tema para ter a mesma medida dos botoes ao lado.
+   O nowrap e o que resolve a altura: com o aviso longo comprimindo a fila, o
+   rotulo "Cadastrar fundo" quebrava em duas linhas e o botao ficava 20px mais
+   alto que o vizinho de uma palavra. Quem cede espaco e o aviso. */
+.topo .btn { text-decoration:none; color:var(--text-2); }
+.topo .btn:hover { color:var(--text); }
+.topo .acoes-topo { display:flex; align-items:center; gap:10px; }
+.topo .acoes-topo > button, .topo .acoes-topo > .btn { flex:0 0 auto; white-space:nowrap; }
+.topo #estado { min-width:0; }
 
 /* --- cadastro de fundo --------------------------------------------------- */
 .cadastro-modal { width:min(460px,100%); }
@@ -85,10 +100,10 @@
 <main class="container">
   <header class="topo">
     <div><h1>Carteira</h1><p class="sub">carteira-alvo e distribuição do aporte pelos percentuais de alocação</p></div>
-    <div style="display:flex;align-items:center;gap:10px">
+    <div class="acoes-topo">
       <span class="estado" id="estado">Carregando…</span>
+      <a class="btn" href="investimentos.html">Investimentos</a>
       <button class="primario" id="btnCadastrar">Cadastrar fundo</button>
-      <a class="sutil" href="investimentos.html" style="display:inline-flex;align-items:center;min-height:34px;padding:0 13px;border:1px solid var(--line-forte);border-radius:var(--raio);color:var(--text-2);font-size:13px;text-decoration:none">Investimentos</a>
     </div>
   </header>
 
@@ -102,7 +117,7 @@
 
   <section class="painel">
     <div class="painel-tit">
-      <div><h2>Fundos da carteira</h2><div class="sub" id="subFundos">nome, Anbima, liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
+      <div><h2>Fundos da carteira</h2><div class="sub" id="subFundos">liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="estado" id="estadoSalvo"></span>
         <div class="aporte-campo">
@@ -122,9 +137,8 @@
             <th class="col-fundo">Fundo</th>
             <th class="num">Alocação</th>
             <th class="num">Aporte</th>
-            <th>Classificação Anbima</th>
-            <th class="num">Data resgate</th>
             <th class="num">Liquidez</th>
+            <th class="num">Data resgate</th>
             <th>IQ</th>
             <th></th>
           </tr>
@@ -135,7 +149,7 @@
             <td class="col-fundo">Total</td>
             <td class="num" id="tSoma">0%</td>
             <td class="num" id="tAporte">R$ 0,00</td>
-            <td colspan="5"></td>
+            <td colspan="4"></td>
           </tr>
         </tfoot>
       </table>
@@ -241,6 +255,13 @@ function formatarCampo(campo) {
   campo.value = formatarValor(campo.value);
   const posicao = posicaoApos(campo.value, digitos);
   campo.setSelectionRange(posicao, posicao);
+  ajustarLargura(campo);
+}
+
+// O input cresce com o texto para que "R$ 50.000" fique centralizado como um
+// bloco. Com largura fixa, o R$ encostava na borda e o valor saía do meio.
+function ajustarLargura(campo) {
+  campo.style.width = `${Math.max(4, campo.value.length + 0.5)}ch`;
 }
 
 // A data é derivada da liquidez, então é texto, não campo: editar a data não
@@ -275,15 +296,18 @@ function linha(item) {
         </div>
       </div>
     </td>
-    <td class="num"><input class="pct" data-campo="percentual" value="${item.percentual}" inputmode="decimal" aria-label="Alocação de ${esc(item.nome)}" /></td>
+    <td class="num"><span class="com-unidade">
+      <input class="pct" data-campo="percentual" value="${item.percentual}" inputmode="decimal" aria-label="Alocação de ${esc(item.nome)}" /><i>%</i>
+    </span></td>
     <td class="num">
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
       ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}
     </td>
-    <td><input class="anbima" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
+    <td class="num"><span class="com-unidade">
+      <input class="dias" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Liquidez em dias de ${esc(item.nome)}" /><i>dias</i>
+    </span></td>
     <td class="num">${celulaDataResgate(item)}</td>
-    <td class="num"><input class="pct" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Liquidez em dias de ${esc(item.nome)}" /></td>
     <td>
       <select class="iq" data-campo="qualificado" aria-label="Investidor qualificado">
         ${["", "sim", "nao"].map(v => `<option value="${v}" ${v === item.qualificado ? "selected" : ""}>${IQ_ROTULO[v]}</option>`).join("")}
@@ -373,18 +397,11 @@ function itensDoFormulario() {
       const alvo = tr.querySelector(`[data-campo="${campo}"]`);
       return alvo ? alvo.value.trim() : "";
     };
-    const original = (D.itens || []).find(i => i.cnpj === tr.dataset.cnpj) || {};
-    const nome = valor("nome");
+    // Só o que a tabela mostra. Nome, Anbima e aporte mínimo não são enviados,
+    // e o backend mantém o que já estava guardado para eles.
     return {
       cnpj: tr.dataset.cnpj,
       percentual: lerNumero(valor("percentual")),
-      // Nome e aporte mínimo não aparecem na tabela: seguem como estavam, ou
-      // salvar apagaria o que já estava guardado.
-      nome: nome || original.nome,
-      nomeProprio: original.nomeProprio || Boolean(nome),
-      anbima: valor("anbima"),
-      aporteMinimo: original.aporteMinimo,
-      aporteMinimoProprio: Boolean(original.aporteMinimoProprio),
       diasResgate: valor("diasResgate"),
       qualificado: valor("qualificado"),
     };
@@ -521,6 +538,8 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !el("modalCadastro").hidden) fecharCadastro();
 });
 
+el("aporte").addEventListener("focus", e => ajustarLargura(e.target));
+ajustarLargura(el("aporte"));
 montarNav("carteira.html");
 carregar();
 </script>

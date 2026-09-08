@@ -292,6 +292,23 @@ class CarteiraTests(unittest.TestCase):
         itens[0].update({"aporteMinimo": None, "aporteMinimoProprio": False})
         self.assertEqual(carteira.salvar(itens)["itens"][0]["aporteMinimo"], 5000)
 
+    def test_campo_ausente_no_salvar_mantem_o_que_estava_guardado(self):
+        """A tela deixou de mostrar nome, Anbima e mínimo -- e de enviá-los."""
+        carteira.adicionar("36.181.846/0001-12", 50)
+        itens = carteira.payload()["itens"]
+        itens[0].update({"anbima": "Multimercados Livre editado", "aporteMinimo": 250,
+                         "aporteMinimoProprio": True, "nome": "Meu apelido",
+                         "nomeProprio": True})
+        carteira.salvar(itens)
+        # A tela nova manda só o que exibe: percentual, liquidez e IQ.
+        enxuto = [{"cnpj": "36181846000112", "percentual": 70,
+                   "diasResgate": "31", "qualificado": "nao"}]
+        salvo = carteira.salvar(enxuto)["itens"][0]
+        self.assertEqual(salvo["percentual"], 70)
+        self.assertEqual(salvo["anbima"], "Multimercados Livre editado")
+        self.assertEqual(salvo["aporteMinimo"], 250)
+        self.assertEqual(salvo["nome"], "Meu apelido")
+
     def test_salvar_recusa_percentual_fora_da_faixa_e_cnpj_repetido(self):
         carteira.adicionar("36.181.846/0001-12", 50)
         itens = carteira.payload()["itens"]

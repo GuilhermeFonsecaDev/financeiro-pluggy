@@ -277,12 +277,21 @@ def excluir(cnpj: str) -> dict[str, Any]:
 
 
 def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
-    """Grava a carteira inteira: a tela manda a tabela como ela está."""
+    """Grava a carteira inteira: a tela manda a tabela como ela está.
+
+    Campo que a tela não mostra também não é enviado, e o que não vem fica
+    como está no banco. Antes a tela precisava devolver de volta tudo o que
+    não exibia, e esquecer um campo o apagava sem aviso.
+    """
     if not isinstance(itens, list):
         raise ValueError("Carteira inválida.")
     if len(itens) > LIMITE_FUNDOS:
         raise ValueError(f"A carteira aceita até {LIMITE_FUNDOS} fundos.")
     agora = datetime.now().isoformat(timespec="seconds")
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        atuais = {linha["cnpj"]: dict(linha)
+                  for linha in conn.execute("SELECT * FROM carteira_alvo")}
     linhas = []
     vistos = set()
     for ordem, item in enumerate(itens, start=1):
@@ -298,10 +307,18 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
         qualificado = _texto(item.get("qualificado")).lower()
         if qualificado not in ("", "sim", "nao"):
             qualificado = ""
+        atual = atuais.get(digitos, {})
+        if "nome" in item:
+            nome = _texto(item.get("nomeProprio") and item.get("nome"))
+        else:
+            nome = atual.get("nome", "")
+        anbima = _texto(item["anbima"]) if "anbima" in item else atual.get("anbima", "")
+        if "aporteMinimo" in item:
+            minimo = _numero(item["aporteMinimo"]) if item.get("aporteMinimoProprio") else None
+        else:
+            minimo = atual.get("aporte_minimo")
         linhas.append((
-            digitos, ordem, percentual, _texto(item.get("nomeProprio") and item.get("nome")),
-            _texto(item.get("anbima")),
-            _numero(item.get("aporteMinimo")) if item.get("aporteMinimoProprio") else None,
+            digitos, ordem, percentual, nome, anbima, minimo,
             int(item["diasResgate"]) if str(item.get("diasResgate") or "").strip().isdigit() else None,
             qualificado, agora,
         ))

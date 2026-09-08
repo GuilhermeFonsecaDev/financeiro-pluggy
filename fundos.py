@@ -457,6 +457,38 @@ def _resolver_cnpj(conn, cnpj: str, entrada: str) -> dict[str, Any]:
     return resultado
 
 
+def _por_prefixo(conn, prefixo: str, limite: int = 8) -> list[Any]:
+    """Fundos cujo CNPJ começa pelos dígitos já digitados."""
+    return list(conn.execute(
+        "SELECT * FROM fundos_btg WHERE cnpj LIKE ? ORDER BY cnpj LIMIT ?",
+        (f"{prefixo}%", limite)))
+
+
+def _resolver_prefixo(conn, prefixo: str, entrada: str) -> dict[str, Any]:
+    """CNPJ ainda incompleto: adianta o que já dá para reconhecer.
+
+    A tela consulta a cada tecla, e esperar os 14 dígitos deixaria o campo
+    mudo justamente enquanto a pessoa digita.
+    """
+    achados = _por_prefixo(conn, prefixo, limite=LIMITE_RESULTADOS)
+    resultado: dict[str, Any] = {
+        "entrada": entrada,
+        "tipoEntrada": "prefixo",
+        "cvm": None,
+        "btg": None,
+        "alternativas": [_btg_payload(linha, "prefixo") for linha in achados],
+        "aviso": "",
+    }
+    if len(achados) == 1:
+        resultado["btg"] = resultado["alternativas"][0]
+        resultado["alternativas"] = []
+        cvm = conn.execute("SELECT * FROM fundos_cvm WHERE cnpj=?",
+                           (achados[0]["cnpj"],)).fetchone()
+        if cvm:
+            resultado["cvm"] = _cvm_payload(cvm)
+    return resultado
+
+
 def _resolver_nome(conn, termo: str) -> dict[str, Any]:
     achados = _por_nome(conn, termo, limite=LIMITE_RESULTADOS)
     resultado: dict[str, Any] = {
@@ -484,19 +516,39 @@ def _resolver_nome(conn, termo: str) -> dict[str, Any]:
 
 @fin.escopo_leitura
 def payload(consulta: str = "") -> dict[str, Any]:
-    """Resolve CNPJs (ou um nome) em páginas de fundo do BTG."""
+    """Resolve CNPJs, um CNPJ incompleto ou um nome em páginas do BTG."""
     consulta = str(consulta or "").strip()
     _garantir_fonte("btg")
-    if consulta:
-        _garantir_fonte("cvm")
     cnpjs = cnpjs_do_texto(consulta)
+    parcial = digitos(consulta)
+    # A tela consulta a cada tecla: o caminho sai do que já foi digitado, e
+    # cada um paga só o que precisa.
+    incompleto = bool(parcial) and len(parcial) >= 6 and not re.search(r"[A-Za-z]", consulta)
+    por_nome = bool(consulta) and not cnpjs and not incompleto and len(consulta) >= 3
+    if cnpjs:
+        # Denominação oficial e ponte fundo/classe vivem no cadastro da CVM.
+        _garantir_fonte("cvm")
+    elif por_nome:
+        # Nome que o catálogo do BTG resolve não justifica baixar 25 MB. Sem
+        # acerto lá, a CVM é justamente quem sugere o nome parecido.
+        with fin.connect() as conn:
+            garantir_tabelas(conn)
+            sem_acerto = not _por_nome(conn, consulta, limite=1)
+        if sem_acerto:
+            _garantir_fonte("cvm")
+    resultados: list[dict[str, Any]] = []
     with fin.connect() as conn:
         garantir_tabelas(conn)
-        resultados = []
         if cnpjs:
             for cnpj in cnpjs[:LIMITE_RESULTADOS]:
                 resultados.append(_resolver_cnpj(conn, cnpj, formatar_cnpj(cnpj)))
-        elif consulta:
+        elif incompleto:
+            # CNPJ ainda incompleto: sem candidato, a tela fica quieta. Dizer
+            # "não achei" a cada tecla seria falso -- o número nem terminou.
+            adiantado = _resolver_prefixo(conn, parcial, consulta)
+            if adiantado["btg"] or adiantado["alternativas"]:
+                resultados.append(adiantado)
+        elif por_nome:
             resultados.append(_resolver_nome(conn, consulta))
         return {
             "consulta": consulta,

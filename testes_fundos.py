@@ -225,11 +225,36 @@ class FundosTests(unittest.TestCase):
                          ["36181846000112", "63446494000152", "11111111000111"])
         self.assertEqual([bool(r["btg"]) for r in dados["resultados"]], [True, True, False])
 
+    def test_cnpj_incompleto_adianta_o_candidato(self):
+        resultado = fundos.payload("3618184")["resultados"][0]
+        self.assertEqual(resultado["tipoEntrada"], "prefixo")
+        self.assertEqual(resultado["btg"]["nome"], "A1 Hedge FICFIM RL")
+
+    def test_cnpj_incompleto_nao_baixa_o_cadastro_da_cvm(self):
+        """Digitar não pode disparar 25 MB: a CVM entra no CNPJ completo."""
+        fundos.payload("3618184")
+        self.assertFalse(any(url.startswith(fundos.CAD_FI_CVM) for url in self.baixados))
+        fundos.payload("36.181.846/0001-12")
+        self.assertTrue(any(url.startswith(fundos.CAD_FI_CVM) for url in self.baixados))
+
+    def test_consulta_curta_demais_nao_responde(self):
+        self.assertEqual(fundos.payload("6")["resultados"], [])
+        self.assertEqual(fundos.payload("ze")["resultados"], [])
+
+    def test_cnpj_incompleto_sem_candidato_fica_quieto(self):
+        """Enquanto o número não terminou, "não achei" seria falso."""
+        self.assertEqual(fundos.payload("999999")["resultados"], [])
+
     def test_busca_por_nome_quando_nao_veio_cnpj(self):
         dados = fundos.payload("zeno global")
         resultado = dados["resultados"][0]
         self.assertEqual(resultado["tipoEntrada"], "nome")
         self.assertEqual(resultado["btg"]["nome"], "Zeno Global USD F FIA IE RL")
+
+    def test_nome_que_o_btg_resolve_nao_baixa_a_cvm(self):
+        resultado = fundos.payload("zeno global")["resultados"][0]
+        self.assertEqual(resultado["btg"]["nome"], "Zeno Global USD F FIA IE RL")
+        self.assertFalse(any(url.startswith(fundos.CAD_FI_CVM) for url in self.baixados))
 
     def test_nome_sem_acerto_no_btg_sugere_cadastro_da_cvm(self):
         dados = fundos.payload("fundo fora do btg")

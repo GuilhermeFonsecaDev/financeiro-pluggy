@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Investimentos</title>
 <link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="carteira.css" />
 <style>
 .caixinha-hero { display:grid; grid-template-columns:minmax(300px,1.25fr) minmax(500px,2fr); gap:14px; margin-bottom:14px; }
 .hero-principal { position:relative; overflow:hidden; min-height:178px; padding:22px; border-color:rgba(74,149,234,.5); background:linear-gradient(125deg,#234d7d 0%,#213b5c 58%,var(--surface) 100%); }
@@ -70,10 +71,12 @@
 @media (max-width:760px) { .hero-grade { grid-template-columns:1fr 1fr; } .hero-valor { font-size:32px; } }
 
 /* --- identificacao de fundos -------------------------------------------- */
-/* .btn do tema da a medida exata dos botoes vizinhos; a versao anterior tinha
-   34px e ficava dois pixels mais baixa que eles. */
-.topo .btn { text-decoration:none; color:var(--text-2); }
-.topo .btn:hover { color:var(--text); }
+/* Fila de acoes do topo. O nowrap importa: com o estado longo comprimindo a
+   fila, um rotulo de duas palavras quebrava em duas linhas e o botao ficava
+   mais alto que o vizinho de uma palavra. Quem cede espaco e o estado. */
+.acoes-topo { display:flex; align-items:center; gap:10px; }
+.acoes-topo > button, .acoes-topo > .btn { flex:0 0 auto; white-space:nowrap; }
+.topo #estado { min-width:0; }
 
 .fundo-modal { width:min(720px,100%); }
 /* Sem rolagem propria: a .modal ja rola em 88vh, e duas barras aninhadas
@@ -131,7 +134,7 @@
 <main class="container">
   <header class="topo">
     <div><h1>Investimentos</h1></div>
-    <div style="display:flex;align-items:center;gap:10px"><span class="estado" id="estado">Carregando…</span><a class="btn" href="carteira.html">Calculadora de aportes</a><button id="btnFundos">Identificar fundo</button><button id="btnAtualizar">Atualizar Pluggy</button></div>
+    <div class="acoes-topo"><span class="estado" id="estado">Carregando…</span><button id="btnCarteira">Calculadora Aporte</button><button id="btnFundos">Identificar fundo</button><button id="btnAtualizar">Atualizar Pluggy</button></div>
   </header>
 
   <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
@@ -203,6 +206,76 @@
   </details>
 </main>
 
+<div class="modal-fundo" id="cartModal" hidden>
+  <div class="modal carteira-modal">
+    <header class="modal-tit">
+      <div>
+        <h2>Calculadora Aporte</h2>
+        <p class="sub">carteira-alvo e distribuição do aporte pelos percentuais de alocação</p>
+        <span class="estado" id="cartEstado"></span>
+      </div>
+      <div class="cart-acoes">
+        <button class="primario" id="cartBtnCadastrar">Cadastrar fundo</button>
+        <button class="icone" id="cartFechar" aria-label="Fechar">×</button>
+      </div>
+    </header>
+  <section class="painel" id="cartAviso" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
+    <h2>O servidor aberto precisa ser reiniciado</h2>
+    <p>Esta tela já está atualizada, mas o backend em execução é anterior a ela: por isso um fundo
+       marcado como IQ continua recebendo aporte em vez de ter a fatia redistribuída.</p>
+    <p>Feche a janela do backend Pluggy, abra novamente <strong>iniciar_pluggy.bat</strong> na pasta
+       FinanceiroPluggy e recarregue esta página.</p>
+  </section>
+
+  <section class="painel">
+    <div class="painel-tit">
+      <div><h2>Fundos da carteira</h2><div class="sub" id="cartSub">liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="estado" id="cartSalvo"></span>
+        <div class="aporte-campo">
+          <label for="cartAporte">Aporte</label>
+          <div class="aporte-entrada">
+            <span>R$</span>
+            <input id="cartAporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="carteira-wrap">
+      <table class="carteira">
+        <thead>
+          <tr>
+            <th class="col-fundo">Fundo</th>
+            <th class="num">Alocação</th>
+            <th class="num">Aporte</th>
+            <th class="num">Liquidez</th>
+            <th class="num">Data resgate</th>
+            <th>IQ</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cartCorpo"></tbody>
+        <tfoot id="cartRodape" hidden>
+          <tr>
+            <td class="col-fundo">Total</td>
+            <td class="num" id="cartSoma">0%</td>
+            <td class="num" id="cartTotal">R$ 0,00</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <p class="carteira-vazia" id="cartVazia" hidden>
+      Nenhum fundo cadastrado. Informe o CNPJ e o percentual de alocação abaixo — o resto vem dos catálogos.
+    </p>
+
+    <p class="estado erro" id="cartErro" style="margin-top:8px"></p>
+  </section>
+  </div>
+</div>
+
 <div class="modal-fundo" id="modalFundos" hidden>
   <div class="modal fundo-modal">
     <header class="modal-tit">
@@ -224,6 +297,33 @@
       <span class="fundo-fontes" id="fundoFontes"
             title="Cópias locais dos catálogos: o CNPJ consultado não sai desta máquina."></span>
       <button class="sutil" id="btnAtualizarFundos">Atualizar catálogos</button>
+    </footer>
+  </div>
+</div>
+
+<div class="modal-fundo" id="cartModalCadastro" hidden>
+  <div class="modal cadastro-modal">
+    <header class="modal-tit">
+      <h2>Cadastrar fundo</h2>
+      <button class="icone" id="cartFecharCadastro" aria-label="Fechar">×</button>
+    </header>
+    <p class="sub" style="margin-bottom:14px">
+      O CNPJ pode ser o do fundo ou o da classe. Nome, Anbima, liquidez e IQ vêm dos catálogos.
+    </p>
+    <div class="cadastro-campos">
+      <div class="cadastro-campo">
+        <label for="cartNovoCnpj">CNPJ</label>
+        <input id="cartNovoCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" />
+      </div>
+      <div class="cadastro-campo">
+        <label for="cartNovoPct">Alocação</label>
+        <input id="cartNovoPct" type="text" inputmode="decimal" autocomplete="off" placeholder="%" />
+      </div>
+    </div>
+    <p class="cadastro-achado" id="cartAchado"></p>
+    <p class="estado erro" id="cartCadastroErro"></p>
+    <footer class="modal-rodape">
+      <button class="primario" id="cartConfirmar">Adicionar à carteira</button>
     </footer>
   </div>
 </div>
@@ -577,5 +677,6 @@ montarNav("investimentos.html"); carregar();
 let resizeGrafico;
 window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) renderGraficos(); },120); });
 </script>
+<script src="carteira.js"></script>
 </body>
 </html>

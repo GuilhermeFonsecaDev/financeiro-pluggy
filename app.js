@@ -245,6 +245,7 @@ const PAGINAS = [
   { href: "categorias.html", ic: "◑", nome: "Categorias" },
   { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões" },
   { href: "investimentos.html", ic: "↗", nome: "Investimentos" },
+  { href: "carteira.html", ic: "◈", nome: "Carteira" },
   { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
   { href: "entradas.html", ic: "↑", nome: "Entradas" },
   { href: "emprestimos.html", ic: "⇄", nome: "Emprestado" },

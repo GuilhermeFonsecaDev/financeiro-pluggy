@@ -1,0 +1,271 @@
+"""Carteira-alvo e distribuição de aportes.
+
+A carteira que a assessoria monta vive numa planilha: fundo, CNPJ, percentual
+e um punhado de características. Cadastrar isso à mão duas vezes não faz
+sentido -- nome, classificação Anbima, aporte mínimo, liquidez e restrição a
+investidor qualificado já estão nos catálogos que `fundos.py` mantém aqui.
+Então o cadastro pede CNPJ e percentual; o resto vem preenchido e pode ser
+corrigido por cima, porque o catálogo às vezes discorda da planilha (aporte
+mínimo é o caso mais comum) e porque FIDC e fundo restrito nem aparecem no
+catálogo público.
+
+A distribuição segue os percentuais informados. Quando a fatia de um fundo
+não alcança o aporte mínimo dele, a linha é marcada com quanto falta em vez
+de a conta ser refeita por trás: quem decide juntar com o mês seguinte ou
+aportar em menos fundos é quem investe.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+import banco as fin
+import fundos
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS carteira_alvo (
+  cnpj TEXT PRIMARY KEY,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  percentual REAL NOT NULL DEFAULT 0,
+  nome TEXT NOT NULL DEFAULT '',
+  anbima TEXT NOT NULL DEFAULT '',
+  aporte_minimo REAL,
+  dias_resgate INTEGER,
+  qualificado TEXT NOT NULL DEFAULT '',
+  volatilidade TEXT NOT NULL DEFAULT '',
+  taxas TEXT NOT NULL DEFAULT '',
+  corretoras TEXT NOT NULL DEFAULT '',
+  equivalente_xp TEXT NOT NULL DEFAULT '',
+  atualizado_em TEXT NOT NULL DEFAULT ''
+);
+"""
+
+# Campos que o cadastro guarda como texto livre, na ordem em que aparecem na
+# tela. Nenhum deles existe em fonte pública.
+TEXTO_LIVRE = ("volatilidade", "taxas", "corretoras", "equivalente_xp")
+LIMITE_TEXTO = 120
+LIMITE_FUNDOS = 60
+
+
+def garantir_tabelas(conn=None) -> None:
+    if conn is not None:
+        conn.executescript(SCHEMA)
+        return
+    with fin.connect() as conexao:
+        conexao.executescript(SCHEMA)
+        conexao.commit()
+
+
+# ------------------------------------------------------------- preenchimento
+
+def _catalogo(conn, cnpj: str) -> dict[str, Any]:
+    """O que os catálogos locais sabem deste CNPJ.
+
+    Passa pela mesma ponte fundo/classe da tela de identificação: o CNPJ da
+    planilha costuma ser o do fundo, e o catálogo do BTG lista a classe.
+    """
+    resolvido = fundos._resolver_cnpj(conn, cnpj, fundos.formatar_cnpj(cnpj))
+    btg = resolvido.get("btg") or {}
+    cvm = resolvido.get("cvm") or {}
+    publico = btg.get("publico") or ""
+    restrito = ("qualificado" in publico.lower() or "profissional" in publico.lower()) \
+        and "não qualificado" not in publico.lower() and "(não" not in publico.lower()
+    return {
+        "nome": btg.get("nome") or cvm.get("denominacao") or "",
+        "anbima": cvm.get("classeAnbima") or cvm.get("classificacao") or "",
+        "aporteMinimo": btg.get("aplicacaoMinima"),
+        "diasResgate": btg.get("diasResgate"),
+        "qualificado": ("sim" if restrito else "nao") if publico else "",
+        "url": btg.get("url") or "",
+        "urlComo": btg.get("como") or "",
+        "situacao": cvm.get("situacao") or "",
+        "noCatalogo": bool(btg),
+    }
+
+
+def _numero(valor: Any) -> float | None:
+    if valor is None or valor == "":
+        return None
+    try:
+        return round(float(valor), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _texto(valor: Any) -> str:
+    return str(valor or "").strip()[:LIMITE_TEXTO]
+
+
+# -------------------------------------------------------------- distribuição
+
+def _distribuir(itens: list[dict[str, Any]], aporte: float) -> None:
+    """Reparte o aporte entre os fundos, em centavos, sem sobra nem estouro.
+
+    Os percentuais são normalizados pela própria soma: se a planilha somar 90%
+    ou 110%, o aporte informado continua sendo distribuído inteiro e a tela
+    avisa que a soma não fecha em 100%. Arredondar cada fatia para baixo deixa
+    centavos de resto, que vão para as maiores fatias -- um por fundo, até
+    acabar, para o total bater exatamente com o aporte.
+    """
+    soma = sum(item["percentual"] for item in itens)
+    centavos_totais = int(round(max(aporte, 0) * 100))
+    if not itens or soma <= 0 or centavos_totais <= 0:
+        for item in itens:
+            item["aporte"] = 0.0
+        return
+    centavos = []
+    for item in itens:
+        centavos.append(int(centavos_totais * item["percentual"] / soma))
+    resto = centavos_totais - sum(centavos)
+    maiores = sorted(range(len(itens)),
+                     key=lambda i: (-itens[i]["percentual"], itens[i]["ordem"]))
+    for posicao in range(resto):
+        centavos[maiores[posicao % len(maiores)]] += 1
+    for item, valor in zip(itens, centavos):
+        item["aporte"] = round(valor / 100, 2)
+
+
+def _marcar_minimos(itens: list[dict[str, Any]]) -> None:
+    for item in itens:
+        minimo = item.get("aporteMinimo")
+        falta = None
+        if minimo and item["aporte"] > 0 and item["aporte"] < minimo:
+            falta = round(minimo - item["aporte"], 2)
+        item["abaixoDoMinimo"] = falta is not None
+        item["falta"] = falta
+
+
+# ----------------------------------------------------------------- consulta
+
+@fin.escopo_leitura
+def payload(aporte: float = 0) -> dict[str, Any]:
+    aporte = _numero(aporte) or 0.0
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        fundos.garantir_tabelas(conn)
+        itens = []
+        for linha in conn.execute("SELECT * FROM carteira_alvo ORDER BY ordem, cnpj"):
+            catalogo = _catalogo(conn, linha["cnpj"])
+            itens.append({
+                "cnpj": linha["cnpj"],
+                "cnpjFormatado": fundos.formatar_cnpj(linha["cnpj"]),
+                "ordem": linha["ordem"],
+                "percentual": round(float(linha["percentual"] or 0), 4),
+                # O que a pessoa digitou manda; vazio significa "use o catálogo".
+                "nome": linha["nome"] or catalogo["nome"] or fundos.formatar_cnpj(linha["cnpj"]),
+                "nomeProprio": bool(linha["nome"]),
+                "anbima": linha["anbima"] or catalogo["anbima"],
+                "aporteMinimo": linha["aporte_minimo"] if linha["aporte_minimo"] is not None
+                                else catalogo["aporteMinimo"],
+                "aporteMinimoProprio": linha["aporte_minimo"] is not None,
+                "diasResgate": linha["dias_resgate"] if linha["dias_resgate"] is not None
+                               else catalogo["diasResgate"],
+                "qualificado": linha["qualificado"] or catalogo["qualificado"],
+                "volatilidade": linha["volatilidade"],
+                "taxas": linha["taxas"],
+                "corretoras": linha["corretoras"],
+                "equivalenteXp": linha["equivalente_xp"],
+                "url": catalogo["url"],
+                "urlComo": catalogo["urlComo"],
+                "noCatalogo": catalogo["noCatalogo"],
+                "situacao": catalogo["situacao"],
+            })
+        _distribuir(itens, aporte)
+        _marcar_minimos(itens)
+        soma = round(sum(item["percentual"] for item in itens), 4)
+        return {
+            "aporte": aporte,
+            "itens": itens,
+            "somaPercentual": soma,
+            "somaFecha": not itens or abs(soma - 100) < 0.005,
+            "totalDistribuido": round(sum(item["aporte"] for item in itens), 2),
+            "abaixoDoMinimo": sum(1 for item in itens if item["abaixoDoMinimo"]),
+            "foraDoCatalogo": sum(1 for item in itens if not item["noCatalogo"]),
+            "catalogoBtg": fundos.CATALOGO_BTG_TELA,
+        }
+
+
+# ------------------------------------------------------------------ escrita
+
+def _conhecido(conn, cnpj: str) -> bool:
+    return bool(
+        conn.execute("SELECT 1 FROM fundos_btg WHERE cnpj=?", (cnpj,)).fetchone()
+        or conn.execute("SELECT 1 FROM fundos_cvm WHERE cnpj=?", (cnpj,)).fetchone())
+
+
+def adicionar(cnpj: str, percentual: Any = 0) -> dict[str, Any]:
+    digitos = fundos.digitos(cnpj)
+    if len(digitos) != 14:
+        raise ValueError("Informe um CNPJ completo, com 14 dígitos.")
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        fundos.garantir_tabelas(conn)
+        # Dígito verificador é indício de erro de digitação, não veredito: se o
+        # CNPJ está em algum catálogo, o fundo existe e entra. Só recusamos o
+        # que falha na conta e ninguém conhece.
+        if not fundos.cnpj_valido(digitos) and not _conhecido(conn, digitos):
+            raise ValueError("Os dígitos verificadores deste CNPJ não fecham e ele não "
+                             "aparece nos catálogos. Confira o número.")
+        if conn.execute("SELECT 1 FROM carteira_alvo WHERE cnpj=?", (digitos,)).fetchone():
+            raise ValueError("Este fundo já está na carteira.")
+        if conn.execute("SELECT COUNT(*) n FROM carteira_alvo").fetchone()["n"] >= LIMITE_FUNDOS:
+            raise ValueError(f"A carteira já tem {LIMITE_FUNDOS} fundos.")
+        proxima = conn.execute("SELECT COALESCE(MAX(ordem),0)+1 AS n FROM carteira_alvo").fetchone()["n"]
+        conn.execute(
+            "INSERT INTO carteira_alvo (cnpj,ordem,percentual,atualizado_em) VALUES (?,?,?,?)",
+            (digitos, proxima, _numero(percentual) or 0.0,
+             datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+    return payload()
+
+
+def excluir(cnpj: str) -> dict[str, Any]:
+    digitos = fundos.digitos(cnpj)
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        conn.execute("DELETE FROM carteira_alvo WHERE cnpj=?", (digitos,))
+        conn.commit()
+    return payload()
+
+
+def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
+    """Grava a carteira inteira: a tela manda a tabela como ela está."""
+    if not isinstance(itens, list):
+        raise ValueError("Carteira inválida.")
+    if len(itens) > LIMITE_FUNDOS:
+        raise ValueError(f"A carteira aceita até {LIMITE_FUNDOS} fundos.")
+    agora = datetime.now().isoformat(timespec="seconds")
+    linhas = []
+    vistos = set()
+    for ordem, item in enumerate(itens, start=1):
+        digitos = fundos.digitos(item.get("cnpj"))
+        if len(digitos) != 14:
+            raise ValueError("Todo fundo da carteira precisa de um CNPJ completo.")
+        if digitos in vistos:
+            raise ValueError(f"CNPJ repetido na carteira: {fundos.formatar_cnpj(digitos)}")
+        vistos.add(digitos)
+        percentual = _numero(item.get("percentual")) or 0.0
+        if percentual < 0 or percentual > 100:
+            raise ValueError("Percentual de alocação deve ficar entre 0 e 100.")
+        qualificado = _texto(item.get("qualificado")).lower()
+        if qualificado not in ("", "sim", "nao"):
+            qualificado = ""
+        linhas.append((
+            digitos, ordem, percentual, _texto(item.get("nomeProprio") and item.get("nome")),
+            _texto(item.get("anbima")),
+            _numero(item.get("aporteMinimo")) if item.get("aporteMinimoProprio") else None,
+            int(item["diasResgate"]) if str(item.get("diasResgate") or "").strip().isdigit() else None,
+            qualificado, _texto(item.get("volatilidade")), _texto(item.get("taxas")),
+            _texto(item.get("corretoras")), _texto(item.get("equivalenteXp")), agora,
+        ))
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        # A tela é a fonte: quem saiu da lista sai da tabela.
+        conn.execute("DELETE FROM carteira_alvo")
+        conn.executemany(
+            "INSERT INTO carteira_alvo (cnpj,ordem,percentual,nome,anbima,aporte_minimo,"
+            "dias_resgate,qualificado,volatilidade,taxas,corretoras,equivalente_xp,"
+            "atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", linhas)
+        conn.commit()
+    return payload(aporte)

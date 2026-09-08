@@ -40,6 +40,7 @@ from extrato_camada import (
     remover_regra_entrada,
     remover_regra,
 )
+import carteira
 import emprestimos
 import fixas
 import fundos
@@ -258,6 +259,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(investimentos.payload())
             elif path == "/api/fundos":
                 self.send_json(fundos.payload(query.get("consulta", [""])[0]))
+            elif path == "/api/carteira":
+                self.send_json(carteira.payload(query.get("aporte", ["0"])[0]))
             elif path == "/api/pluggy-connect-token":
                 self.send_json({"connectToken": criar_connect_token(query.get("itemId", [None])[0])})
             elif path == "/api/pluggy-cartoes":
@@ -321,6 +324,18 @@ class PluggyHandler(SimpleHTTPRequestHandler):
 
             # Recorrentes detectados: recusar tira a sugestão do painel para
             # sempre; reconsiderar traz de volta.
+            if parsed.path == "/api/carteira":
+                self.send_json(carteira.salvar(payload.get("itens") or [],
+                                               payload.get("aporte") or 0))
+                return
+            if parsed.path == "/api/carteira/adicionar":
+                self.send_json(carteira.adicionar(str(payload.get("cnpj") or ""),
+                                                  payload.get("percentual") or 0))
+                return
+            if parsed.path == "/api/carteira/excluir":
+                self.send_json(carteira.excluir(str(payload.get("cnpj") or "")))
+                return
+
             if parsed.path == "/api/fundos/atualizar":
                 fontes = payload.get("fontes")
                 self.send_json(fundos.atualizar_payload(

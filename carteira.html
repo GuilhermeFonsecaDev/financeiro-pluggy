@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Carteira</title>
+<link rel="stylesheet" href="tema.css" />
+<style>
+/* --- aporte -------------------------------------------------------------- */
+.aporte-hero { display:grid; grid-template-columns:minmax(280px,1fr) repeat(3,minmax(0,auto)); gap:14px; align-items:end; margin-bottom:14px; }
+.aporte-campo { display:grid; gap:6px; }
+.aporte-campo label { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
+.aporte-entrada { display:flex; align-items:center; min-height:46px; padding:0 14px; border:1px solid var(--line-forte); border-radius:var(--raio-g); background:var(--surface-2); }
+.aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
+.aporte-entrada > span { color:var(--text-3); font-size:15px; }
+.aporte-entrada input { flex:1; min-width:0; padding:0 0 0 8px; border:0; background:transparent; color:var(--text); font:inherit; font-size:24px; font-weight:700; letter-spacing:-.02em; }
+.aporte-entrada input:focus { outline:none; }
+.aporte-mini { padding:12px 15px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); white-space:nowrap; }
+.aporte-mini span { display:block; color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
+.aporte-mini strong { display:block; margin-top:6px; font-size:19px; letter-spacing:-.02em; }
+.aporte-mini.alerta { border-color:rgba(232,149,74,.45); }
+.aporte-mini.alerta strong { color:#f0b980; }
+
+/* --- tabela da carteira -------------------------------------------------- */
+/* Onze colunas nao cabem em tela nenhuma sem rolagem: a coluna do fundo fica
+   fixa, porque perder de vista de quem e a linha torna o resto inutil. */
+.carteira-wrap { overflow-x:auto; overscroll-behavior-x:contain; }
+.carteira { min-width:1180px; }
+.carteira th, .carteira td { padding:8px 10px; vertical-align:middle; }
+.carteira th { position:sticky; top:0; z-index:2; background:var(--surface); }
+.carteira .col-fundo { position:sticky; left:0; z-index:3; min-width:290px; max-width:330px; background:var(--surface); }
+.carteira thead .col-fundo { z-index:4; }
+.carteira tbody tr:hover .col-fundo { background:var(--surface-2); }
+.carteira .num { text-align:right; font-variant-numeric:tabular-nums; }
+.carteira .fundo-linha { display:flex; align-items:center; gap:9px; }
+.carteira .fundo-identidade { min-width:0; }
+/* Denominacao da CVM chega a quatro linhas; duas bastam, e o titulo mostra o
+   nome inteiro ao passar o mouse. */
+.carteira .fundo-nome { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12.5px; font-weight:600; line-height:1.3; }
+.carteira .fundo-cnpj { display:block; margin-top:2px; color:var(--text-3); font-size:10.5px; font-variant-numeric:tabular-nums; }
+.carteira .aporte-linha { font-size:14px; font-weight:700; }
+.carteira .aporte-linha.zerado { color:var(--text-3); font-weight:400; }
+.carteira tr.abaixo .aporte-linha { color:#f0b980; }
+.carteira .falta { display:block; color:#f0b980; font-size:10.5px; font-weight:400; }
+.carteira input, .carteira select { min-height:30px; padding:4px 8px; font-size:12px; }
+.carteira input.pct { width:76px; text-align:right; font-variant-numeric:tabular-nums; }
+.carteira input.livre { width:100%; min-width:110px; }
+.carteira input.minimo { width:96px; text-align:right; font-variant-numeric:tabular-nums; }
+.carteira select.iq { width:74px; }
+.carteira .acoes { display:flex; gap:4px; justify-content:flex-end; }
+.carteira .abrir { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); color:var(--azul); font-size:13px; text-decoration:none; }
+.carteira .abrir:hover { border-color:var(--azul); background:var(--azul-suave); }
+.carteira .abrir.sem { border-style:dashed; color:var(--text-3); pointer-events:none; }
+.carteira tfoot td { border-top:1px solid var(--line-forte); font-weight:700; }
+.carteira tfoot .desalinhado { color:#f0b980; }
+.linha-nova { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+.linha-nova input.cnpj { width:190px; font-variant-numeric:tabular-nums; }
+.linha-nova input.pct { width:86px; text-align:right; }
+.linha-nova .dica { color:var(--text-3); font-size:11px; }
+.carteira-vazia { padding:26px 0; color:var(--text-3); font-size:13px; text-align:center; }
+@media (max-width:1100px) { .aporte-hero { grid-template-columns:1fr 1fr; } }
+@media (max-width:640px) { .aporte-hero { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div><h1>Carteira</h1><p class="sub">carteira-alvo e distribuição do aporte pelos percentuais de alocação</p></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="estado" id="estado">Carregando…</span>
+      <a class="sutil" href="investimentos.html" style="display:inline-flex;align-items:center;min-height:34px;padding:0 13px;border:1px solid var(--line-forte);border-radius:var(--raio);color:var(--text-2);font-size:13px;text-decoration:none">Investimentos</a>
+    </div>
+  </header>
+
+  <section class="aporte-hero">
+    <div class="aporte-campo">
+      <label for="aporte">Tenho para aportar</label>
+      <div class="aporte-entrada">
+        <span>R$</span>
+        <input id="aporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+      </div>
+    </div>
+    <article class="aporte-mini"><span>Distribuído</span><strong id="vDistribuido">R$ 0,00</strong></article>
+    <article class="aporte-mini" id="miniSoma"><span>Soma das alocações</span><strong id="vSoma">0%</strong></article>
+    <article class="aporte-mini" id="miniMinimos"><span>Abaixo do mínimo</span><strong id="vMinimos">0 fundos</strong></article>
+  </section>
+
+  <section class="painel">
+    <div class="painel-tit">
+      <div><h2>Fundos da carteira</h2><div class="sub" id="subFundos">nome, Anbima, aporte mínimo, liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
+      <span class="estado" id="estadoSalvo"></span>
+    </div>
+
+    <div class="carteira-wrap">
+      <table class="carteira">
+        <thead>
+          <tr>
+            <th class="col-fundo">Fundo</th>
+            <th class="num">Alocação</th>
+            <th class="num">Aporte</th>
+            <th>Classificação Anbima</th>
+            <th class="num">Aporte mínimo</th>
+            <th class="num">Resgate</th>
+            <th>IQ</th>
+            <th>Volatilidade</th>
+            <th>Taxas</th>
+            <th>Corretoras</th>
+            <th>Equivalente XP</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="corpo"></tbody>
+        <tfoot id="rodape" hidden>
+          <tr>
+            <td class="col-fundo">Total</td>
+            <td class="num" id="tSoma">0%</td>
+            <td class="num" id="tAporte">R$ 0,00</td>
+            <td colspan="9"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <p class="carteira-vazia" id="vazia" hidden>
+      Nenhum fundo cadastrado. Informe o CNPJ e o percentual de alocação abaixo — o resto vem dos catálogos.
+    </p>
+
+    <div class="linha-nova">
+      <input class="cnpj" id="novoCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="CNPJ do fundo" aria-label="CNPJ do fundo" />
+      <input class="pct" id="novoPct" type="text" inputmode="decimal" autocomplete="off" placeholder="%" aria-label="Percentual de alocação" />
+      <button class="primario" id="btnAdicionar">Adicionar fundo</button>
+      <span class="dica" id="dicaNovo">o CNPJ pode ser o do fundo ou o da classe</span>
+    </div>
+    <p class="estado erro" id="erro" style="margin-top:8px"></p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+<script>
+const el = id => document.getElementById(id);
+let D = null;
+let APORTE = 0;
+let SALVANDO;
+// A carga inicial e um recalculo podem estar no ar ao mesmo tempo -- digitar
+// um valor logo ao abrir a tela. Cada leitura leva um numero e só a última
+// tem permissão de desenhar, senão a resposta antiga volta e zera o aporte.
+let PEDIDO = 0;
+
+/* ------------------------------------------------------------ formatação */
+
+// Aceita "1.234,56" e "1234.56": a planilha e o teclado numérico discordam.
+// O caso que engana é o ponto sozinho -- "1.500" são mil e quinhentos aqui,
+// mas "1500.50" veio de uma planilha em inglês. Grupos de exatamente três
+// dígitos depois de cada ponto denunciam o separador de milhar.
+function lerNumero(texto) {
+  const limpo = String(texto || "").replace(/[^\d,.-]/g, "");
+  if (!limpo) return 0;
+  let normalizado = limpo;
+  if (limpo.includes(",")) normalizado = limpo.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(limpo)) normalizado = limpo.replace(/\./g, "");
+  const valor = Number.parseFloat(normalizado);
+  return Number.isFinite(valor) ? valor : 0;
+}
+
+const pct = v => `${Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+
+/* ------------------------------------------------------------- desenho */
+
+const IQ_ROTULO = { sim: "Sim", nao: "Não", "": "—" };
+
+function linha(item) {
+  const abrir = item.url
+    ? `<a class="abrir" href="${esc(item.url)}" target="_blank" rel="noopener"
+          title="Abrir ${esc(item.nome)} no BTG${item.urlComo === "classe" ? " (o BTG lista a classe deste fundo)" : item.urlComo === "fundo" ? " (o BTG lista o fundo desta classe)" : ""}">↗</a>`
+    : `<span class="abrir sem" title="Fora do catálogo público do BTG">↗</span>`;
+  // O link mora na coluna fixa, ao lado do nome: na última coluna ele só
+  // apareceria depois de rolar a tabela inteira para a direita.
+  return `<tr data-cnpj="${esc(item.cnpj)}" class="${item.abaixoDoMinimo ? "abaixo" : ""}">
+    <td class="col-fundo">
+      <div class="fundo-linha">
+        ${abrir}
+        <div class="fundo-identidade">
+          <span class="fundo-nome" title="${esc(item.nome)}">${esc(item.nome)}</span>
+          <span class="fundo-cnpj">${esc(item.cnpjFormatado)}${item.noCatalogo ? "" : " · fora do catálogo do BTG"}</span>
+        </div>
+      </div>
+    </td>
+    <td class="num"><input class="pct" data-campo="percentual" value="${item.percentual}" inputmode="decimal" aria-label="Alocação de ${esc(item.nome)}" /></td>
+    <td class="num">
+      <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
+      ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
+    </td>
+    <td><input class="livre" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
+    <td class="num"><input class="minimo" data-campo="aporteMinimo" value="${item.aporteMinimo == null ? "" : item.aporteMinimo}" inputmode="decimal" aria-label="Aporte mínimo" /></td>
+    <td class="num"><input class="pct" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Dias para resgate" /></td>
+    <td>
+      <select class="iq" data-campo="qualificado" aria-label="Investidor qualificado">
+        ${["", "sim", "nao"].map(v => `<option value="${v}" ${v === item.qualificado ? "selected" : ""}>${IQ_ROTULO[v]}</option>`).join("")}
+      </select>
+    </td>
+    <td><input class="livre" data-campo="volatilidade" value="${esc(item.volatilidade)}" aria-label="Volatilidade" /></td>
+    <td><input class="livre" data-campo="taxas" value="${esc(item.taxas)}" aria-label="Taxas" /></td>
+    <td><input class="livre" data-campo="corretoras" value="${esc(item.corretoras)}" aria-label="Corretoras" /></td>
+    <td><input class="livre" data-campo="equivalenteXp" value="${esc(item.equivalenteXp)}" aria-label="Equivalente XP" /></td>
+    <td><div class="acoes">
+      <button class="icone" data-excluir="${esc(item.cnpj)}" title="Remover da carteira">×</button>
+    </div></td>
+  </tr>`;
+}
+
+function render() {
+  if (!D) return;
+  const itens = D.itens || [];
+  el("corpo").innerHTML = itens.map(linha).join("");
+  el("vazia").hidden = itens.length > 0;
+  el("rodape").hidden = itens.length === 0;
+  el("tSoma").textContent = pct(D.somaPercentual);
+  el("tSoma").className = `num ${D.somaFecha ? "" : "desalinhado"}`;
+  el("tAporte").textContent = fmtBRL(D.totalDistribuido);
+  el("vDistribuido").textContent = fmtBRL(D.totalDistribuido);
+  el("vSoma").textContent = pct(D.somaPercentual);
+  el("miniSoma").className = `aporte-mini ${D.somaFecha ? "" : "alerta"}`;
+  el("vMinimos").textContent = D.abaixoDoMinimo === 1 ? "1 fundo" : `${D.abaixoDoMinimo} fundos`;
+  el("miniMinimos").className = `aporte-mini ${D.abaixoDoMinimo ? "alerta" : ""}`;
+  // A soma fora de 100% é o aviso que mais engana em silêncio: os percentuais
+  // são normalizados pela própria soma, então a conta "fecha" mesmo errada.
+  const avisos = [];
+  if (!D.somaFecha && itens.length) {
+    avisos.push(`as alocações somam ${pct(D.somaPercentual)}, não 100% — o aporte foi repartido na proporção informada`);
+  }
+  if (D.abaixoDoMinimo) avisos.push(`${D.abaixoDoMinimo} fundo(s) abaixo do aporte mínimo`);
+  setEstado("estado", avisos.length ? avisos.join(" · ") : `${itens.length} fundo(s) na carteira`,
+            avisos.length ? "erro" : "ok");
+}
+
+/* --------------------------------------------------------------- dados */
+
+async function carregar() {
+  const pedido = ++PEDIDO;
+  try {
+    const dados = await pedir(`/carteira?aporte=${APORTE}`);
+    if (pedido !== PEDIDO) return;
+    D = dados;
+    render();
+  } catch (e) { if (pedido === PEDIDO) setEstado("estado", e.message, "erro"); }
+}
+
+function itensDoFormulario() {
+  return [...document.querySelectorAll("#corpo tr")].map(tr => {
+    const valor = campo => {
+      const alvo = tr.querySelector(`[data-campo="${campo}"]`);
+      return alvo ? alvo.value.trim() : "";
+    };
+    const original = (D.itens || []).find(i => i.cnpj === tr.dataset.cnpj) || {};
+    const minimo = valor("aporteMinimo");
+    const nome = valor("nome");
+    return {
+      cnpj: tr.dataset.cnpj,
+      percentual: lerNumero(valor("percentual")),
+      // Nome não é editável na tabela: fica o que o catálogo deu, a menos que
+      // já houvesse um nome próprio guardado.
+      nome: nome || original.nome,
+      nomeProprio: original.nomeProprio || Boolean(nome),
+      anbima: valor("anbima"),
+      aporteMinimo: minimo === "" ? null : lerNumero(minimo),
+      aporteMinimoProprio: minimo !== "",
+      diasResgate: valor("diasResgate"),
+      qualificado: valor("qualificado"),
+      volatilidade: valor("volatilidade"),
+      taxas: valor("taxas"),
+      corretoras: valor("corretoras"),
+      equivalenteXp: valor("equivalenteXp"),
+    };
+  });
+}
+
+async function salvar() {
+  clearTimeout(SALVANDO);
+  setEstado("estadoSalvo", "salvando…");
+  el("erro").textContent = "";
+  const pedido = ++PEDIDO;
+  try {
+    const dados = await pedir("/carteira", "POST", { itens: itensDoFormulario(), aporte: APORTE });
+    if (pedido !== PEDIDO) return;
+    D = dados;
+    render();
+    setEstado("estadoSalvo", "salvo", "ok");
+    setTimeout(() => setEstado("estadoSalvo", ""), 2200);
+  } catch (e) {
+    el("erro").textContent = e.message;
+    setEstado("estadoSalvo", "não salvo", "erro");
+  }
+}
+
+// Digitar não deve gravar a cada tecla, mas também não pode exigir um botão:
+// a tabela salva sozinha quando a digitação para.
+function salvarDepois() {
+  clearTimeout(SALVANDO);
+  setEstado("estadoSalvo", "alterações não salvas");
+  SALVANDO = setTimeout(salvar, 700);
+}
+
+/* --------------------------------------------------------------- eventos */
+
+el("aporte").addEventListener("input", e => {
+  APORTE = lerNumero(e.target.value);
+  clearTimeout(SALVANDO);
+  // Só recalcula: o aporte não é cadastro, não fica guardado.
+  SALVANDO = setTimeout(carregar, 250);
+});
+el("corpo").addEventListener("input", e => {
+  if (e.target.matches("input")) salvarDepois();
+});
+el("corpo").addEventListener("change", e => {
+  if (e.target.matches("select")) salvar();
+});
+el("corpo").addEventListener("click", async e => {
+  const botao = e.target.closest("[data-excluir]");
+  if (!botao) return;
+  const item = (D.itens || []).find(i => i.cnpj === botao.dataset.excluir);
+  if (!confirm(`Remover ${item ? item.nome : "este fundo"} da carteira?`)) return;
+  try {
+    await pedir("/carteira/excluir", "POST", { cnpj: botao.dataset.excluir });
+    await carregar();
+  } catch (err) { el("erro").textContent = err.message; }
+});
+
+async function adicionar() {
+  el("erro").textContent = "";
+  el("btnAdicionar").disabled = true;
+  try {
+    await pedir("/carteira/adicionar", "POST", {
+      cnpj: el("novoCnpj").value, percentual: lerNumero(el("novoPct").value),
+    });
+    el("novoCnpj").value = "";
+    el("novoPct").value = "";
+    await carregar();
+  } catch (e) { el("erro").textContent = e.message; }
+  finally { el("btnAdicionar").disabled = false; }
+}
+
+el("btnAdicionar").addEventListener("click", adicionar);
+for (const id of ["novoCnpj", "novoPct"]) {
+  el(id).addEventListener("keydown", e => { if (e.key === "Enter") adicionar(); });
+}
+
+montarNav("carteira.html");
+carregar();
+</script>
+</body>
+</html>

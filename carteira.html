@@ -47,6 +47,10 @@
 .carteira .aporte-linha.zerado { color:var(--text-3); font-weight:400; }
 .carteira tr.abaixo .aporte-linha { color:#f0b980; }
 .carteira .falta { display:block; color:#f0b980; font-size:10.5px; font-weight:400; }
+/* Fundo restrito a investidor qualificado nao recebe aporte: a linha fica
+   apagada e a nota diz para onde foi a fatia dele. */
+.carteira tr.fora .fundo-nome, .carteira tr.fora .aporte-linha { opacity:.55; }
+.carteira .nota-iq { display:block; color:var(--text-3); font-size:10.5px; font-weight:400; }
 .carteira input, .carteira select { min-height:30px; padding:4px 8px; font-size:12px; }
 .carteira input.pct { width:76px; text-align:right; font-variant-numeric:tabular-nums; }
 .carteira input.anbima { width:100%; min-width:210px; }
@@ -80,7 +84,7 @@
 
   <section class="aporte-hero">
     <div class="aporte-campo">
-      <label for="aporte">Tenho para aportar</label>
+      <label for="aporte">Aporte</label>
       <div class="aporte-entrada">
         <span>R$</span>
         <input id="aporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
@@ -218,7 +222,7 @@ function linha(item) {
     : `<span class="abrir sem" title="Fora do catálogo público do BTG">↗</span>`;
   // O link mora na coluna fixa, ao lado do nome: na última coluna ele só
   // apareceria depois de rolar a tabela inteira para a direita.
-  return `<tr data-cnpj="${esc(item.cnpj)}" class="${item.abaixoDoMinimo ? "abaixo" : ""}">
+  return `<tr data-cnpj="${esc(item.cnpj)}" class="${item.abaixoDoMinimo ? "abaixo" : ""} ${item.redistribuido ? "fora" : ""}">
     <td class="col-fundo">
       <div class="fundo-linha">
         ${abrir}
@@ -232,6 +236,7 @@ function linha(item) {
     <td class="num">
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
+      ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}
     </td>
     <td><input class="anbima" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
     <td class="num"><input class="minimo" data-campo="aporteMinimo" value="${dinheiro(item.aporteMinimo)}" inputmode="decimal" aria-label="Aporte mínimo" /></td>
@@ -247,12 +252,35 @@ function linha(item) {
   </tr>`;
 }
 
+// Redesenhar a tabela inteira no meio da digitação tiraria o foco e comeria
+// teclas: o salvamento automático responde 700ms depois da última tecla, e
+// nesse tempo a pessoa já está no campo seguinte. Enquanto o foco está na
+// tabela, só os números calculados são atualizados; as células editáveis
+// ficam como estão.
 function render() {
   if (!D) return;
+  const editando = el("corpo").contains(document.activeElement);
+  if (editando) { renderCalculos(); return; }
   const itens = D.itens || [];
   el("corpo").innerHTML = itens.map(linha).join("");
   el("vazia").hidden = itens.length > 0;
   el("rodape").hidden = itens.length === 0;
+  renderCalculos();
+}
+
+function renderCalculos() {
+  const itens = D.itens || [];
+  for (const item of itens) {
+    const tr = el("corpo").querySelector(`tr[data-cnpj="${item.cnpj}"]`);
+    if (!tr) continue;
+    tr.classList.toggle("abaixo", Boolean(item.abaixoDoMinimo));
+    tr.classList.toggle("fora", Boolean(item.redistribuido));
+    const celula = tr.querySelector(".num .aporte-linha").parentElement;
+    celula.innerHTML = `
+      <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
+      ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
+      ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}`;
+  }
   el("tSoma").textContent = pct(D.somaPercentual);
   el("tSoma").className = `num ${D.somaFecha ? "" : "desalinhado"}`;
   el("tAporte").textContent = fmtBRL(D.totalDistribuido);
@@ -261,15 +289,22 @@ function render() {
   el("miniSoma").className = `aporte-mini ${D.somaFecha ? "" : "alerta"}`;
   el("vMinimos").textContent = D.abaixoDoMinimo === 1 ? "1 fundo" : `${D.abaixoDoMinimo} fundos`;
   el("miniMinimos").className = `aporte-mini ${D.abaixoDoMinimo ? "alerta" : ""}`;
-  // A soma fora de 100% é o aviso que mais engana em silêncio: os percentuais
-  // são normalizados pela própria soma, então a conta "fecha" mesmo errada.
-  const avisos = [];
+  // A soma fora de 100% é o aviso que mais engana em silêncio: os pesos são
+  // normalizados pela própria soma, então a conta "fecha" mesmo errada. Já a
+  // redistribuição por IQ é o comportamento pedido -- informa, não alarma.
+  const problemas = [];
   if (!D.somaFecha && itens.length) {
-    avisos.push(`as alocações somam ${pct(D.somaPercentual)}, não 100% — o aporte foi repartido na proporção informada`);
+    problemas.push(`as alocações somam ${pct(D.somaPercentual)}, não 100% — o aporte foi repartido na proporção informada`);
   }
-  if (D.abaixoDoMinimo) avisos.push(`${D.abaixoDoMinimo} fundo(s) abaixo do aporte mínimo`);
-  setEstado("estado", avisos.length ? avisos.join(" · ") : `${itens.length} fundo(s) na carteira`,
-            avisos.length ? "erro" : "ok");
+  if (D.semElegivel) problemas.push("todos os fundos estão marcados como IQ: não há onde alocar o aporte");
+  if (D.abaixoDoMinimo) problemas.push(`${D.abaixoDoMinimo} fundo(s) abaixo do aporte mínimo`);
+  const notas = [];
+  if (D.redistribuidos && !D.semElegivel) {
+    notas.push(`${D.redistribuidos === 1 ? "1 fundo restrito a IQ" : `${D.redistribuidos} fundos restritos a IQ`} fora do aporte: ${pct(D.percentualRedistribuido)} redistribuídos entre os demais`);
+  }
+  if (problemas.length) setEstado("estado", problemas.concat(notas).join(" · "), "erro");
+  else if (notas.length) setEstado("estado", notas.join(" · "));
+  else setEstado("estado", `${itens.length} fundo(s) na carteira`, "ok");
 }
 
 /* --------------------------------------------------------------- dados */

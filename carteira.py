@@ -105,29 +105,43 @@ def _texto(valor: Any) -> str:
 
 # -------------------------------------------------------------- distribuição
 
+def _peso(item: dict[str, Any]) -> float:
+    """Quanto este fundo pesa na divisão do aporte.
+
+    Fundo marcado como IQ (restrito a investidor qualificado) pesa zero: não
+    dá para aportar nele, então a fatia dele é diluída entre os outros na
+    proporção que eles já tinham. O percentual cadastrado não muda -- o que
+    muda é a base do cálculo.
+    """
+    return 0.0 if item.get("qualificado") == "sim" else float(item["percentual"] or 0)
+
+
 def _distribuir(itens: list[dict[str, Any]], aporte: float) -> None:
     """Reparte o aporte entre os fundos, em centavos, sem sobra nem estouro.
 
-    Os percentuais são normalizados pela própria soma: se a planilha somar 90%
-    ou 110%, o aporte informado continua sendo distribuído inteiro e a tela
-    avisa que a soma não fecha em 100%. Arredondar cada fatia para baixo deixa
-    centavos de resto, que vão para as maiores fatias -- um por fundo, até
-    acabar, para o total bater exatamente com o aporte.
+    Os pesos são normalizados pela própria soma: se a planilha somar 90% ou
+    110%, ou se um fundo IQ sair da conta, o aporte informado continua sendo
+    distribuído inteiro e a tela avisa o que aconteceu. Arredondar cada fatia
+    para baixo deixa centavos de resto, que vão para as maiores fatias -- um
+    por fundo, até acabar, para o total bater exatamente com o aporte.
     """
-    soma = sum(item["percentual"] for item in itens)
+    pesos = [_peso(item) for item in itens]
+    soma = sum(pesos)
     centavos_totais = int(round(max(aporte, 0) * 100))
-    if not itens or soma <= 0 or centavos_totais <= 0:
-        for item in itens:
-            item["aporte"] = 0.0
-        return
-    centavos = []
     for item in itens:
-        centavos.append(int(centavos_totais * item["percentual"] / soma))
+        item["aporte"] = 0.0
+        item["elegivel"] = item.get("qualificado") != "sim"
+        # Só é "redistribuído" quem tinha alocação e ficou de fora por ser IQ.
+        item["redistribuido"] = not item["elegivel"] and float(item["percentual"] or 0) > 0
+    if not itens or soma <= 0 or centavos_totais <= 0:
+        return
+    centavos = [int(centavos_totais * peso / soma) for peso in pesos]
     resto = centavos_totais - sum(centavos)
-    maiores = sorted(range(len(itens)),
-                     key=lambda i: (-itens[i]["percentual"], itens[i]["ordem"]))
+    maiores = sorted(range(len(itens)), key=lambda i: (-pesos[i], itens[i]["ordem"]))
+    # Centavo de resto só cai em quem participa da divisão.
+    elegiveis = [i for i in maiores if pesos[i] > 0]
     for posicao in range(resto):
-        centavos[maiores[posicao % len(maiores)]] += 1
+        centavos[elegiveis[posicao % len(elegiveis)]] += 1
     for item, valor in zip(itens, centavos):
         item["aporte"] = round(valor / 100, 2)
 
@@ -176,6 +190,7 @@ def payload(aporte: float = 0) -> dict[str, Any]:
         _distribuir(itens, aporte)
         _marcar_minimos(itens)
         soma = round(sum(item["percentual"] for item in itens), 4)
+        redistribuidos = [item for item in itens if item["redistribuido"]]
         return {
             "aporte": aporte,
             "itens": itens,
@@ -184,6 +199,10 @@ def payload(aporte: float = 0) -> dict[str, Any]:
             "totalDistribuido": round(sum(item["aporte"] for item in itens), 2),
             "abaixoDoMinimo": sum(1 for item in itens if item["abaixoDoMinimo"]),
             "foraDoCatalogo": sum(1 for item in itens if not item["noCatalogo"]),
+            "redistribuidos": len(redistribuidos),
+            "percentualRedistribuido": round(sum(i["percentual"] for i in redistribuidos), 4),
+            # Carteira inteira marcada como IQ: não há para onde mandar o aporte.
+            "semElegivel": bool(itens) and all(_peso(item) <= 0 for item in itens),
             "catalogoBtg": fundos.CATALOGO_BTG_TELA,
         }
 

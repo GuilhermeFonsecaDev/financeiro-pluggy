@@ -65,8 +65,10 @@ def _zip_cvm() -> bytes:
 class DistribuicaoTests(unittest.TestCase):
     """A conta pura, sem banco: é onde um centavo se perde sem ninguém ver."""
 
-    def distribuir(self, percentuais, aporte):
-        itens = [{"percentual": p, "ordem": i} for i, p in enumerate(percentuais)]
+    def distribuir(self, percentuais, aporte, iq=()):
+        itens = [{"percentual": p, "ordem": i,
+                  "qualificado": "sim" if i in iq else "nao"}
+                 for i, p in enumerate(percentuais)]
         carteira._distribuir(itens, aporte)
         return [item["aporte"] for item in itens]
 
@@ -105,6 +107,26 @@ class DistribuicaoTests(unittest.TestCase):
 
     def test_aporte_negativo_nao_vira_valor_negativo(self):
         self.assertEqual(self.distribuir([50, 50], -100), [0, 0])
+
+    def test_fundo_iq_sai_da_conta_e_a_fatia_dele_se_dilui(self):
+        # 20% do fundo IQ repartidos entre 10/20/50, na proporção deles.
+        fatias = self.distribuir([10, 20, 20, 50], 1000, iq={2})
+        self.assertEqual(fatias[2], 0)
+        self.assertEqual(round(sum(fatias), 2), 1000)
+        self.assertEqual(fatias, [125, 250, 0, 625])
+
+    def test_redistribuicao_de_iq_nao_perde_centavo(self):
+        for aporte in (100, 333.33, 1000.01, 0.03, 7):
+            fatias = self.distribuir([10, 20, 20, 20, 30], aporte, iq={0, 3})
+            self.assertEqual(round(sum(fatias), 2), round(aporte, 2), aporte)
+            self.assertEqual([fatias[0], fatias[3]], [0, 0], aporte)
+
+    def test_centavo_de_resto_nao_cai_em_fundo_iq(self):
+        fatias = self.distribuir([50, 50], 0.01, iq={0})
+        self.assertEqual(fatias, [0, 0.01])
+
+    def test_carteira_toda_iq_nao_distribui_nada(self):
+        self.assertEqual(self.distribuir([50, 50], 1000, iq={0, 1}), [0, 0])
 
 
 class CarteiraTests(unittest.TestCase):
@@ -146,6 +168,17 @@ class CarteiraTests(unittest.TestCase):
         pagina = int(url.split("page=")[1].split("&")[0])
         itens = CATALOGO if pagina == 1 else []
         return json.dumps({"items": itens, "total": len(CATALOGO), "total_pages": 1}).encode()
+
+    def liberar_iq(self, aporte=0):
+        """Marca todos como não-IQ: sem isso, o fundo restrito sai da conta.
+
+        Serve aos testes que falam de mínimo e de soma dos percentuais, para
+        não medirem a redistribuição por IQ de carona.
+        """
+        itens = carteira.payload()["itens"]
+        for item in itens:
+            item["qualificado"] = "nao"
+        return carteira.salvar(itens, aporte=aporte)
 
     # ------------------------------------------------------------- cadastro
 
@@ -259,7 +292,7 @@ class CarteiraTests(unittest.TestCase):
     def test_aporte_distribuido_e_minimo_sinalizado(self):
         carteira.adicionar("36.181.846/0001-12", 50)   # mínimo 5.000
         carteira.adicionar("63.446.494/0001-52", 50)   # mínimo 100
-        dados = carteira.payload(2000)
+        dados = self.liberar_iq(aporte=2000)
         a1, zeno = dados["itens"]
         self.assertEqual([a1["aporte"], zeno["aporte"]], [1000, 1000])
         self.assertTrue(a1["abaixoDoMinimo"])
@@ -271,7 +304,7 @@ class CarteiraTests(unittest.TestCase):
     def test_soma_dos_percentuais_e_reportada(self):
         carteira.adicionar("36.181.846/0001-12", 30)
         carteira.adicionar("63.446.494/0001-52", 30)
-        dados = carteira.payload(1000)
+        dados = self.liberar_iq(aporte=1000)
         self.assertEqual(dados["somaPercentual"], 60)
         self.assertFalse(dados["somaFecha"])
         # Mesmo sem fechar 100%, o aporte informado sai inteiro.
@@ -283,10 +316,51 @@ class CarteiraTests(unittest.TestCase):
             carteira.adicionar(cnpj, p)
         itens = carteira.payload()["itens"]
         itens[-1]["percentual"] = 50
+        for item in itens:
+            item["qualificado"] = "nao"
         dados = carteira.salvar(itens, aporte=3000)
         self.assertEqual(dados["somaPercentual"], 100)
         self.assertTrue(dados["somaFecha"])
         self.assertEqual([i["aporte"] for i in dados["itens"]], [300, 600, 600, 1500])
+
+    def test_marcar_iq_redistribui_e_a_tela_sabe_explicar(self):
+        carteira.adicionar("36.181.846/0001-12", 50)
+        carteira.adicionar("11.111.111/0001-11", 50)
+        itens = carteira.payload()["itens"]
+        itens[1]["qualificado"] = "sim"
+        dados = carteira.salvar(itens, aporte=1000)
+        elegivel, restrito = dados["itens"]
+        self.assertEqual(elegivel["aporte"], 1000)      # recebe a fatia do outro
+        self.assertEqual(restrito["aporte"], 0)
+        self.assertTrue(restrito["redistribuido"])
+        self.assertFalse(restrito["elegivel"])
+        self.assertEqual(dados["redistribuidos"], 1)
+        self.assertEqual(dados["percentualRedistribuido"], 50)
+        # A soma cadastrada continua 100%: o que muda é a base do cálculo.
+        self.assertEqual(dados["somaPercentual"], 100)
+        self.assertTrue(dados["somaFecha"])
+        self.assertFalse(dados["semElegivel"])
+
+    def test_iq_que_vem_do_catalogo_tambem_fica_de_fora(self):
+        """Zeno é restrito no catálogo do BTG, sem ninguém marcar nada."""
+        carteira.adicionar("36.181.846/0001-12", 50)
+        carteira.adicionar("63.446.494/0001-52", 50)
+        dados = carteira.payload(1000)
+        self.assertEqual([i["aporte"] for i in dados["itens"]], [1000, 0])
+        self.assertEqual(dados["redistribuidos"], 1)
+
+    def test_carteira_toda_iq_avisa_em_vez_de_inventar_destino(self):
+        carteira.adicionar("63.446.494/0001-52", 100)
+        dados = carteira.payload(1000)
+        self.assertTrue(dados["semElegivel"])
+        self.assertEqual(dados["totalDistribuido"], 0)
+
+    def test_fundo_iq_nao_e_acusado_de_estar_abaixo_do_minimo(self):
+        carteira.adicionar("36.181.846/0001-12", 50)    # mínimo 5.000
+        carteira.adicionar("63.446.494/0001-52", 50)    # IQ, mínimo 100
+        dados = carteira.payload(1000)
+        self.assertFalse(dados["itens"][1]["abaixoDoMinimo"])
+        self.assertEqual(dados["abaixoDoMinimo"], 1)    # só o que recebeu
 
     def test_aporte_nao_e_guardado_entre_consultas(self):
         carteira.adicionar("36.181.846/0001-12", 100)

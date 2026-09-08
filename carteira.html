@@ -82,6 +82,14 @@
     </div>
   </header>
 
+  <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
+    <h2>O servidor aberto precisa ser reiniciado</h2>
+    <p>Esta tela já está atualizada, mas o backend em execução é anterior a ela: por isso um fundo
+       marcado como IQ continua recebendo aporte em vez de ter a fatia redistribuída.</p>
+    <p>Feche a janela do backend Pluggy, abra novamente <strong>iniciar_pluggy.bat</strong> na pasta
+       FinanceiroPluggy e recarregue esta página.</p>
+  </section>
+
   <section class="aporte-hero">
     <div class="aporte-campo">
       <label for="aporte">Aporte</label>
@@ -270,6 +278,10 @@ function render() {
 
 function renderCalculos() {
   const itens = D.itens || [];
+  // Campo que só o backend com redistribuição por IQ devolve. Sem ele, a
+  // conta na tela seria a antiga -- e errada, sem dizer por quê.
+  const servidorAtualizado = typeof D.redistribuidos === "number";
+  el("avisoServidor").hidden = servidorAtualizado;
   for (const item of itens) {
     const tr = el("corpo").querySelector(`tr[data-cnpj="${item.cnpj}"]`);
     if (!tr) continue;
@@ -302,9 +314,15 @@ function renderCalculos() {
   if (D.redistribuidos && !D.semElegivel) {
     notas.push(`${D.redistribuidos === 1 ? "1 fundo restrito a IQ" : `${D.redistribuidos} fundos restritos a IQ`} fora do aporte: ${pct(D.percentualRedistribuido)} redistribuídos entre os demais`);
   }
-  if (problemas.length) setEstado("estado", problemas.concat(notas).join(" · "), "erro");
-  else if (notas.length) setEstado("estado", notas.join(" · "));
-  else setEstado("estado", `${itens.length} fundo(s) na carteira`, "ok");
+  if (!servidorAtualizado) {
+    setEstado("estado", "Reinicie o backend para carregar a atualização", "erro");
+  } else if (problemas.length) {
+    setEstado("estado", problemas.concat(notas).join(" · "), "erro");
+  } else if (notas.length) {
+    setEstado("estado", notas.join(" · "));
+  } else {
+    setEstado("estado", `${itens.length} fundo(s) na carteira`, "ok");
+  }
 }
 
 /* --------------------------------------------------------------- dados */

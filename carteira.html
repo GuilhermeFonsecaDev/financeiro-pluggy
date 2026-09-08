@@ -7,25 +7,30 @@
 <link rel="stylesheet" href="tema.css" />
 <style>
 /* --- aporte -------------------------------------------------------------- */
-.aporte-hero { display:grid; grid-template-columns:minmax(280px,1fr) repeat(3,minmax(0,auto)); gap:14px; align-items:end; margin-bottom:14px; }
-.aporte-campo { display:grid; gap:6px; }
+/* Uma fila que nao estica: o campo do aporte tem a largura do valor que
+   recebe, e os numeros ficam ao lado dele em vez de a tela inteira separar um
+   do outro. Antes o campo era 1fr e virava uma barra de mil pixels. */
+.aporte-hero { display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+.aporte-campo { display:grid; gap:6px; flex:0 0 auto; width:250px; }
 .aporte-campo label { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
-.aporte-entrada { display:flex; align-items:center; min-height:46px; padding:0 14px; border:1px solid var(--line-forte); border-radius:var(--raio-g); background:var(--surface-2); }
+/* min-width:0 porque o <input> tem largura intrinseca de ~20 caracteres e,
+   sem isso, estoura os 250px do campo em vez de encolher. */
+.aporte-entrada { display:flex; align-items:center; min-width:0; min-height:44px; padding:0 13px; border:1px solid var(--line-forte); border-radius:var(--raio-g); background:var(--surface-2); }
 .aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
-.aporte-entrada > span { color:var(--text-3); font-size:15px; }
-.aporte-entrada input { flex:1; min-width:0; padding:0 0 0 8px; border:0; background:transparent; color:var(--text); font:inherit; font-size:24px; font-weight:700; letter-spacing:-.02em; }
+.aporte-entrada > span { color:var(--text-3); font-size:14px; }
+.aporte-entrada input { flex:1; width:100%; min-width:0; padding:0 0 0 7px; border:0; background:transparent; color:var(--text); font:inherit; font-size:22px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .aporte-entrada input:focus { outline:none; }
-.aporte-mini { padding:12px 15px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); white-space:nowrap; }
-.aporte-mini span { display:block; color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
-.aporte-mini strong { display:block; margin-top:6px; font-size:19px; letter-spacing:-.02em; }
+.aporte-mini { flex:0 0 auto; padding:9px 14px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); white-space:nowrap; }
+.aporte-mini span { display:block; color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
+.aporte-mini strong { display:block; margin-top:5px; font-size:17px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .aporte-mini.alerta { border-color:rgba(232,149,74,.45); }
 .aporte-mini.alerta strong { color:#f0b980; }
 
 /* --- tabela da carteira -------------------------------------------------- */
-/* Onze colunas nao cabem em tela nenhuma sem rolagem: a coluna do fundo fica
-   fixa, porque perder de vista de quem e a linha torna o resto inutil. */
+/* A coluna do fundo fica fixa: em tela estreita, quando a tabela rola, perder
+   de vista de quem e a linha torna o resto inutil. */
 .carteira-wrap { overflow-x:auto; overscroll-behavior-x:contain; }
-.carteira { min-width:1180px; }
+.carteira { min-width:860px; }
 .carteira th, .carteira td { padding:8px 10px; vertical-align:middle; }
 .carteira th { position:sticky; top:0; z-index:2; background:var(--surface); }
 .carteira .col-fundo { position:sticky; left:0; z-index:3; min-width:290px; max-width:330px; background:var(--surface); }
@@ -44,7 +49,7 @@
 .carteira .falta { display:block; color:#f0b980; font-size:10.5px; font-weight:400; }
 .carteira input, .carteira select { min-height:30px; padding:4px 8px; font-size:12px; }
 .carteira input.pct { width:76px; text-align:right; font-variant-numeric:tabular-nums; }
-.carteira input.livre { width:100%; min-width:110px; }
+.carteira input.anbima { width:100%; min-width:210px; }
 .carteira input.minimo { width:96px; text-align:right; font-variant-numeric:tabular-nums; }
 .carteira select.iq { width:74px; }
 .carteira .acoes { display:flex; gap:4px; justify-content:flex-end; }
@@ -58,8 +63,7 @@
 .linha-nova input.pct { width:86px; text-align:right; }
 .linha-nova .dica { color:var(--text-3); font-size:11px; }
 .carteira-vazia { padding:26px 0; color:var(--text-3); font-size:13px; text-align:center; }
-@media (max-width:1100px) { .aporte-hero { grid-template-columns:1fr 1fr; } }
-@media (max-width:640px) { .aporte-hero { grid-template-columns:1fr; } }
+@media (max-width:640px) { .aporte-campo { width:100%; } .aporte-mini { flex:1 1 auto; } }
 </style>
 </head>
 <body>
@@ -104,10 +108,6 @@
             <th class="num">Aporte mínimo</th>
             <th class="num">Resgate</th>
             <th>IQ</th>
-            <th>Volatilidade</th>
-            <th>Taxas</th>
-            <th>Corretoras</th>
-            <th>Equivalente XP</th>
             <th></th>
           </tr>
         </thead>
@@ -117,7 +117,7 @@
             <td class="col-fundo">Total</td>
             <td class="num" id="tSoma">0%</td>
             <td class="num" id="tAporte">R$ 0,00</td>
-            <td colspan="9"></td>
+            <td colspan="5"></td>
           </tr>
         </tfoot>
       </table>
@@ -166,6 +166,47 @@ function lerNumero(texto) {
 
 const pct = v => `${Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 
+// Milhar com ponto e decimal com vírgula, do jeito que se escreve dinheiro
+// aqui. A formatação acontece a cada tecla, então preserva a vírgula ainda
+// sendo digitada ("1.500," continua assim) em vez de completar casas sozinha.
+function formatarValor(bruto) {
+  let texto = String(bruto == null ? "" : bruto).replace(/[^\d,.]/g, "");
+  // Ponto com uma ou duas casas no fim veio de planilha em inglês: é decimal.
+  if (!texto.includes(",") && /\.\d{1,2}$/.test(texto)) {
+    texto = texto.replace(/\.(?=\d{1,2}$)/, ",");
+  }
+  const partes = texto.replace(/\./g, "").split(",");
+  const inteiro = partes[0].replace(/^0+(?=\d)/, "");
+  const agrupado = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  if (partes.length === 1) return agrupado;
+  return `${agrupado || "0"},${partes.slice(1).join("").slice(0, 2)}`;
+}
+
+// Inserir pontos muda o tamanho do texto e jogaria o cursor para o fim. A
+// posição é reconstruída pela contagem de dígitos, não de caracteres.
+function digitosAte(texto, posicao) {
+  return (String(texto).slice(0, posicao).match(/\d/g) || []).length;
+}
+
+function posicaoApos(texto, digitos) {
+  if (digitos <= 0) return 0;
+  let vistos = 0;
+  for (let i = 0; i < texto.length; i++) {
+    if (texto[i] >= "0" && texto[i] <= "9" && ++vistos === digitos) return i + 1;
+  }
+  return texto.length;
+}
+
+function formatarCampo(campo) {
+  const digitos = digitosAte(campo.value, campo.selectionStart);
+  campo.value = formatarValor(campo.value);
+  const posicao = posicaoApos(campo.value, digitos);
+  campo.setSelectionRange(posicao, posicao);
+}
+
+const dinheiro = v => v == null || v === ""
+  ? "" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
 /* ------------------------------------------------------------- desenho */
 
 const IQ_ROTULO = { sim: "Sim", nao: "Não", "": "—" };
@@ -192,18 +233,14 @@ function linha(item) {
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
     </td>
-    <td><input class="livre" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
-    <td class="num"><input class="minimo" data-campo="aporteMinimo" value="${item.aporteMinimo == null ? "" : item.aporteMinimo}" inputmode="decimal" aria-label="Aporte mínimo" /></td>
+    <td><input class="anbima" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
+    <td class="num"><input class="minimo" data-campo="aporteMinimo" value="${dinheiro(item.aporteMinimo)}" inputmode="decimal" aria-label="Aporte mínimo" /></td>
     <td class="num"><input class="pct" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Dias para resgate" /></td>
     <td>
       <select class="iq" data-campo="qualificado" aria-label="Investidor qualificado">
         ${["", "sim", "nao"].map(v => `<option value="${v}" ${v === item.qualificado ? "selected" : ""}>${IQ_ROTULO[v]}</option>`).join("")}
       </select>
     </td>
-    <td><input class="livre" data-campo="volatilidade" value="${esc(item.volatilidade)}" aria-label="Volatilidade" /></td>
-    <td><input class="livre" data-campo="taxas" value="${esc(item.taxas)}" aria-label="Taxas" /></td>
-    <td><input class="livre" data-campo="corretoras" value="${esc(item.corretoras)}" aria-label="Corretoras" /></td>
-    <td><input class="livre" data-campo="equivalenteXp" value="${esc(item.equivalenteXp)}" aria-label="Equivalente XP" /></td>
     <td><div class="acoes">
       <button class="icone" data-excluir="${esc(item.cnpj)}" title="Remover da carteira">×</button>
     </div></td>
@@ -268,10 +305,6 @@ function itensDoFormulario() {
       aporteMinimoProprio: minimo !== "",
       diasResgate: valor("diasResgate"),
       qualificado: valor("qualificado"),
-      volatilidade: valor("volatilidade"),
-      taxas: valor("taxas"),
-      corretoras: valor("corretoras"),
-      equivalenteXp: valor("equivalenteXp"),
     };
   });
 }
@@ -305,13 +338,16 @@ function salvarDepois() {
 /* --------------------------------------------------------------- eventos */
 
 el("aporte").addEventListener("input", e => {
+  formatarCampo(e.target);
   APORTE = lerNumero(e.target.value);
   clearTimeout(SALVANDO);
   // Só recalcula: o aporte não é cadastro, não fica guardado.
   SALVANDO = setTimeout(carregar, 250);
 });
 el("corpo").addEventListener("input", e => {
-  if (e.target.matches("input")) salvarDepois();
+  if (!e.target.matches("input")) return;
+  if (e.target.matches(".minimo")) formatarCampo(e.target);
+  salvarDepois();
 });
 el("corpo").addEventListener("change", e => {
   if (e.target.matches("select")) salvar();

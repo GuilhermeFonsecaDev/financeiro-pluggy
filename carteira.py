@@ -33,17 +33,13 @@ CREATE TABLE IF NOT EXISTS carteira_alvo (
   aporte_minimo REAL,
   dias_resgate INTEGER,
   qualificado TEXT NOT NULL DEFAULT '',
-  volatilidade TEXT NOT NULL DEFAULT '',
-  taxas TEXT NOT NULL DEFAULT '',
-  corretoras TEXT NOT NULL DEFAULT '',
-  equivalente_xp TEXT NOT NULL DEFAULT '',
   atualizado_em TEXT NOT NULL DEFAULT ''
 );
 """
 
-# Campos que o cadastro guarda como texto livre, na ordem em que aparecem na
-# tela. Nenhum deles existe em fonte pública.
-TEXTO_LIVRE = ("volatilidade", "taxas", "corretoras", "equivalente_xp")
+# Colunas de texto livre que a tela já não mostra. Ficam listadas para a
+# migração poder apagá-las de bancos criados antes.
+REMOVIDAS = ("volatilidade", "taxas", "corretoras", "equivalente_xp")
 LIMITE_TEXTO = 120
 LIMITE_FUNDOS = 60
 
@@ -51,10 +47,20 @@ LIMITE_FUNDOS = 60
 def garantir_tabelas(conn=None) -> None:
     if conn is not None:
         conn.executescript(SCHEMA)
+        _remover_colunas(conn)
         return
     with fin.connect() as conexao:
         conexao.executescript(SCHEMA)
+        _remover_colunas(conexao)
         conexao.commit()
+
+
+def _remover_colunas(conn) -> None:
+    """Apaga as colunas de texto livre de um banco criado antes."""
+    existentes = {linha[1] for linha in conn.execute("PRAGMA table_info(carteira_alvo)")}
+    for coluna in REMOVIDAS:
+        if coluna in existentes:
+            conn.execute(f"ALTER TABLE carteira_alvo DROP COLUMN {coluna}")
 
 
 # ------------------------------------------------------------- preenchimento
@@ -162,10 +168,6 @@ def payload(aporte: float = 0) -> dict[str, Any]:
                 "diasResgate": linha["dias_resgate"] if linha["dias_resgate"] is not None
                                else catalogo["diasResgate"],
                 "qualificado": linha["qualificado"] or catalogo["qualificado"],
-                "volatilidade": linha["volatilidade"],
-                "taxas": linha["taxas"],
-                "corretoras": linha["corretoras"],
-                "equivalenteXp": linha["equivalente_xp"],
                 "url": catalogo["url"],
                 "urlComo": catalogo["urlComo"],
                 "noCatalogo": catalogo["noCatalogo"],
@@ -256,8 +258,7 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
             _texto(item.get("anbima")),
             _numero(item.get("aporteMinimo")) if item.get("aporteMinimoProprio") else None,
             int(item["diasResgate"]) if str(item.get("diasResgate") or "").strip().isdigit() else None,
-            qualificado, _texto(item.get("volatilidade")), _texto(item.get("taxas")),
-            _texto(item.get("corretoras")), _texto(item.get("equivalenteXp")), agora,
+            qualificado, agora,
         ))
     with fin.connect() as conn:
         garantir_tabelas(conn)
@@ -265,7 +266,6 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
         conn.execute("DELETE FROM carteira_alvo")
         conn.executemany(
             "INSERT INTO carteira_alvo (cnpj,ordem,percentual,nome,anbima,aporte_minimo,"
-            "dias_resgate,qualificado,volatilidade,taxas,corretoras,equivalente_xp,"
-            "atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", linhas)
+            "dias_resgate,qualificado,atualizado_em) VALUES (?,?,?,?,?,?,?,?,?)", linhas)
         conn.commit()
     return payload(aporte)

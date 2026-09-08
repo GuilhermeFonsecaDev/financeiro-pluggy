@@ -199,15 +199,28 @@ class CarteiraTests(unittest.TestCase):
         carteira.adicionar("36.181.846/0001-12", 100)
         itens = carteira.payload()["itens"]
         itens[0].update({"aporteMinimo": 100, "aporteMinimoProprio": True,
-                         "volatilidade": "0,49%", "taxas": "0,68/20% (CDI)",
-                         "corretoras": "BTG", "equivalenteXp": "XP Cash"})
+                         "anbima": "Renda Fixa Duração Livre", "diasResgate": "31"})
         salvo = carteira.salvar(itens)["itens"][0]
         self.assertEqual(salvo["aporteMinimo"], 100)
         self.assertTrue(salvo["aporteMinimoProprio"])
-        self.assertEqual(salvo["volatilidade"], "0,49%")
-        self.assertEqual(salvo["equivalenteXp"], "XP Cash")
+        self.assertEqual(salvo["anbima"], "Renda Fixa Duração Livre")
+        self.assertEqual(salvo["diasResgate"], 31)
         # Uma nova leitura mantém o valor editado, não o do catálogo (5000).
         self.assertEqual(carteira.payload()["itens"][0]["aporteMinimo"], 100)
+
+    def test_colunas_de_texto_livre_saem_de_um_banco_antigo(self):
+        """A tela deixou de mostrar volatilidade, taxas, corretoras e XP."""
+        with banco.connect() as conn:
+            for coluna in carteira.REMOVIDAS:
+                conn.execute(f"ALTER TABLE carteira_alvo ADD COLUMN {coluna} TEXT "
+                             "NOT NULL DEFAULT ''")
+            conn.commit()
+        carteira.garantir_tabelas()
+        with banco.connect() as conn:
+            colunas = {linha[1] for linha in conn.execute("PRAGMA table_info(carteira_alvo)")}
+        self.assertFalse(colunas & set(carteira.REMOVIDAS))
+        # E o cadastro continua funcionando depois da limpeza.
+        self.assertEqual(carteira.adicionar("36.181.846/0001-12", 100)["somaPercentual"], 100)
 
     def test_apagar_o_minimo_editado_devolve_o_valor_do_catalogo(self):
         carteira.adicionar("36.181.846/0001-12", 100)

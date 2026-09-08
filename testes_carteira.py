@@ -9,6 +9,7 @@ valor informado até o centavo, inclusive quando os percentuais não fecham em
 
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,6 +128,33 @@ class DistribuicaoTests(unittest.TestCase):
 
     def test_carteira_toda_iq_nao_distribui_nada(self):
         self.assertEqual(self.distribuir([50, 50], 1000, iq={0, 1}), [0, 0])
+
+
+class DataResgateTests(unittest.TestCase):
+    """D+N vira a data em que o dinheiro cai, resgatando hoje."""
+
+    def data(self, dias, hoje=date(2026, 9, 8)):          # 08/09/2026 é terça
+        with patch.object(carteira, "_hoje", return_value=hoje):
+            return carteira._data_resgate(dias)
+
+    def test_conta_dias_corridos_a_partir_de_hoje(self):
+        self.assertEqual(self.data(0), "2026-09-08")
+        self.assertEqual(self.data(1), "2026-09-09")
+        self.assertEqual(self.data(31), "2026-10-09")
+        self.assertEqual(self.data(91), "2026-12-08")
+
+    def test_fim_de_semana_rola_para_a_segunda(self):
+        # D+4 cai no sábado 12/09 e D+5 no domingo: os dois liquidam na segunda.
+        self.assertEqual(self.data(4), "2026-09-14")
+        self.assertEqual(self.data(5), "2026-09-14")
+
+    def test_sem_liquidez_informada_nao_inventa_data(self):
+        for valor in (None, "", "  ", "x", -3):
+            self.assertEqual(self.data(valor), "", repr(valor))
+
+    def test_data_acompanha_a_liquidez_de_cada_fundo(self):
+        self.assertEqual(self.data(10), "2026-09-18")
+        self.assertEqual(self.data(60), "2026-11-09")
 
 
 class CarteiraTests(unittest.TestCase):
@@ -361,6 +389,21 @@ class CarteiraTests(unittest.TestCase):
         dados = carteira.payload(1000)
         self.assertFalse(dados["itens"][1]["abaixoDoMinimo"])
         self.assertEqual(dados["abaixoDoMinimo"], 1)    # só o que recebeu
+
+    def test_payload_traz_a_data_de_resgate_de_cada_fundo(self):
+        carteira.adicionar("36.181.846/0001-12", 100)      # D+31 no catálogo
+        with patch.object(carteira, "_hoje", return_value=date(2026, 9, 8)):
+            item = carteira.payload()["itens"][0]
+        self.assertEqual(item["diasResgate"], 31)
+        self.assertEqual(item["dataResgate"], "2026-10-09")
+
+    def test_liquidez_editada_muda_a_data(self):
+        carteira.adicionar("36.181.846/0001-12", 100)
+        itens = carteira.payload()["itens"]
+        itens[0]["diasResgate"] = "1"
+        with patch.object(carteira, "_hoje", return_value=date(2026, 9, 8)):
+            item = carteira.salvar(itens)["itens"][0]
+        self.assertEqual(item["dataResgate"], "2026-09-09")
 
     def test_aporte_nao_e_guardado_entre_consultas(self):
         carteira.adicionar("36.181.846/0001-12", 100)

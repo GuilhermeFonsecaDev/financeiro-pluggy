@@ -6,34 +6,27 @@
 <title>Carteira</title>
 <link rel="stylesheet" href="tema.css" />
 <style>
-/* --- aporte -------------------------------------------------------------- */
-/* Uma fila que nao estica: o campo do aporte tem a largura do valor que
-   recebe, e os numeros ficam ao lado dele em vez de a tela inteira separar um
-   do outro. Antes o campo era 1fr e virava uma barra de mil pixels. */
-.aporte-hero { display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
-.aporte-campo { display:grid; gap:6px; flex:0 0 auto; width:250px; }
-.aporte-campo label { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
-/* min-width:0 porque o <input> tem largura intrinseca de ~20 caracteres e,
-   sem isso, estoura os 250px do campo em vez de encolher. */
-.aporte-entrada { display:flex; align-items:center; min-width:0; min-height:44px; padding:0 13px; border:1px solid var(--line-forte); border-radius:var(--raio-g); background:var(--surface-2); }
+/* --- aporte no cabecalho do painel --------------------------------------- */
+/* O campo vive junto da tabela que ele alimenta. Antes ficava numa fila
+   propria, com tres cartoes de total que repetiam o rodape da tabela. */
+.painel-tit .aporte-campo { display:flex; align-items:center; gap:9px; }
+.painel-tit .aporte-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
+.aporte-entrada { display:flex; align-items:center; min-width:0; width:170px; min-height:38px; padding:0 11px; border:1px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); }
 .aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
-.aporte-entrada > span { color:var(--text-3); font-size:14px; }
-.aporte-entrada input { flex:1; width:100%; min-width:0; padding:0 0 0 7px; border:0; background:transparent; color:var(--text); font:inherit; font-size:22px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.aporte-entrada > span { color:var(--text-3); font-size:13px; }
+/* min-width:0 porque o <input> tem largura intrinseca de ~20 caracteres e,
+   sem isso, estoura a caixa em vez de encolher. */
+.aporte-entrada input { flex:1; width:100%; min-width:0; padding:0 0 0 7px; border:0; background:transparent; color:var(--text); font:inherit; font-size:17px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .aporte-entrada input:focus { outline:none; }
-.aporte-mini { flex:0 0 auto; padding:9px 14px; border:1px solid var(--line); border-radius:var(--raio-g); background:var(--surface); white-space:nowrap; }
-.aporte-mini span { display:block; color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
-.aporte-mini strong { display:block; margin-top:5px; font-size:17px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
-.aporte-mini.alerta { border-color:rgba(232,149,74,.45); }
-.aporte-mini.alerta strong { color:#f0b980; }
 
 /* --- tabela da carteira -------------------------------------------------- */
 /* A coluna do fundo fica fixa: em tela estreita, quando a tabela rola, perder
    de vista de quem e a linha torna o resto inutil. */
 .carteira-wrap { overflow-x:auto; overscroll-behavior-x:contain; }
-.carteira { min-width:860px; }
-.carteira th, .carteira td { padding:8px 10px; vertical-align:middle; }
+.carteira { min-width:820px; }
+.carteira th, .carteira td { padding:7px 10px; vertical-align:middle; }
 .carteira th { position:sticky; top:0; z-index:2; background:var(--surface); }
-.carteira .col-fundo { position:sticky; left:0; z-index:3; min-width:290px; max-width:330px; background:var(--surface); }
+.carteira .col-fundo { position:sticky; left:0; z-index:3; min-width:290px; max-width:340px; background:var(--surface); }
 .carteira thead .col-fundo { z-index:4; }
 .carteira tbody tr:hover .col-fundo { background:var(--surface-2); }
 .carteira .num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -51,23 +44,39 @@
    apagada e a nota diz para onde foi a fatia dele. */
 .carteira tr.fora .fundo-nome, .carteira tr.fora .aporte-linha { opacity:.55; }
 .carteira .nota-iq { display:block; color:var(--text-3); font-size:10.5px; font-weight:400; }
-.carteira input, .carteira select { min-height:30px; padding:4px 8px; font-size:12px; }
-.carteira input.pct { width:76px; text-align:right; font-variant-numeric:tabular-nums; }
+.carteira .data-resgate { color:var(--text-2); font-size:12px; font-variant-numeric:tabular-nums; }
+.carteira .data-resgate.vazia { color:var(--text-3); }
+
+/* Campo editavel sem parecer formulario: a moldura de cada celula pesava mais
+   que o numero dentro dela. A borda aparece ao passar o mouse ou ao focar --
+   ate ali, e so texto. */
+.carteira input, .carteira select {
+  min-height:28px; padding:3px 6px; border:1px solid transparent; border-radius:7px;
+  background:transparent; color:var(--text); font:inherit; font-size:12px;
+  transition:border-color .12s, background .12s;
+}
+.carteira input:hover, .carteira select:hover { border-color:var(--line); background:var(--surface-2); }
+.carteira input:focus, .carteira select:focus { border-color:var(--azul); background:var(--surface-2); outline:none; }
+.carteira input.pct { width:64px; text-align:right; font-variant-numeric:tabular-nums; }
 .carteira input.anbima { width:100%; min-width:210px; }
-.carteira input.minimo { width:96px; text-align:right; font-variant-numeric:tabular-nums; }
-.carteira select.iq { width:74px; }
+.carteira select.iq { width:66px; }
 .carteira .acoes { display:flex; gap:4px; justify-content:flex-end; }
-.carteira .abrir { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); color:var(--azul); font-size:13px; text-decoration:none; }
+.carteira .abrir { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); color:var(--azul); font-size:13px; text-decoration:none; }
 .carteira .abrir:hover { border-color:var(--azul); background:var(--azul-suave); }
 .carteira .abrir.sem { border-style:dashed; color:var(--text-3); pointer-events:none; }
 .carteira tfoot td { border-top:1px solid var(--line-forte); font-weight:700; }
 .carteira tfoot .desalinhado { color:#f0b980; }
-.linha-nova { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
-.linha-nova input.cnpj { width:190px; font-variant-numeric:tabular-nums; }
-.linha-nova input.pct { width:86px; text-align:right; }
-.linha-nova .dica { color:var(--text-3); font-size:11px; }
 .carteira-vazia { padding:26px 0; color:var(--text-3); font-size:13px; text-align:center; }
-@media (max-width:640px) { .aporte-campo { width:100%; } .aporte-mini { flex:1 1 auto; } }
+
+/* --- cadastro de fundo --------------------------------------------------- */
+.cadastro-modal { width:min(460px,100%); }
+.cadastro-campos { display:grid; grid-template-columns:1fr 92px; gap:10px; }
+.cadastro-campo { display:grid; gap:5px; min-width:0; }
+.cadastro-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
+.cadastro-campo input { width:100%; font-variant-numeric:tabular-nums; }
+.cadastro-achado { margin:10px 0 0; min-height:34px; color:var(--text-2); font-size:12.5px; line-height:1.4; }
+.cadastro-achado.nao { color:#f0b980; }
+@media (max-width:700px) { .painel-tit { flex-wrap:wrap; } }
 </style>
 </head>
 <body>
@@ -78,6 +87,7 @@
     <div><h1>Carteira</h1><p class="sub">carteira-alvo e distribuição do aporte pelos percentuais de alocação</p></div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
+      <button class="primario" id="btnCadastrar">Cadastrar fundo</button>
       <a class="sutil" href="investimentos.html" style="display:inline-flex;align-items:center;min-height:34px;padding:0 13px;border:1px solid var(--line-forte);border-radius:var(--raio);color:var(--text-2);font-size:13px;text-decoration:none">Investimentos</a>
     </div>
   </header>
@@ -90,23 +100,19 @@
        FinanceiroPluggy e recarregue esta página.</p>
   </section>
 
-  <section class="aporte-hero">
-    <div class="aporte-campo">
-      <label for="aporte">Aporte</label>
-      <div class="aporte-entrada">
-        <span>R$</span>
-        <input id="aporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
-      </div>
-    </div>
-    <article class="aporte-mini"><span>Distribuído</span><strong id="vDistribuido">R$ 0,00</strong></article>
-    <article class="aporte-mini" id="miniSoma"><span>Soma das alocações</span><strong id="vSoma">0%</strong></article>
-    <article class="aporte-mini" id="miniMinimos"><span>Abaixo do mínimo</span><strong id="vMinimos">0 fundos</strong></article>
-  </section>
-
   <section class="painel">
     <div class="painel-tit">
-      <div><h2>Fundos da carteira</h2><div class="sub" id="subFundos">nome, Anbima, aporte mínimo, liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
-      <span class="estado" id="estadoSalvo"></span>
+      <div><h2>Fundos da carteira</h2><div class="sub" id="subFundos">nome, Anbima, liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="estado" id="estadoSalvo"></span>
+        <div class="aporte-campo">
+          <label for="aporte">Aporte</label>
+          <div class="aporte-entrada">
+            <span>R$</span>
+            <input id="aporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="carteira-wrap">
@@ -117,8 +123,8 @@
             <th class="num">Alocação</th>
             <th class="num">Aporte</th>
             <th>Classificação Anbima</th>
-            <th class="num">Aporte mínimo</th>
-            <th class="num">Resgate</th>
+            <th class="num">Data resgate</th>
+            <th class="num">Liquidez</th>
             <th>IQ</th>
             <th></th>
           </tr>
@@ -139,15 +145,36 @@
       Nenhum fundo cadastrado. Informe o CNPJ e o percentual de alocação abaixo — o resto vem dos catálogos.
     </p>
 
-    <div class="linha-nova">
-      <input class="cnpj" id="novoCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="CNPJ do fundo" aria-label="CNPJ do fundo" />
-      <input class="pct" id="novoPct" type="text" inputmode="decimal" autocomplete="off" placeholder="%" aria-label="Percentual de alocação" />
-      <button class="primario" id="btnAdicionar">Adicionar fundo</button>
-      <span class="dica" id="dicaNovo">o CNPJ pode ser o do fundo ou o da classe</span>
-    </div>
     <p class="estado erro" id="erro" style="margin-top:8px"></p>
   </section>
 </main>
+
+<div class="modal-fundo" id="modalCadastro" hidden>
+  <div class="modal cadastro-modal">
+    <header class="modal-tit">
+      <h2>Cadastrar fundo</h2>
+      <button class="icone" id="btnFecharCadastro" aria-label="Fechar">×</button>
+    </header>
+    <p class="sub" style="margin-bottom:14px">
+      O CNPJ pode ser o do fundo ou o da classe. Nome, Anbima, liquidez e IQ vêm dos catálogos.
+    </p>
+    <div class="cadastro-campos">
+      <div class="cadastro-campo">
+        <label for="novoCnpj">CNPJ</label>
+        <input id="novoCnpj" type="text" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" />
+      </div>
+      <div class="cadastro-campo">
+        <label for="novoPct">Alocação</label>
+        <input id="novoPct" type="text" inputmode="decimal" autocomplete="off" placeholder="%" />
+      </div>
+    </div>
+    <p class="cadastro-achado" id="cadastroAchado"></p>
+    <p class="estado erro" id="cadastroErro"></p>
+    <footer class="modal-rodape">
+      <button class="primario" id="btnConfirmarCadastro">Adicionar à carteira</button>
+    </footer>
+  </div>
+</div>
 
 <script src="app.js"></script>
 <script>
@@ -216,8 +243,16 @@ function formatarCampo(campo) {
   campo.setSelectionRange(posicao, posicao);
 }
 
-const dinheiro = v => v == null || v === ""
-  ? "" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+// A data é derivada da liquidez, então é texto, não campo: editar a data não
+// faria sentido -- quem manda é o D+N ao lado.
+function celulaDataResgate(item) {
+  if (!item.dataResgate) {
+    return `<span class="data-resgate vazia" title="informe a liquidez">—</span>`;
+  }
+  const titulo = `resgatando hoje, o dinheiro cai em ${fmtData(item.dataResgate)}`
+    + ` (D+${item.diasResgate}, rolando fim de semana; feriado pode atrasar mais)`;
+  return `<span class="data-resgate" title="${esc(titulo)}">${fmtData(item.dataResgate)}</span>`;
+}
 
 /* ------------------------------------------------------------- desenho */
 
@@ -247,8 +282,8 @@ function linha(item) {
       ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}
     </td>
     <td><input class="anbima" data-campo="anbima" value="${esc(item.anbima)}" aria-label="Classificação Anbima" /></td>
-    <td class="num"><input class="minimo" data-campo="aporteMinimo" value="${dinheiro(item.aporteMinimo)}" inputmode="decimal" aria-label="Aporte mínimo" /></td>
-    <td class="num"><input class="pct" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Dias para resgate" /></td>
+    <td class="num">${celulaDataResgate(item)}</td>
+    <td class="num"><input class="pct" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Liquidez em dias de ${esc(item.nome)}" /></td>
     <td>
       <select class="iq" data-campo="qualificado" aria-label="Investidor qualificado">
         ${["", "sim", "nao"].map(v => `<option value="${v}" ${v === item.qualificado ? "selected" : ""}>${IQ_ROTULO[v]}</option>`).join("")}
@@ -296,11 +331,6 @@ function renderCalculos() {
   el("tSoma").textContent = pct(D.somaPercentual);
   el("tSoma").className = `num ${D.somaFecha ? "" : "desalinhado"}`;
   el("tAporte").textContent = fmtBRL(D.totalDistribuido);
-  el("vDistribuido").textContent = fmtBRL(D.totalDistribuido);
-  el("vSoma").textContent = pct(D.somaPercentual);
-  el("miniSoma").className = `aporte-mini ${D.somaFecha ? "" : "alerta"}`;
-  el("vMinimos").textContent = D.abaixoDoMinimo === 1 ? "1 fundo" : `${D.abaixoDoMinimo} fundos`;
-  el("miniMinimos").className = `aporte-mini ${D.abaixoDoMinimo ? "alerta" : ""}`;
   // A soma fora de 100% é o aviso que mais engana em silêncio: os pesos são
   // normalizados pela própria soma, então a conta "fecha" mesmo errada. Já a
   // redistribuição por IQ é o comportamento pedido -- informa, não alarma.
@@ -344,18 +374,17 @@ function itensDoFormulario() {
       return alvo ? alvo.value.trim() : "";
     };
     const original = (D.itens || []).find(i => i.cnpj === tr.dataset.cnpj) || {};
-    const minimo = valor("aporteMinimo");
     const nome = valor("nome");
     return {
       cnpj: tr.dataset.cnpj,
       percentual: lerNumero(valor("percentual")),
-      // Nome não é editável na tabela: fica o que o catálogo deu, a menos que
-      // já houvesse um nome próprio guardado.
+      // Nome e aporte mínimo não aparecem na tabela: seguem como estavam, ou
+      // salvar apagaria o que já estava guardado.
       nome: nome || original.nome,
       nomeProprio: original.nomeProprio || Boolean(nome),
       anbima: valor("anbima"),
-      aporteMinimo: minimo === "" ? null : lerNumero(minimo),
-      aporteMinimoProprio: minimo !== "",
+      aporteMinimo: original.aporteMinimo,
+      aporteMinimoProprio: Boolean(original.aporteMinimoProprio),
       diasResgate: valor("diasResgate"),
       qualificado: valor("qualificado"),
     };
@@ -399,7 +428,6 @@ el("aporte").addEventListener("input", e => {
 });
 el("corpo").addEventListener("input", e => {
   if (!e.target.matches("input")) return;
-  if (e.target.matches(".minimo")) formatarCampo(e.target);
   salvarDepois();
 });
 el("corpo").addEventListener("change", e => {
@@ -416,24 +444,82 @@ el("corpo").addEventListener("click", async e => {
   } catch (err) { el("erro").textContent = err.message; }
 });
 
-async function adicionar() {
-  el("erro").textContent = "";
-  el("btnAdicionar").disabled = true;
+/* ------------------------------------------------------------- cadastro */
+
+let ESPERA_CNPJ;
+let PEDIDO_CNPJ = 0;
+
+function abrirCadastro() {
+  el("novoCnpj").value = "";
+  el("novoPct").value = "";
+  el("cadastroAchado").textContent = "";
+  el("cadastroAchado").className = "cadastro-achado";
+  el("cadastroErro").textContent = "";
+  el("modalCadastro").hidden = false;
+  el("novoCnpj").focus();
+}
+
+function fecharCadastro() {
+  clearTimeout(ESPERA_CNPJ);
+  el("modalCadastro").hidden = true;
+}
+
+// Mostra de qual fundo é o CNPJ antes de cadastrar: um dígito trocado põe
+// outro fundo na carteira, e o número sozinho não denuncia isso.
+async function conferirCnpj() {
+  const digitos = el("novoCnpj").value.replace(/\D/g, "");
+  const achado = el("cadastroAchado");
+  if (digitos.length !== 14) {
+    achado.textContent = digitos.length ? "CNPJ incompleto" : "";
+    achado.className = "cadastro-achado";
+    return;
+  }
+  const pedido = ++PEDIDO_CNPJ;
+  achado.textContent = "procurando…";
+  achado.className = "cadastro-achado";
+  try {
+    const r = await pedir(`/fundos?consulta=${encodeURIComponent(digitos)}`);
+    if (pedido !== PEDIDO_CNPJ) return;
+    const item = (r.resultados || [])[0] || {};
+    const nome = (item.btg && item.btg.nome) || (item.cvm && item.cvm.denominacao);
+    achado.textContent = nome
+      ? (item.btg ? nome : `${nome} — fora do catálogo do BTG`)
+      : "CNPJ não encontrado nos catálogos";
+    achado.className = `cadastro-achado ${nome ? "" : "nao"}`;
+  } catch (e) {
+    if (pedido === PEDIDO_CNPJ) { achado.textContent = e.message; achado.className = "cadastro-achado nao"; }
+  }
+}
+
+async function cadastrar() {
+  el("cadastroErro").textContent = "";
+  el("btnConfirmarCadastro").disabled = true;
   try {
     await pedir("/carteira/adicionar", "POST", {
       cnpj: el("novoCnpj").value, percentual: lerNumero(el("novoPct").value),
     });
-    el("novoCnpj").value = "";
-    el("novoPct").value = "";
+    fecharCadastro();
     await carregar();
-  } catch (e) { el("erro").textContent = e.message; }
-  finally { el("btnAdicionar").disabled = false; }
+  } catch (e) { el("cadastroErro").textContent = e.message; }
+  finally { el("btnConfirmarCadastro").disabled = false; }
 }
 
-el("btnAdicionar").addEventListener("click", adicionar);
+el("btnCadastrar").addEventListener("click", abrirCadastro);
+el("btnFecharCadastro").addEventListener("click", fecharCadastro);
+el("modalCadastro").addEventListener("click", e => {
+  if (e.target === el("modalCadastro")) fecharCadastro();
+});
+el("btnConfirmarCadastro").addEventListener("click", cadastrar);
+el("novoCnpj").addEventListener("input", () => {
+  clearTimeout(ESPERA_CNPJ);
+  ESPERA_CNPJ = setTimeout(conferirCnpj, 250);
+});
 for (const id of ["novoCnpj", "novoPct"]) {
-  el(id).addEventListener("keydown", e => { if (e.key === "Enter") adicionar(); });
+  el(id).addEventListener("keydown", e => { if (e.key === "Enter") cadastrar(); });
 }
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !el("modalCadastro").hidden) fecharCadastro();
+});
 
 montarNav("carteira.html");
 carregar();

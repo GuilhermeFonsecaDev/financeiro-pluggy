@@ -17,7 +17,7 @@ aportar em menos fundos é quem investe.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import banco as fin
@@ -146,6 +146,30 @@ def _distribuir(itens: list[dict[str, Any]], aporte: float) -> None:
         item["aporte"] = round(valor / 100, 2)
 
 
+def _hoje() -> date:
+    return date.today()
+
+
+def _data_resgate(dias: Any) -> str:
+    """Quando o dinheiro cai, resgatando hoje.
+
+    O D+N dos fundos é contado em dias corridos, mas liquidação financeira não
+    acontece em fim de semana: a data rola para a segunda-feira seguinte. Não
+    conhecemos feriados, então um feriado no caminho atrasa um dia a mais do
+    que aparece aqui.
+    """
+    try:
+        numero = int(dias)
+    except (TypeError, ValueError):
+        return ""
+    if numero < 0:
+        return ""
+    data = _hoje() + timedelta(days=numero)
+    while data.weekday() >= 5:
+        data += timedelta(days=1)
+    return data.isoformat()
+
+
 def _marcar_minimos(itens: list[dict[str, Any]]) -> None:
     for item in itens:
         minimo = item.get("aporteMinimo")
@@ -187,6 +211,8 @@ def payload(aporte: float = 0) -> dict[str, Any]:
                 "noCatalogo": catalogo["noCatalogo"],
                 "situacao": catalogo["situacao"],
             })
+        for item in itens:
+            item["dataResgate"] = _data_resgate(item["diasResgate"])
         _distribuir(itens, aporte)
         _marcar_minimos(itens)
         soma = round(sum(item["percentual"] for item in itens), 4)

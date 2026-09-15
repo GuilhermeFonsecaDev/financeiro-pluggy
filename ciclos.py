@@ -426,6 +426,14 @@ def expressao_competencia(t: str = "t", a: str | None = "a") -> str:
           AND EXISTS (SELECT 1 FROM pluggy_cartao_previsao p
                        WHERE p.conta_id = x.conta_id)
         ORDER BY x.fim LIMIT 1),
+      -- Cartão recém-conectado: ainda não há fatura fechada nem ciclo
+      -- reconstruído, mas o BTG já informa em cada parcela o mês previsto da
+      -- fatura. Usar esse mês evita concentrar todas as parcelas no mês da
+      -- compra (o fallback abaixo).
+      (SELECT SUBSTR({previsao}, 1, 7)
+         WHERE {previsao} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*'
+           AND NOT EXISTS (SELECT 1 FROM pluggy_faturas f
+                            WHERE f.conta_id = {conta} AND f.fatura_id <> '')),
       (SELECT x.competencia FROM pluggy_ciclos x
         WHERE x.conta_id = {conta}
           AND x.inicio <= SUBSTR({data}, 1, 10)

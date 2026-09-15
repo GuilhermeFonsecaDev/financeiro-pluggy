@@ -188,6 +188,27 @@ def linha_conta(conta: dict[str, Any], agora: str) -> tuple:
     )
 
 
+def descricao_transacao(tx: dict[str, Any]) -> str:
+    """Complementa Pix genérico apenas com a contraparte informada pelo banco."""
+    descricao = texto(tx.get("description"))
+    if descricao.strip().casefold() not in {"pix", "pix enviado", "pix recebido", "transferencia pix", "transferência pix"}:
+        return descricao
+    pagamento = tx.get("paymentData")
+    if not isinstance(pagamento, dict) or tx.get("type") not in {"DEBIT", "CREDIT"}:
+        return descricao
+    saida = tx["type"] == "DEBIT"
+    participante = pagamento.get("receiver" if saida else "payer")
+    nome = participante.get("name") if isinstance(participante, dict) else None
+    if not isinstance(nome, str) or not nome.strip():
+        documento = participante.get("documentNumber") if isinstance(participante, dict) else None
+        valor = documento.get("value") if isinstance(documento, dict) else None
+        if not isinstance(valor, str) or not valor.strip():
+            return descricao
+        tipo = str(documento.get("type") or "").strip().upper()
+        nome = f"{tipo if tipo in {'CPF', 'CNPJ'} else 'documento'} {valor.strip()}"
+    return f"Pix {'enviado para' if saida else 'recebido de'} {' '.join(nome.split())}"
+
+
 def linha_transacao(tx: dict[str, Any], agora: str,
                     moedas_conta: dict[str, str] | None = None) -> tuple:
     cartao = tx.get("creditCardMetadata") or {}
@@ -210,7 +231,7 @@ def linha_transacao(tx: dict[str, Any], agora: str,
         mes_ref,
         ano,
         mes,
-        texto(tx.get("description")),
+        descricao_transacao(tx),
         valor,
         moeda,
         texto(tx.get("type")),

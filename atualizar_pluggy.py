@@ -56,6 +56,28 @@ _trava = threading.Lock()
 _etapas: dict[str, str] = {}
 CHAVE_CONEXOES = "pluggy_conexoes_estado"
 CHAVE_HISTORICO = "pluggy_conexoes_historico"
+CHAVE_ARQUIVADAS = "pluggy_conexoes_arquivadas"
+
+
+def definir_arquivada(item_id: str, arquivada: bool) -> dict[str, Any]:
+    """Retira apenas da sincronização; preserva contas e vínculos financeiros."""
+    if not _trava.acquire(blocking=False):
+        raise ValueError("Aguarde a atualização terminar antes de alterar a conexão.")
+    try:
+        fin.ensure_database()
+        with fin.connect() as conn:
+            importar_pluggy_tabelas(conn)
+            if not conn.execute("SELECT 1 FROM pluggy_itens WHERE item_id=?", (item_id,)).fetchone():
+                raise ValueError("Conexão não encontrada.")
+        ids = set(_json_meta(_ler_meta(), CHAVE_ARQUIVADAS, []))
+        if arquivada:
+            ids.add(item_id)
+        else:
+            ids.discard(item_id)
+        _gravar_meta({CHAVE_ARQUIVADAS: json.dumps(sorted(ids))})
+        return {"ok": True, "arquivada": arquivada}
+    finally:
+        _trava.release()
 
 
 def validar_item(item_id: str) -> str:
@@ -157,7 +179,8 @@ def itens_conhecidos() -> list[str]:
     itens.update(
         pedaco.strip() for pedaco in override.split(",") if pedaco.strip()
     )
-    return sorted(itens)
+    arquivadas = set(_json_meta(_ler_meta(), CHAVE_ARQUIVADAS, []))
+    return sorted(itens - arquivadas)
 
 
 def registrar_item(item_id: str, conector: str = "") -> dict[str, Any]:
@@ -233,6 +256,9 @@ def status() -> dict[str, Any]:
     meta = _ler_meta()
     ultima = ultima_importacao()
     conexoes = conexoes_conhecidas()
+    ids_arquivadas = set(_json_meta(meta, CHAVE_ARQUIVADAS, []))
+    arquivadas = [c for c in conexoes if c["id"] in ids_arquivadas]
+    conexoes = [c for c in conexoes if c["id"] not in ids_arquivadas]
     estados = _json_meta(meta, CHAVE_CONEXOES, {})
     ids = {c["id"] for c in conexoes}
     for item_id in itens_conhecidos():
@@ -246,6 +272,7 @@ def status() -> dict[str, Any]:
     return {
         "itens": len(itens_conhecidos()),
         "conexoes": conexoes,
+        "arquivadas": arquivadas,
         "historico": _json_meta(meta, CHAVE_HISTORICO, [])[:20],
         "ultimaImportacao": ultima.isoformat(timespec="seconds") if ultima else None,
         "ultimaTentativa": meta.get(CHAVE_TENTATIVA),

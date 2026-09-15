@@ -93,6 +93,7 @@
     el('btnSync').textContent = atual?.emAndamento ? 'Atualização em andamento…' : '↻ Atualizar todas';
     document.querySelectorAll('[data-sync]').forEach(b => b.disabled = ocupado || !!atual?.emAndamento || conectando);
     document.querySelectorAll('[data-conectar]').forEach(b => b.disabled = conectando);
+    document.querySelectorAll('[data-arquivar], [data-restaurar]').forEach(b => b.disabled = ocupado || !!atual?.emAndamento || conectando);
     el('btnConectar').disabled = conectando;
   }
 
@@ -126,6 +127,7 @@
       <td><span class="cx-estado ${esc(classe)}">${esc(rotulo)}</span></td>
       <td class="acoes">
         <button data-sync="${esc(c.id)}" title="Buscar dados desta instituição">↻ Atualizar</button>
+        <button data-arquivar="${esc(c.id)}" title="Parar atualizações e preservar o histórico">Arquivar</button>
         <button class="icone" data-detalhe="${esc(c.id)}" aria-expanded="${aberto}" aria-label="Detalhes de ${esc(nome(c))}">${aberto ? '▴' : '▾'}</button>
       </td>
     </tr>`;
@@ -180,6 +182,9 @@
 
   function render(st) {
     atual = st;
+    const arquivadas = st.arquivadas || [];
+    el('secArquivadas').hidden = !arquivadas.length;
+    el('arquivadas').innerHTML = arquivadas.map(c => `<p>${esc(nome(c))} · <code>${esc(c.idCurto)}</code> <button data-restaurar="${esc(c.id)}">Reativar</button></p>`).join('');
     const cs = st.conexoes || [], pendentes = cs.filter(precisa);
     const contas = cs.reduce((n, c) => n + (c.contas || []).length, 0);
     const cartoes = cs.reduce((n, c) => n + (c.cartoes || []).length, 0);
@@ -281,6 +286,19 @@
     }
   }
 
+  async function arquivar(itemId, arquivada) {
+    const c = [...(atual?.conexoes || []), ...(atual?.arquivadas || [])].find(c => c.id === itemId);
+    if (!c || ocupado) return;
+    if (arquivada && !confirm(`Arquivar a conexão ${nome(c)} (${c.idCurto})?\n\nEla deixará de ser atualizada. Contas, transações e vínculos já importados serão preservados no financeiro. Você poderá reativá-la depois.`)) return;
+    ocupado = true; botoes();
+    try {
+      await pedir('/pluggy-items/arquivar', 'POST', { itemId, arquivada });
+      avisar(arquivada ? 'Conexão arquivada. Histórico financeiro preservado.' : 'Conexão reativada. Clique em Atualizar para buscar os dados.', 'ok');
+      await carregar();
+    } catch (e) { avisar(e.message, 'erro'); }
+    finally { ocupado = false; botoes(); }
+  }
+
   async function conectar(itemId = '') {
     if (conectando) return;
     conectando = true; botoes();
@@ -330,10 +348,15 @@
 
   el('btnSync').addEventListener('click', () => sincronizar());
   el('btnConectar').addEventListener('click', () => conectar());
+  el('arquivadas').addEventListener('click', e => {
+    const b = e.target.closest('[data-restaurar]');
+    if (b) arquivar(b.dataset.restaurar, false);
+  });
   el('lista').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.hasAttribute('data-sync')) sincronizar(b.dataset.sync);
+    if (b.hasAttribute('data-arquivar')) arquivar(b.dataset.arquivar, true);
     if (b.hasAttribute('data-conectar')) conectar(b.dataset.conectar);
     if (b.hasAttribute('data-detalhe')) {
       const id = b.dataset.detalhe;

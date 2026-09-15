@@ -20,7 +20,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from atualizar_pluggy import atualizar_em_background, registrar_item
+from atualizar_pluggy import atualizar_em_background, registrar_item, definir_arquivada
 from atualizar_pluggy import status as pluggy_status
 from banco import DATABASE_PATH, ROOT, create_database_backup, ensure_database, list_database_backups
 from extrato_camada import (
@@ -44,6 +44,7 @@ import carteira
 import emprestimos
 import fixas
 import fundos
+import indices
 import investimentos
 import recorrentes
 import visao_geral
@@ -53,6 +54,7 @@ from pluggy_extrato import (
     categorias_resumo_payload,
     extrato_payload,
     filtros_payload,
+    excluir_projecao,
 )
 
 HOST = "127.0.0.1"
@@ -256,7 +258,12 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             elif path == "/api/pluggy-status":
                 self.send_json(pluggy_status())
             elif path == "/api/investimentos":
+                # A série do CDI se completa em segundo plano; a resposta sai
+                # com o que já está no banco, sem esperar o Banco Central.
+                indices.manter_atualizado()
                 self.send_json(investimentos.payload())
+            elif path == "/api/indices":
+                self.send_json({"series": indices.estado(), "catalogo": indices.SERIES})
             elif path == "/api/fundos":
                 self.send_json(fundos.payload(query.get("consulta", [""])[0]))
             elif path == "/api/carteira":
@@ -295,6 +302,11 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             if regra_entrada:
                 self.send_json(atualizar_regra_entrada(regra_entrada.group(1), payload))
                 return
+            if parsed.path == "/api/indices/atualizar":
+                # Pedido explícito espera o resultado -- é o único caminho que
+                # bate na API do Banco Central de forma síncrona.
+                self.send_json(indices.sincronizar(payload.get("series") or None))
+                return
             if parsed.path == "/api/cartoes-identidade":
                 self.send_json(cartoes_id.salvar(payload))
                 return
@@ -321,16 +333,29 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             if transacao:
                 self.send_json(ajustar_transacao(transacao.group(1), payload))
                 return
+            if parsed.path == "/api/extrato/projecoes/excluir":
+                self.send_json(excluir_projecao(
+                    str(payload.get("compraId") or ""),
+                    str(payload.get("mesRef") or ""),
+                    payload.get("parcelaNumero"),
+                ))
+                return
 
             # Recorrentes detectados: recusar tira a sugestão do painel para
             # sempre; reconsiderar traz de volta.
             if parsed.path == "/api/carteira":
                 self.send_json(carteira.salvar(payload.get("itens") or [],
-                                               payload.get("aporte") or 0))
+                                               payload.get("aporte") or 0, payload.get("conservador"), payload.get("percentuais")))
+                return
+            if parsed.path == "/api/carteira/abas":
+                self.send_json(carteira.salvar_aba(payload.get("nome"), payload.get("id")))
+                return
+            if parsed.path == "/api/carteira/abas/excluir":
+                self.send_json(carteira.excluir_aba(str(payload.get("id") or "")))
                 return
             if parsed.path == "/api/carteira/adicionar":
                 self.send_json(carteira.adicionar(str(payload.get("cnpj") or ""),
-                                                  payload.get("percentual") or 0))
+                                                  payload.get("percentual") or 0, payload.get("perfil", "conservador")))
                 return
             if parsed.path == "/api/carteira/excluir":
                 self.send_json(carteira.excluir(str(payload.get("cnpj") or "")))
@@ -418,6 +443,10 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 registro = registrar_item(item_id, conector)
                 thread = atualizar_em_background(forcar=True, intervalo_horas=0, item_id=item_id)
                 self.send_json({"ok": True, "registro": registro, "sincronizando": thread is not None})
+            elif parsed.path == "/api/pluggy-items/arquivar":
+                if not isinstance(payload.get("arquivada"), bool):
+                    raise ValueError("Informe se a conexão deve ser arquivada.")
+                self.send_json(definir_arquivada(str(payload.get("itemId") or ""), payload["arquivada"]))
             elif parsed.path == "/api/pluggy-sync":
                 thread = atualizar_em_background(forcar=True, intervalo_horas=0,
                                                   item_id=str(payload.get("itemId") or "") or None)

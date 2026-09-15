@@ -42,6 +42,11 @@ TOLERANCIA_ROLAGEM = 0.01
 # 100% do CDI aparecia perdendo 75% num dia.
 QUEDA_INEXPLICADA = -0.20
 
+# Acima disso a raiz encontrada é artefato numérico, não rentabilidade: o
+# polinômio do XIRR tem uma raiz por troca de sinal, e histórico incompleto
+# gera trocas de sinal que não correspondem a dinheiro nenhum.
+LIMITE_XIRR = 1000.0
+
 
 def _iso(valor: Any) -> str:
     return str(valor or "")[:10]
@@ -251,14 +256,22 @@ def rentabilidade_xirr(movimentos: list[dict[str, Any]], saldo_atual: float,
         fluxos.append((mov.get("data"), -valor if mov.get("tipo") == "BUY" else valor))
     if not fluxos:
         return _resposta(None, "xirr", confiavel=False, motivo="sem_movimentos")
+    fluxos.sort(key=lambda f: _iso(f[0]))
+    if fluxos[0][1] > 0:
+        # Dinheiro saindo antes de qualquer aporte: o registro começa no meio
+        # da vida do papel. Não há capital investido para dividir o ganho.
+        datas = [_iso(d) for d, _ in fluxos]
+        return _resposta(None, "xirr", {"de": datas[0], "ate": datas[-1]},
+                         confiavel=False, motivo="historico_de_compras_incompleto")
     if saldo_atual:
         fluxos.append((data_saldo or date.today().isoformat(), float(saldo_atual)))
 
     taxa = xirr(fluxos)
     datas = sorted(_iso(d) for d, _ in fluxos)
-    if taxa is None:
+    if taxa is None or abs(taxa) > LIMITE_XIRR:
         motivo = ("historico_de_compras_incompleto"
-                  if not any(v < 0 for _, v in fluxos) else "nao_convergiu")
+                  if not any(v < 0 for _, v in fluxos) else
+                  "resultado_implausivel" if taxa is not None else "nao_convergiu")
         return _resposta(None, "xirr", {"de": datas[0], "ate": datas[-1]},
                          confiavel=False, motivo=motivo)
     return _resposta(taxa, "xirr", {"de": datas[0], "ate": datas[-1]}, anualizado=taxa)

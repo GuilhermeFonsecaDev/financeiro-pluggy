@@ -126,6 +126,29 @@
 .fundo-alternativa a:hover { text-decoration:underline; }
 .fundo-alternativa span { margin-left:auto; color:var(--text-3); font-variant-numeric:tabular-nums; }
 .fundo-candidatos { display:grid; gap:2px; }
+.posicoes-painel { margin-bottom:14px; }
+.classes-investimento { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.classe-investimento { padding:14px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.classe-investimento strong { display:block; font-size:23px; margin:5px 0; }
+.classe-investimento .barra-trilho { width:100%; margin-top:10px; }
+.posicoes-tabela { min-width:850px; }
+.posicao-produto { min-width:260px; max-width:390px; white-space:normal; }
+.posicao-produto summary { cursor:pointer; font-weight:600; line-height:1.45; }
+.posicao-produto .sub { margin-top:4px; }
+.posicao-detalhes { margin:10px 0 0; display:grid; gap:7px; font-size:12px; }
+.posicao-detalhes div { display:flex; justify-content:space-between; gap:16px; }
+.posicao-detalhes dt { color:var(--text-3); }
+.posicao-detalhes dd { margin:0; text-align:right; }
+.posicoes-nota { margin:12px 0 0; font-size:12px; color:var(--text-3); line-height:1.5; }
+.capital-parcial { color:var(--text-3); font-size:11px; margin-top:3px; }
+.posicao-conta { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid var(--line);
+  background:var(--surface-2); font-size:11px; font-weight:600; color:var(--text-3); vertical-align:middle; }
+.origem-valor { font-size:11px; color:var(--text-3); margin-top:3px; }
+.origem-valor.conferir { color:var(--alerta, #d08c1c); }
+.posicao-itens { margin:10px 0 0; padding:0; list-style:none; display:grid; gap:6px; font-size:12px; }
+.posicao-itens li { display:flex; justify-content:space-between; gap:16px; border-top:1px solid var(--line); padding-top:6px; }
+.posicao-itens .sub { margin:0; }
+@media (max-width:760px) { .classes-investimento { grid-template-columns:1fr; } .acoes-topo { flex-wrap:wrap; } }
 </style>
 </head>
 <body>
@@ -139,7 +162,7 @@
 
   <section class="painel" id="avisoServidor" role="alert" style="margin-bottom:14px;border-color:var(--vermelho)" hidden>
     <h2>O servidor aberto precisa ser reiniciado</h2>
-    <p>A página foi atualizada, mas o servidor ainda está executando a versão antiga. Por isso, as aplicações identificadas no extrato, como o CDB do BTG, ainda não aparecem.</p>
+    <p>A página foi atualizada, mas o servidor ainda está executando a versão antiga. Reinicie para carregar as posições por tipo e o cálculo corrigido de rendimento.</p>
     <p>Feche a janela do backend Pluggy, abra novamente <strong>iniciar_pluggy.bat</strong> na pasta FinanceiroPluggy e recarregue esta página.</p>
   </section>
 
@@ -155,10 +178,27 @@
     </article>
     <div class="hero-grade">
       <article class="hero-mini"><span class="rotulo">Valor bruto</span><strong id="vBruto">R$ 0,00</strong><small>antes de impostos</small></article>
-      <article class="hero-mini"><span class="rotulo">Ganho bruto</span><strong class="positivo" id="vGanhoBruto">R$ 0,00</strong><small id="pGanhoBruto">0,00% sobre o aplicado</small></article>
+      <article class="hero-mini"><span class="rotulo" id="rotuloGanho">Ganho bruto</span><strong id="vGanhoBruto">—</strong><small id="pGanhoBruto">Aguardando dados</small></article>
       <article class="hero-mini media-aporte"><span class="rotulo">Média líquida mensal · 2026</span><strong id="vMediaLiquida2026">R$ 0,00</strong><small id="pMediaLiquida2026">aplicações menos resgates</small></article>
       <article class="hero-mini" id="painelSemPosicao" hidden><span class="rotulo">Aguardando posição</span><strong id="vSemPosicao">R$ 0,00</strong><small>aplicado sem posição informada</small></article>
     </div>
+  </section>
+
+  <section class="painel posicoes-painel" aria-labelledby="tituloPosicoes">
+    <div class="painel-tit"><div><h2 id="tituloPosicoes">Minha carteira</h2><div class="sub">posições ativas · abra o nome do investimento para ver os detalhes</div></div></div>
+    <div class="classes-investimento" id="classesInvestimento"></div>
+    <div class="filtros-mov" id="filtrosPosicoes" role="group" aria-label="Filtrar posições por tipo">
+      <button class="ativo" data-classe="todos" aria-pressed="true">Todos</button>
+      <button data-classe="MUTUAL_FUND" aria-pressed="false">Fundos de investimento</button>
+      <button data-classe="FIXED_INCOME" aria-pressed="false">Renda fixa</button>
+      <button data-classe="outros" aria-pressed="false">Outros</button>
+    </div>
+    <div class="sub" id="posicoesResumo" aria-live="polite" style="margin-bottom:10px"></div>
+    <div class="tabela-wrap"><table class="posicoes-tabela">
+      <thead><tr><th>Investimento / instituição</th><th class="num">Capital aplicado</th><th class="num">Valor bruto</th><th class="num">Saldo líquido</th><th class="num">Ganho bruto</th></tr></thead>
+      <tbody id="posicoes"></tbody>
+    </table></div>
+    <p class="posicoes-nota" id="notaCapital" hidden></p>
   </section>
 
   <section class="sec-grid">
@@ -211,10 +251,10 @@
     <header class="modal-tit">
       <div>
         <h2>Calculadora Aporte</h2>
-        <p class="sub">carteira-alvo e distribuição do aporte pelos percentuais de alocação</p>
         <span class="estado" id="cartEstado"></span>
       </div>
       <div class="cart-acoes">
+        <button type="button" id="cartGerenciarAbas">Abas</button>
         <button class="primario" id="cartBtnCadastrar">Cadastrar fundo</button>
         <button class="icone" id="cartFechar" aria-label="Fechar">×</button>
       </div>
@@ -228,10 +268,12 @@
   </section>
 
   <section class="painel">
-    <div class="painel-tit">
-      <div><h2>Fundos da carteira</h2><div class="sub" id="cartSub">liquidez e IQ vêm dos catálogos; edite por cima quando divergir</div></div>
+    <div class="cart-barra-abas">
+      <div class="cart-abas" id="cartAbas" role="tablist" aria-label="Abas da carteira"></div>
+    </div>
+    <div class="painel-tit cart-controles">
       <div style="display:flex;align-items:center;gap:12px">
-        <span class="estado" id="cartSalvo"></span>
+
         <div class="aporte-campo">
           <label for="cartAporte">Aporte</label>
           <div class="aporte-entrada">
@@ -239,10 +281,16 @@
             <input id="cartAporte" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" />
           </div>
         </div>
+        <div class="aporte-campo">
+          <label for="cartPorcentagem">Porcentagem</label>
+          <div class="aporte-entrada cart-percentual"><input id="cartPorcentagem" type="number" min="0" max="100" step="0.01" value="100" aria-label="Porcentagem do aporte para a aba selecionada" /><span>%</span></div>
+        </div>
+        <span id="cartFatia" class="cart-fatia"></span>
+        <span class="estado" id="cartSalvo"></span>
       </div>
     </div>
 
-    <div class="carteira-wrap">
+    <div id="cartPainel" role="tabpanel" aria-labelledby="cartTab-conservador" class="carteira-wrap">
       <table class="carteira">
         <thead>
           <tr>
@@ -268,7 +316,7 @@
     </div>
 
     <p class="carteira-vazia" id="cartVazia" hidden>
-      Nenhum fundo cadastrado. Informe o CNPJ e o percentual de alocação abaixo — o resto vem dos catálogos.
+      Nenhum fundo nesta aba. Use Cadastrar fundo para adicionar.
     </p>
 
     <p class="estado erro" id="cartErro" style="margin-top:8px"></p>
@@ -298,6 +346,23 @@
             title="Cópias locais dos catálogos: o CNPJ consultado não sai desta máquina."></span>
       <button class="sutil" id="btnAtualizarFundos">Atualizar catálogos</button>
     </footer>
+  </div>
+</div>
+
+<div class="modal-fundo" id="cartModalAba" hidden>
+  <div class="modal cadastro-modal" role="dialog" aria-modal="true" aria-labelledby="cartTituloAba">
+    <header class="modal-tit"><h2 id="cartTituloAba">Cadastrar aba</h2><button class="icone" id="cartFecharAba" aria-label="Fechar edição de aba">×</button></header>
+    <div class="cadastro-campo"><label for="cartNomeAba">Nome da aba</label><input id="cartNomeAba" maxlength="50" autocomplete="off" /></div>
+    <p class="estado erro" id="cartAbaErro" role="alert"></p>
+    <footer class="modal-rodape"><button class="primario" id="cartConfirmarAba">Salvar aba</button></footer>
+  </div>
+</div>
+
+<div class="modal-fundo" id="cartModalListaAbas" hidden>
+  <div class="modal cadastro-modal lista-abas-modal" role="dialog" aria-modal="true" aria-labelledby="cartTituloListaAbas">
+    <header class="modal-tit"><div><h2 id="cartTituloListaAbas">Abas</h2><p class="sub">Organize os perfis da sua carteira.</p></div><button class="icone" id="cartFecharListaAbas" aria-label="Fechar abas">×</button></header>
+    <div id="cartListaAbas" class="lista-abas"></div>
+    <footer class="modal-rodape"><button class="primario" id="cartNovaAbaLista">+ Nova aba</button></footer>
   </div>
 </div>
 
@@ -334,6 +399,11 @@ const el = id => document.getElementById(id);
 let D = null;
 let filtroMovimentos = "todos";
 let filtroPeriodo = "todos";
+let filtroClasse = "todos";
+const dinheiroInformado = v => v == null ? 'Não informado' : fmtBRL(v);
+const numeroInformado = v => v == null || Number(v) <= 0 ? 'Não informado' : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:8});
+const classeInvestimento = l => ['MUTUAL_FUND','FIXED_INCOME'].includes(l.tipo) ? l.tipo : 'outros';
+const nomeClasse = tipo => ({MUTUAL_FUND:'Fundos de investimento',FIXED_INCOME:'Renda fixa',outros:'Outros investimentos'}[tipo]);
 const pct = v => `${Number(v || 0).toLocaleString("pt-BR", {minimumFractionDigits:2,maximumFractionDigits:2})}%`;
 const dataIso = v => fmtData(String(v || "").slice(0,10));
 
@@ -386,22 +456,151 @@ function renderMovimentos() {
   el("movimentos").innerHTML=lista.map(m=>`<tr><td class="data">${dataIso(m.data)}</td><td><span class="tipo-mov ${m.tipo==='BUY'?'aporte':m.tipo==='SELL'?'resgate':''}">${m.tipo==='BUY'?'Aplicação':m.tipo==='SELL'?'Resgate':esc(m.tipo)}</span></td><td><div class="lote-nome">${esc(m.descricao)}</div></td><td class="num ${m.tipo==='BUY'?'positivo':m.tipo==='SELL'?'negativo':''}">${m.tipo==='BUY'?'+':m.tipo==='SELL'?'−':''} ${fmtBRL(m.valor)}</td><td>${esc(m.instituicao || m.conta || 'Instituição')}${m.conta && m.conta!==m.instituicao?`<div class="sub">${esc(m.conta)}</div>`:''}</td><td><span class="${m.confirmadoExtrato?'confirmado':''}">${m.origem==='Extrato da conta'?'Extrato da conta':m.confirmadoExtrato?'API conferida':'API de investimentos'}</span></td></tr>`).join("") || '<tr><td colspan="6" class="sub">Nenhuma movimentação neste período.</td></tr>';
 }
 
+// Posicoes identicas (mesmo produto, mesma instituicao) viram uma linha so:
+// dez aplicacoes do mesmo CDB de cofrinho sao um investimento, nao dez.
+// O detalhe de cada aplicacao continua dentro da linha, ao abrir.
+function agruparPosicoes(lista) {
+  const grupos = new Map();
+  for (const l of lista) {
+    const chave = [l.nome, l.instituicao, l.tipo, l.subtipo].join('|');
+    const grupo = grupos.get(chave);
+    if (grupo) grupo.itens.push(l); else grupos.set(chave, {...l, itens:[l]});
+  }
+  return [...grupos.values()].map(g => g.itens.length === 1 ? g : consolidar(g))
+    .sort((a, b) => b.liquido - a.liquido);
+}
+
+const arredondar = v => Math.round(v * 100) / 100;
+
+// Backend anterior não manda `aplicado`: ali o custo informado pela Pluggy é
+// tudo que existe, e a coluna volta a ser o que era antes -- em vez de virar
+// "Indisponível" em toda linha.
+const comAplicado = l => l.aplicado !== undefined ? l : {...l,
+  aplicado: l.original, origemAplicado: l.original == null ? '' : 'pluggy',
+  aplicadoConfiavel: l.original != null, aportes: 0, resgates: 0, motivoSemAplicado: '',
+  rendimentoBrutoEstimado: l.rendimentoBruto, rentabilidadeBrutaEstimada: l.rentabilidadeBruta};
+
+function consolidar(g) {
+  const soma = campo => arredondar(g.itens.reduce((s, i) => s + Number(i[campo] || 0), 0));
+  // Ausencia em um item contamina o total: somar so o que se conhece daria um
+  // numero menor com cara de completo.
+  const somaOuNada = campo => g.itens.some(i => i[campo] == null) ? null : soma(campo);
+  const comum = campo => g.itens.every(i => i[campo] === g.itens[0][campo]) ? g.itens[0][campo] : null;
+  const aplicado = somaOuNada('aplicado');
+  const confiavel = g.itens.every(i => i.aplicadoConfiavel);
+  const bruto = soma('bruto');
+  const original = somaOuNada('original');
+  return {...g, bruto, liquido: soma('liquido'), original, aplicado,
+    aplicadoConfiavel: confiavel,
+    origemAplicado: comum('origemAplicado') || 'mista',
+    motivoSemAplicado: g.itens.map(i => i.motivoSemAplicado).find(Boolean) || '',
+    aportes: soma('aportes'), resgates: soma('resgates'),
+    rendimentoBruto: original == null ? null : arredondar(bruto - original),
+    rentabilidadeBruta: original ? (bruto / original - 1) * 100 : null,
+    rendimentoBrutoEstimado: (aplicado && confiavel) ? arredondar(bruto - aplicado) : null,
+    rentabilidadeBrutaEstimada: (aplicado && confiavel) ? (bruto / aplicado - 1) * 100 : null,
+    disponivel: somaOuNada('disponivel'), quantidade: somaOuNada('quantidade'),
+    valorCota: comum('valorCota'), taxa: comum('taxa'), tipoTaxa: comum('tipoTaxa'),
+    taxaFixaAnual: comum('taxaFixaAnual'), vencimento: comum('vencimento'),
+    codigo: comum('codigo'), dataReferencia: comum('dataReferencia'),
+    dataAplicacao: g.itens.map(i => i.dataAplicacao).filter(Boolean).sort()[0] || '',
+    rentabilidadeFundo12Meses: comum('rentabilidadeFundo12Meses')};
+}
+
+function renderPosicoes() {
+  const lotes = (D.lotes || []).map(comAplicado);
+  const total = lotes.reduce((s, l) => s + Number(l.liquido || 0), 0);
+  el('classesInvestimento').innerHTML = ['MUTUAL_FUND', 'FIXED_INCOME', 'outros'].map(tipo => {
+    const lista = lotes.filter(l => classeInvestimento(l) === tipo);
+    const saldo = lista.reduce((s, l) => s + Number(l.liquido || 0), 0);
+    const peso = total > 0 ? saldo / total * 100 : 0;
+    return `<article class="classe-investimento"><span class="sub">${nomeClasse(tipo)}</span><strong>${fmtBRL(saldo)}</strong><span class="sub">${lista.length} ${lista.length === 1 ? 'posição' : 'posições'} · ${pct(peso)} da carteira</span><div class="barra-trilho"><div class="barra-fill" style="width:${Math.min(100, Math.max(0, peso))}%"></div></div></article>`;
+  }).join('');
+  const lista = lotes.filter(l => filtroClasse === 'todos' || classeInvestimento(l) === filtroClasse)
+    .sort((a, b) => b.liquido - a.liquido);
+  const linhas = agruparPosicoes(lista);
+  const agrupadas = lista.length - linhas.length;
+  el('posicoesResumo').textContent = `${lista.length} ${lista.length === 1 ? 'posição' : 'posições'}`
+    + (agrupadas ? ` em ${linhas.length} ${linhas.length === 1 ? 'investimento' : 'investimentos'}` : '')
+    + ` · ${fmtBRL(lista.reduce((s, l) => s + Number(l.liquido || 0), 0))} de saldo líquido`;
+  const detalhe = (nome, valor) => `<div><dt>${nome}</dt><dd>${valor}</dd></div>`;
+  el('posicoes').innerHTML = linhas.map(l => {
+    const fundo = l.tipo === 'MUTUAL_FUND';
+    const subtipo = {INVESTMENT_FUND:'Fundo de investimento',STOCK_FUND:'Fundo de ações',FIXED_INCOME_FUND:'Fundo de renda fixa',MULTIMARKET_FUND:'Multimercado',EXCHANGE_FUND:'Fundo cambial'}[l.subtipo] || l.subtipo || nomeClasse(classeInvestimento(l));
+    const varias = l.itens.length > 1;
+    const detalhes = detalhe('Tipo', esc(subtipo))
+      + (varias ? detalhe('Aplicações reunidas', `${l.itens.length}`) : '')
+      + (l.codigo ? detalhe(fundo ? 'CNPJ' : 'Código', esc(l.codigo)) : '')
+      + detalhe('Referência', l.dataReferencia ? dataIso(l.dataReferencia) : 'Não informada')
+      + detalhe('Primeira aplicação registrada', l.dataAplicacao ? dataIso(l.dataAplicacao) : 'Não informada')
+      + detalhe('Aportes registrados', l.aportes ? fmtBRL(l.aportes) : 'Nenhum')
+      + (l.resgates ? detalhe('Resgates registrados', fmtBRL(l.resgates)) : '')
+      + detalhe('Disponível para resgate', dinheiroInformado(l.disponivel))
+      + (fundo ? detalhe('Quantidade de cotas', numeroInformado(l.quantidade))
+          + detalhe('Valor da cota', l.valorCota > 0 ? `R$ ${numeroInformado(l.valorCota)}` : 'Não informado')
+          + detalhe('Fundo · últimos 12 meses', l.rentabilidadeFundo12Meses == null ? 'Não informada' : pct(l.rentabilidadeFundo12Meses))
+        : detalhe('Taxa', l.taxa != null ? `${pct(l.taxa)} ${esc(l.tipoTaxa || '')}` : l.taxaFixaAnual != null ? `${pct(l.taxaFixaAnual)} a.a.` : 'Não informada')
+          + detalhe('Vencimento', l.vencimento ? dataIso(l.vencimento) : varias ? 'Vários' : 'Não informado'));
+    const itens = varias ? `<ul class="posicao-itens">${l.itens.slice().sort((a, b) => b.liquido - a.liquido).map(i =>
+      `<li><span class="sub">${i.vencimento ? `vence ${dataIso(i.vencimento)}` : i.dataAplicacao ? `desde ${dataIso(i.dataAplicacao)}` : 'sem vencimento'}</span><span>${fmtBRL(i.liquido)}</span></li>`).join('')}</ul>` : '';
+    const ganho = l.rendimentoBrutoEstimado, rent = l.rentabilidadeBrutaEstimada;
+    const origem = l.aplicado == null || l.origemAplicado === 'pluggy' ? ''
+      : !l.aplicadoConfiavel ? '<div class="origem-valor conferir">confira: aportes maiores que o saldo</div>'
+      : '<div class="origem-valor">pelos aportes registrados</div>';
+    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num">${l.aplicado == null ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
+  // O aplicado pelos aportes só existe no backend novo; sem ele a coluna cai
+  // para o custo da Pluggy, e quem está com o processo antigo precisa saber.
+  const backendAntigo = (D.lotes || []).some(l => l.aplicado === undefined);
+  const faltantes = lista.filter(l => l.aplicado == null);
+  const duvidosas = lista.filter(l => l.aplicado != null && !l.aplicadoConfiavel);
+  el('notaCapital').hidden = !faltantes.length && !duvidosas.length;
+  el('notaCapital').textContent = [
+    faltantes.length && (backendAntigo
+      ? `Capital aplicado não informado pela Pluggy em ${faltantes.length} ${faltantes.length === 1 ? 'posição' : 'posições'}. Reinicie o backend para o aplicado ser calculado pelos aportes registrados.`
+      : `Capital aplicado indisponível em ${faltantes.length} ${faltantes.length === 1 ? 'posição' : 'posições'}: a Pluggy não informou o custo e o histórico de aportes não cobre a posição.`),
+    duvidosas.length && `Em ${duvidosas.length} ${duvidosas.length === 1 ? 'posição' : 'posições'} os aportes registrados somam mais que o saldo atual sem resgate correspondente; o ganho fica de fora até a conferência.`,
+  ].filter(Boolean).join(' ');
+}
+
+function aplicarFiltroClasse(classe) {
+  filtroClasse = classe;
+  el('filtrosPosicoes').querySelectorAll('button').forEach(b => {
+    const ativo = b.dataset.classe === classe;
+    b.classList.toggle('ativo', ativo);
+    b.setAttribute('aria-pressed', String(ativo));
+  });
+  renderPosicoes();
+}
+
+el('filtrosPosicoes').addEventListener('click', e => {
+  const botao = e.target.closest('button[data-classe]');
+  if (botao && D) aplicarFiltroClasse(botao.dataset.classe);
+});
+
 function render() {
   const r = D.resumo;
-  const servidorAtualizado = Array.isArray(D.movimentosSemPosicao);
+  const servidorAtualizado = D.versao >= 2;
   el("avisoServidor").hidden = servidorAtualizado;
+  if (!servidorAtualizado) { setEstado('estado','Reinicie o backend para carregar a atualização','erro'); return; }
   const aplicadoSemPosicao = Number(r.aplicacoesSemPosicao || 0);
   const temPendente = aplicadoSemPosicao > 0;
   el("painelSemPosicao").hidden = !temPendente;
   document.querySelector(".hero-grade").classList.toggle("com-pendente", temPendente);
   el("vSemPosicao").textContent = fmtBRL(aplicadoSemPosicao);
   el("vLiquido").textContent=fmtBRL(r.liquido); el("vBruto").textContent=fmtBRL(r.bruto);
-  el("vGanhoBruto").textContent=fmtBRL(r.rendimentoBruto);
+  const ganho=r.rendimentoBrutoConhecido;
+  el("rotuloGanho").textContent=r.posicoesSemCapital?'Ganho bruto · parcial':'Ganho bruto';
+  el("vGanhoBruto").textContent=ganho==null?'Indisponível':fmtBRL(ganho);
+  el("vGanhoBruto").classList.toggle('ganho',ganho!=null&&ganho>=0);
+  el("vGanhoBruto").classList.toggle('perda',ganho!=null&&ganho<0);
   el("vReferencia").textContent=dataIso(r.dataReferencia);
-  el("pGanhoBruto").textContent=`${pct(r.original ? r.rendimentoBruto/r.original*100 : 0)} sobre o aplicado`;
+  el("pGanhoBruto").textContent=r.posicoesSemCapital?`Somente posições com capital informado · ${r.posicoesSemCapital} sem cálculo de ganho`:
+    r.original>0?`${pct(r.rendimentoBruto/r.original*100)} sobre o aplicado`:'Sem base para calcular percentual';
   const taxas=[...new Set(D.lotes.filter(l=>l.taxa!=null).map(l=>`${l.taxa}% ${l.tipoTaxa || ""}`))]; el("vTaxa").textContent=taxas.join(" · ") || 'Não informadas';
   const instituicoesPositivas=(D.instituicoes||[]).filter(i=>[i.liquido,i.bruto,i.original].some(v=>Number(v)>0) || Number(i.aplicacoesExtrato||0)-Number(i.resgatesExtrato||0)>0);
-  el("instituicoes").innerHTML=instituicoesPositivas.map(i=>`<tr><td>${esc(i.instituicao)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.original)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.bruto)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.liquido)}</td><td class="sub">${i.posicaoPendente?`Aguardando posição · ${fmtBRL(i.aplicacoesExtrato)} em aplicações no extrato`:i.ativos?'Com investimentos ativos':'Posição informada'}</td></tr>`).join('') || '<tr><td colspan="5" class="sub">Nenhuma instituição com valor positivo.</td></tr>';
+  el("instituicoes").innerHTML=instituicoesPositivas.map(i=>`<tr><td>${esc(i.instituicao)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':dinheiroInformado(i.original)}${i.posicoesSemCapital?`<div class="capital-parcial">${fmtBRL(i.originalConhecido)} conhecidos · ${i.posicoesSemCapital} sem capital informado</div>`:''}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.bruto)}</td><td class="num">${i.posicaoPendente&&!i.ativos?'—':fmtBRL(i.liquido)}</td><td class="sub">${i.posicaoPendente?`Aguardando posição · ${fmtBRL(i.aplicacoesExtrato)} em aplicações no extrato`:i.ativos?'Com investimentos ativos':'Posição informada'}</td></tr>`).join('') || '<tr><td colspan="5" class="sub">Nenhuma instituição com valor positivo.</td></tr>';
+  renderPosicoes();
 
   const meses2026=(D.meses||[]).filter(m=>String(m.mes||"").startsWith("2026-"));
   const mediaLiquida2026=meses2026.length ? meses2026.reduce((s,m)=>s+Number(m.liquido||0),0)/meses2026.length : 0;

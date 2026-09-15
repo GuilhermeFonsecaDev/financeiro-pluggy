@@ -7,6 +7,7 @@ que o ganho simples comete, e a razão de existir TWR aqui.
 """
 
 import unittest
+from unittest.mock import patch
 from datetime import date
 
 import investimentos_rentabilidade as rent
@@ -305,6 +306,29 @@ class CarteiraTests(unittest.TestCase):
         resultado = rent.rentabilidade_carteira(series, {})
         # ~0,04% ao dia nas duas: o total fica na mesma ordem de grandeza.
         self.assertLess(abs(resultado["valor"]), 0.2)
+
+
+class XirrHistoricoIncompletoTests(unittest.TestCase):
+    def test_resgate_antes_de_qualquer_aporte_nao_vira_rentabilidade(self):
+        """Registro que começa no meio da vida do papel não tem capital base."""
+        movs = [{"data": "2025-08-18", "tipo": "SELL", "valor": 453.04},
+                {"data": "2025-08-30", "tipo": "BUY", "valor": 120.0}]
+        saida = rent.rentabilidade_xirr(movs, 100.0, "2026-09-14")
+        self.assertIsNone(saida["valor"])
+        self.assertFalse(saida["confiavel"])
+        self.assertEqual(saida["motivo"], "historico_de_compras_incompleto")
+
+    def test_raiz_absurda_nao_e_publicada_como_retorno(self):
+        with patch.object(rent, "xirr", return_value=34877144.04):
+            saida = rent.rentabilidade_xirr(
+                [{"data": "2025-01-02", "tipo": "BUY", "valor": 1000.0}], 1100.0, "2026-01-02")
+        self.assertIsNone(saida["valor"])
+        self.assertEqual(saida["motivo"], "resultado_implausivel")
+
+    def test_historico_completo_continua_respondendo(self):
+        saida = rent.rentabilidade_xirr(
+            [{"data": "2025-09-14", "tipo": "BUY", "valor": 1000.0}], 1100.0, "2026-09-14")
+        self.assertAlmostEqual(saida["valor"], 10.0, delta=0.5)
 
 
 if __name__ == "__main__":

@@ -222,6 +222,22 @@ def atualizar_em_background(series: list[str] | None = None) -> threading.Thread
     return thread
 
 
+def manter_atualizado(series: list[str] | None = None) -> threading.Thread | None:
+    """Completa as séries atrasadas em segundo plano, sem segurar quem chamou.
+
+    É o gancho da camada HTTP: abrir a tela dispara a coleta e responde com o
+    que já existe no banco. Falha ao decidir não pode derrubar a requisição --
+    o comparativo é adorno, a tela não é.
+    """
+    try:
+        with fin.connect() as conexao:
+            garantir_tabelas(conexao)
+            atrasadas = [s for s in (series or [PADRAO]) if precisa_atualizar(conexao, s)]
+    except Exception:
+        return None
+    return atualizar_em_background(atrasadas) if atrasadas else None
+
+
 # ---------------------------------------------------------------- consulta
 
 def estado(conn=None) -> dict[str, Any]:

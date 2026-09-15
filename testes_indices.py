@@ -215,6 +215,24 @@ class CompararTests(unittest.TestCase):
         self.assertEqual(saida["janela"], {"de": "2026-08-16", "ate": "2026-09-14"})
 
 
+class ManterAtualizadoTests(BancoTests):
+    def test_serie_atrasada_dispara_coleta_em_segundo_plano(self):
+        with patch.object(indices, "atualizar_em_background") as disparo:
+            indices.manter_atualizado()
+        disparo.assert_called_once_with(["12"])
+
+    def test_serie_em_dia_nao_dispara_nada(self):
+        self.gravar("12", [(indices.dia_util_anterior().isoformat(), 0.05)])
+        with patch.object(indices, "atualizar_em_background") as disparo:
+            self.assertIsNone(indices.manter_atualizado())
+        disparo.assert_not_called()
+
+    def test_falha_ao_decidir_nao_derruba_quem_chamou(self):
+        """O comparativo é adorno; a tela que o chama não pode cair com ele."""
+        with patch.object(indices, "precisa_atualizar", side_effect=RuntimeError("banco travado")):
+            self.assertIsNone(indices.manter_atualizado())
+
+
 class EstadoTests(BancoTests):
     def test_estado_lista_as_series_e_o_atraso(self):
         self.gravar("12", [("2020-01-02", 0.05)])

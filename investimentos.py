@@ -7,12 +7,16 @@ import re
 import threading
 import unicodedata
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import requests
 
 import banco as fin
+import indices
+import investimentos_liquidez as liquidez
+import investimentos_rentabilidade as rentabilidade
+import investimentos_taxonomia as taxonomia
 from pluggy_sync import API_URL, get_api_key
 
 
@@ -86,6 +90,11 @@ CREATE INDEX IF NOT EXISTS idx_invest_snap_data ON pluggy_investimento_snapshots
 
 _trava = threading.Lock()
 
+# Aplicado derivado que supera o saldo atual nessa proporção, sem nenhum
+# resgate registrado, não é prejuízo comprovado: ou entrou aporte repetido no
+# histórico, ou saiu dinheiro que a API não contou. Fica marcado, não somado.
+DIVERGENCIA_APLICADO = 0.20
+
 
 def _numero(valor: object) -> float | None:
     if valor is None:
@@ -152,6 +161,17 @@ def _snapshot_mudou(conn, chave: str, inv: dict[str, Any]) -> bool:
     return antigo != atual
 
 
+def _itens_arquivados(conn) -> set[str]:
+    linha = conn.execute(
+        "SELECT valor FROM app_meta WHERE chave='pluggy_conexoes_arquivadas'"
+    ).fetchone()
+    try:
+        ids = json.loads(linha[0]) if linha else []
+    except (ValueError, TypeError):
+        return set()
+    return {i for i in ids if isinstance(i, str)} if isinstance(ids, list) else set()
+
+
 def sincronizar(item_ids: list[str] | None = None) -> dict[str, Any]:
     """Coleta posições, movimentos e snapshots de todas as conexões informadas."""
     if not _trava.acquire(blocking=False):
@@ -163,6 +183,10 @@ def sincronizar(item_ids: list[str] | None = None) -> dict[str, Any]:
                 item_ids = [r[0] for r in conn.execute(
                     "SELECT item_id FROM pluggy_itens ORDER BY item_id"
                 )]
+            arquivados = _itens_arquivados(conn)
+            item_ids = [item for item in item_ids if item not in arquivados]
+        if not item_ids:
+            return {"ok": True, "resultado": "sem_itens"}
         api_key = get_api_key()
         agora = datetime.now().isoformat(timespec="seconds")
         total_investimentos = total_movimentos = 0
@@ -275,6 +299,8 @@ def _rotulos_itens(conn) -> dict[str, str]:
             rotulos[row["item_id"]] = "Nubank"
         elif "inter" in n:
             rotulos[row["item_id"]] = "Inter"
+        elif re.search(r"\bbtg\b", n):
+            rotulos[row["item_id"]] = "BTG"
         else:
             rotulos[row["item_id"]] = (
                 row["conector"] if row["conector"] and _norm(row["conector"]) != "meupluggy"
@@ -295,13 +321,14 @@ def _movimentos_sem_posicao(conn, itens_com_posicao: set[str], rotulos: dict[str
     a API assume a carteira e esse fallback deixa de ser usado.
     """
     movimentos = []
+    arquivados = _itens_arquivados(conn)
     for m in conn.execute(
         "SELECT t.*, c.item_id, c.nome conta FROM pluggy_transacoes t "
         "JOIN pluggy_contas c ON c.conta_id=t.conta_id "
         "WHERE c.tipo='BANK' AND t.valor<>0 AND t.status NOT IN ('PENDING','CANCELED','CANCELLED') "
         "ORDER BY t.data DESC, t.transacao_id DESC"
     ):
-        if m["item_id"] in itens_com_posicao:
+        if m["item_id"] in itens_com_posicao or m["item_id"] in arquivados:
             continue
         descricao = _norm(m["descricao"]).strip()
         operacao = re.match(r"^(emissao|aplicacao|aplic|compra|resgate|venda|vencimento)\b", descricao)
@@ -338,15 +365,172 @@ def _meses_movimentos(movimentos) -> list[dict[str, Any]]:
             for mes, dados in sorted(mensal.items())]
 
 
+def _indexador(posicao) -> str:
+    """"100% do CDI", "12,5% a.a." -- a taxa como se lê, já montada.
+
+    A tela recebe texto pronto em vez de juntar taxa, tipo e periodicidade:
+    é a diferença entre uma coluna e três com significado implícito.
+    """
+    taxa = _numero(posicao["taxa"])
+    tipo = _texto(posicao["tipo_taxa"])
+    fixa = _numero(posicao["taxa_fixa_anual"])
+    if taxa and tipo:
+        return f"{_percentual(taxa)} do {tipo}"
+    if fixa:
+        return f"{_percentual(fixa)} a.a."
+    if taxa:
+        return _percentual(taxa)
+    return tipo
+
+
+def _percentual(valor: float) -> str:
+    texto = f"{valor:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    return f"{texto}%"
+
+
+def _capital_e_rendimento(posicoes) -> dict[str, Any]:
+    """Ausência de custo não é custo zero; totais incompletos ficam explícitos.
+
+    Movimentos podem ter histórico parcial, resgates e transferências. Somar
+    compras não comprova o custo da posição atual, portanto não o inferimos.
+    """
+    conhecidas = [p for p in posicoes if p["valor_original"] is not None]
+    faltantes = len(posicoes) - len(conhecidas)
+    original = _soma(conhecidas, "valor_original")
+    bruto = round(_soma(conhecidas, "valor_bruto") - original, 2)
+    liquido = round(_soma(conhecidas, "saldo_liquido") - original, 2)
+    return {"original": None if faltantes else original,
+            "originalConhecido": original,
+            "rendimentoBruto": None if faltantes else bruto,
+            "rendimentoLiquido": None if faltantes else liquido,
+            "rendimentoBrutoConhecido": bruto if conhecidas or not posicoes else None,
+            "posicoesSemCapital": faltantes,
+            "saldoSemCapital": _soma([p for p in posicoes if p["valor_original"] is None], "saldo_liquido")}
+
+
+def _series_por_posicao(snapshots) -> dict[str, list[tuple[str, float]]]:
+    """Saldo de cada posição ao longo do tempo, uma série por posição.
+
+    Somar todas as posições por dia antes de calcular o retorno lê mudança de
+    cobertura como lucro: conexão nova entrando dá "rendimento" que ninguém
+    teve. Cada posição rende sozinha; a carteira é a média ponderada.
+    """
+    series: dict[str, list[tuple[str, float]]] = {}
+    for s in snapshots:
+        series.setdefault(s["investimento_chave"], []).append(
+            (s["coletado_em"], float(s["saldo_liquido"] or 0)))
+    # Posição que já estava zerada quando a coleta começou não tem trecho para
+    # render: mantê-la só enche o diagnóstico de trechos ignorados.
+    return {chave: pontos for chave, pontos in series.items()
+            if any(valor > 0 for _, valor in pontos)}
+
+
+def _movimentos_por_posicao(movimentos, rotulos) -> dict[str, list[dict[str, Any]]]:
+    """Aportes e resgates de cada posição, no formato do cálculo de retorno."""
+    por_posicao: dict[str, list[dict[str, Any]]] = {}
+    for m in movimentos:
+        bruto = m["valor_liquido"] if m["valor_liquido"] is not None else m["valor_bruto"]
+        por_posicao.setdefault(m["investimento_chave"], []).append({
+            "data": m["data"], "tipo": m["tipo"], "valor": abs(float(bruto or 0)),
+            "instituicao": rotulos.get(m["item_id"], "Instituição")})
+    return por_posicao
+
+
+def _aplicado_por_movimentos(movimentos: list[dict[str, Any]],
+                             saldo_bruto: float | None = None) -> dict[str, Any]:
+    """Quanto ainda está aplicado nesta posição, pelos aportes e resgates dela.
+
+    Custo digitado à mão não sobrevive a aporte mensal, e a Pluggy só informa
+    `valor_original` em parte das posições. O histórico de movimentos responde
+    a mesma pergunta e se atualiza sozinho: aportes menos resgates é o dinheiro
+    que continua ali. Rolagem se anula nessa conta -- o SELL e o BUY do mesmo
+    valor entram e saem juntos.
+
+    Continua valendo que ausência não é zero: histórico que não cobre a posição
+    (nenhum aporte, ou resgates maiores que aportes) devolve `None` em vez de um
+    número que pareceria custo.
+    """
+    aportes = round(sum(m["valor"] for m in movimentos if m["tipo"] == "BUY"), 2)
+    resgates = round(sum(m["valor"] for m in movimentos if m["tipo"] == "SELL"), 2)
+    saldo = round(aportes - resgates, 2)
+    base = {"aportes": aportes, "resgates": resgates, "confiavel": False}
+    if not aportes:
+        return {**base, "aplicado": None, "motivo": "sem_aporte_no_historico"}
+    if saldo <= 0:
+        # Saiu mais do que entrou e ainda há posição: falta compra no registro.
+        return {**base, "aplicado": None, "motivo": "historico_de_compras_incompleto"}
+    if (saldo_bruto and not resgates
+            and saldo / float(saldo_bruto) - 1 >= DIVERGENCIA_APLICADO):
+        # O valor continua visível na linha, para a conferência ser possível --
+        # mas não entra em total nenhum como se fosse custo apurado.
+        return {**base, "aplicado": saldo, "motivo": "divergencia_com_saldo"}
+    return {**base, "aplicado": saldo, "confiavel": True, "motivo": ""}
+
+
+def _aplicado_total(lotes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Total aplicado somando as duas fontes, sem esconder o que falta."""
+    conhecidos = [l for l in lotes if l.get("aplicado") is not None and l.get("aplicadoConfiavel")]
+    faltantes = len(lotes) - len(conhecidos)
+    aplicado = round(sum(l["aplicado"] for l in conhecidos), 2)
+    bruto = round(sum(float(l["bruto"] or 0) for l in conhecidos), 2)
+    return {
+        "aplicado": None if faltantes else aplicado,
+        "aplicadoConhecido": aplicado,
+        "posicoesSemAplicado": faltantes,
+        "saldoSemAplicado": round(sum(float(l["liquido"] or 0) for l in lotes
+                                      if l not in conhecidos), 2),
+        "rendimentoBrutoEstimado": None if faltantes else round(bruto - aplicado, 2),
+        "porFonte": {"pluggy": sum(1 for l in conhecidos if l.get("origemAplicado") == "pluggy"),
+                     "movimentos": sum(1 for l in conhecidos if l.get("origemAplicado") == "movimentos")},
+        "posicoesComAplicadoDuvidoso": sum(1 for l in lotes if not l.get("aplicadoConfiavel")
+                                           and l.get("aplicado") is not None),
+    }
+
+
+def _benchmark(conn, retorno: float | None, janela: dict[str, str] | None,
+               cache: dict[tuple[str, str], dict[str, Any]]) -> dict[str, Any]:
+    """Compara o retorno com o CDI do mesmo intervalo, lendo só a tabela local.
+
+    O primeiro ponto da série é o saldo de partida, não um dia de rendimento:
+    o CDI começa a contar no dia seguinte, senão sobra um dia de juros de um
+    lado só. Série do índice mais curta que a janela volta como `parcial`, com
+    o intervalo realmente usado -- nunca esticada para fechar o período.
+    """
+    de, ate = (janela or {}).get("de", ""), (janela or {}).get("ate", "")
+    inicio = _dia_seguinte(de)
+    if not inicio or not ate:
+        return indices.comparar(retorno, {"variacao": None, "status": "indisponivel",
+                                          "janela": None, "nome": "CDI",
+                                          "motivo": "período de comparação indefinido"})
+    if (inicio, ate) not in cache:
+        fator = indices.fator(conn, indices.PADRAO, inicio, ate)
+        fator["nome"] = indices.SERIES[indices.PADRAO]["nome"]
+        cache[(inicio, ate)] = fator
+    return indices.comparar(retorno, cache[(inicio, ate)])
+
+
+def _dia_seguinte(iso: str) -> str:
+    try:
+        return (date.fromisoformat(str(iso)[:10]) + timedelta(days=1)).isoformat()
+    except ValueError:
+        return ""
+
+
 def payload() -> dict[str, Any]:
     garantir_tabelas()
     with fin.connect() as conn:
         rotulos = _rotulos_itens(conn)
+        rotulos_classes = taxonomia.rotulos_personalizados(conn)
+        arquivados = _itens_arquivados(conn)
         posicoes = list(conn.execute(
             "SELECT i.*, (SELECT MIN(substr(m.data,1,10)) FROM pluggy_investimento_movimentos m "
             "WHERE m.investimento_chave=i.investimento_chave AND m.tipo='BUY') AS data_aplicacao "
             "FROM pluggy_investimentos i ORDER BY importado_em DESC, data_referencia DESC, investimento_chave"
         ))
+        # Reconectar também pode trocar os IDs dos investimentos. As posições
+        # arquivadas permanecem no banco, mas não compõem a carteira atual,
+        # seus movimentos ou a curva de saldo.
+        posicoes = [p for p in posicoes if p["item_id"] not in arquivados]
         # Usa inclusive as cópias de reconexões para não recriar por extrato
         # uma posição que já foi reconhecida sob outra chave.
         itens_com_posicao = {p["item_id"] for p in posicoes}
@@ -400,6 +584,8 @@ def payload() -> dict[str, Any]:
         ))
         snaps = [s for s in snaps if s["investimento_chave"] in chaves]
         sem_posicao = _movimentos_sem_posicao(conn, itens_com_posicao, rotulos)
+        series_por_posicao = _series_por_posicao(snaps)
+        movs_por_posicao = _movimentos_por_posicao(movimentos_investimento, rotulos)
 
         por_instituicao: dict[str, dict[str, Any]] = {
             nome: {"instituicao": nome, "ativos": 0, "encerrados": 0,
@@ -423,32 +609,104 @@ def payload() -> dict[str, Any]:
             grupo[campo] = round(grupo.get(campo, 0) + m["valor"], 2)
             grupo["posicaoPendente"] = True
 
+        for nome, grupo in por_instituicao.items():
+            grupo.update(_capital_e_rendimento([
+                p for p in ativos if rotulos.get(p["item_id"], "Instituição") == nome
+            ]))
+
     bruto = _soma(ativos, "valor_bruto")
     liquido = _soma(ativos, "saldo_liquido")
-    original = _soma(ativos, "valor_original")
     disponivel = _soma(ativos, "disponivel_resgate")
 
     lotes = []
     for p in ativos:
         raw = json.loads(p["raw_json"] or "{}")
+        classe = taxonomia.classificar(p["tipo"], p["subtipo"])
         p_bruto = float(p["valor_bruto"] or 0)
         p_liq = float(p["saldo_liquido"] or 0)
-        p_orig = float(p["valor_original"] or 0)
+        p_orig = _numero(p["valor_original"])
         lotes.append({
             "id": p["investimento_id"], "nome": p["nome"], "tipo": p["tipo"],
+            "classe": classe["classe"], "classeRotulo": classe["rotulo"],
+            "rotuloSubtipo": classe["rotuloSubtipo"], "indexador": _indexador(p),
+            "origem": "pluggy",
             "itemId": p["item_id"], "instituicao": rotulos.get(p["item_id"], "Instituição"),
             "moeda": p["moeda"],
             "subtipo": p["subtipo"], "dataReferencia": p["data_referencia"],
             "dataAplicacao": p["data_aplicacao"] or p["data_emissao"],
             "original": p_orig, "bruto": p_bruto, "liquido": p_liq,
-            "disponivel": p["disponivel_resgate"], "rendimentoBruto": p_bruto - p_orig,
-            "rendimentoLiquido": p_liq - p_orig, "impostosEstimados": p_bruto - p_liq,
-            "rentabilidadeBruta": ((p_bruto / p_orig - 1) * 100) if p_orig else 0,
+            "disponivel": p["disponivel_resgate"],
+            "rendimentoBruto": round(p_bruto - p_orig, 2) if p_orig is not None else None,
+            "rendimentoLiquido": round(p_liq - p_orig, 2) if p_orig is not None else None,
+            "impostosEstimados": p_bruto - p_liq,
+            "rentabilidadeBruta": ((p_bruto / p_orig - 1) * 100) if p_orig else None,
+            "lucroInformado": p["lucro_informado"],
+            "rentabilidadeFundo12Meses": _numero(raw.get("lastTwelveMonthsRate")),
             "taxa": p["taxa"], "tipoTaxa": p["tipo_taxa"],
             "taxaFixaAnual": p["taxa_fixa_anual"], "emissor": p["emissor"],
             "emissao": p["data_emissao"], "vencimento": p["vencimento"], "status": p["status"],
             "codigo": raw.get("code"), "numero": raw.get("number"), "proprietario": raw.get("owner"),
             "carencia": raw.get("gracePeriodDate"), "quantidade": p["quantidade"], "valorCota": p["valor_cota"],
+        })
+
+    # Vencimento, carência e D+N viram prazo, faixa e rótulo antes de qualquer
+    # soma. O D+N dos fundos vem do catálogo local, numa consulta só: resolver
+    # CNPJ por posição varreria a tabela de fundos uma vez por linha.
+    with fin.connect() as conn:
+        dias_fundos = liquidez.dias_de_resgate_por_cnpj(conn, [l.get("codigo") for l in lotes])
+    liquidez.enriquecer(lotes, dias_fundos)
+    liquidez_carteira = liquidez.agregar(lotes)
+
+    # Uma aba por classe que existe na carteira -- e só por classe que existe:
+    # a tela mostra o que a pessoa tem, não o catálogo do que poderia ter.
+    linhas_por_classe: dict[str, list] = {}
+    lotes_por_classe: dict[str, list] = {}
+    for linha, lote in zip(ativos, lotes):
+        linhas_por_classe.setdefault(lote["classe"], []).append(linha)
+        lotes_por_classe.setdefault(lote["classe"], []).append(lote)
+        # O mesmo motor da carteira, com uma posição só: o retorno da linha
+        # desconta seus próprios aportes e resgates.
+        chave = linha["investimento_chave"]
+        movs_lote = movs_por_posicao.get(chave, [])
+        lote["rentabilidade"] = rentabilidade.rentabilidade_carteira(
+            {chave: series_por_posicao.get(chave, [])}, {chave: movs_lote})
+        pelos_movimentos = _aplicado_por_movimentos(movs_lote, lote["bruto"])
+        informado = lote["original"]
+        lote.update({
+            "aplicado": informado if informado is not None else pelos_movimentos["aplicado"],
+            "origemAplicado": ("pluggy" if informado is not None
+                               else "movimentos" if pelos_movimentos["aplicado"] is not None else ""),
+            "aportes": pelos_movimentos["aportes"], "resgates": pelos_movimentos["resgates"],
+            "aplicadoConfiavel": informado is not None or pelos_movimentos["confiavel"],
+            "motivoSemAplicado": "" if informado is not None else pelos_movimentos["motivo"],
+        })
+        aplicado_lote = lote["aplicado"] if lote["aplicadoConfiavel"] else None
+        if informado is None and aplicado_lote:
+            # Ganho a partir do aplicado derivado: mesma conta, outra fonte --
+            # e por isso marcada, nunca misturada com o custo informado.
+            lote["rendimentoBrutoEstimado"] = round(lote["bruto"] - aplicado_lote, 2)
+            lote["rentabilidadeBrutaEstimada"] = round((lote["bruto"] / aplicado_lote - 1) * 100, 4)
+        else:
+            lote["rendimentoBrutoEstimado"] = lote["rendimentoBruto"]
+            lote["rentabilidadeBrutaEstimada"] = lote["rentabilidadeBruta"]
+
+    classes = []
+    for info in taxonomia.classes_presentes(
+            [{"tipo": l["tipo"], "subtipo": l["subtipo"]} for l in ativos], rotulos_classes):
+        linhas = linhas_por_classe.get(info["id"], [])
+        liquido_classe = _soma(linhas, "saldo_liquido")
+        classes.append({
+            **info,
+            "colunas": taxonomia.colunas(info["perfil"]),
+            "destaques": taxonomia.destaques(info["perfil"]),
+            "resumo": {"liquido": liquido_classe, "bruto": _soma(linhas, "valor_bruto"),
+                       **_capital_e_rendimento(linhas),
+                       **_aplicado_total(lotes_por_classe.get(info["id"], [])),
+                       # Sem patrimônio não existe fatia: 0/0 não é 0%.
+                       "participacao": round(liquido_classe / liquido * 100, 2) if liquido else None,
+                       "posicoes": len(linhas)},
+            "liquidez": liquidez.agregar(lotes_por_classe.get(info["id"], [])),
+            "posicoes": lotes_por_classe.get(info["id"], []),
         })
 
     movs_extrato = []
@@ -523,13 +781,56 @@ def payload() -> dict[str, Any]:
         por_coleta[s["coletado_em"]] = {
             "liquido": _soma(atuais, "saldo_liquido"),
             "bruto": _soma(atuais, "valor_bruto"),
-            "original": _soma(atuais, "valor_original"),
+            "original": _capital_e_rendimento(atuais)["original"],
         }
 
+    # ------------------------------------------------- rentabilidade e CDI
+    # TWR é a manchete porque não precisa de custo -- serve para os fundos que
+    # a Pluggy entrega sem `valor_original` -- e é o único número comparável ao
+    # CDI, que não recebe aporte. XIRR entra como medida do dinheiro, sobre o
+    # histórico inteiro de movimentos.
+    twr_carteira = rentabilidade.rentabilidade_carteira(series_por_posicao, movs_por_posicao)
+    xirr_carteira = rentabilidade.rentabilidade_xirr(
+        movs, liquido, max((p["data_referencia"] for p in ativos), default=""))
+
+    cache_indice: dict[tuple[str, str], dict[str, Any]] = {}
+    with fin.connect() as conn:
+        indices.garantir_tabelas(conn)
+        benchmark = _benchmark(conn, twr_carteira["valor"], twr_carteira["janela"], cache_indice)
+        for classe in classes:
+            chaves_classe = [l["investimento_chave"] for l in linhas_por_classe.get(classe["id"], [])]
+            twr_classe = rentabilidade.rentabilidade_carteira(
+                {c: series_por_posicao[c] for c in chaves_classe if c in series_por_posicao},
+                {c: movs_por_posicao.get(c, []) for c in chaves_classe})
+            classe["rentabilidade"] = {
+                "twr": twr_classe,
+                "benchmark": _benchmark(conn, twr_classe["valor"], twr_classe["janela"], cache_indice)}
+        estado_indices = indices.estado(conn)
+
     return {
-        "resumo": {"liquido": liquido, "bruto": bruto, "original": original,
-                   "disponivel": disponivel, "rendimentoBruto": round(bruto-original, 2),
-                   "rendimentoLiquido": round(liquido-original, 2),
+        "versao": 3,
+        # Consolidado e classes são a leitura nova; `resumo`, `lotes` e o resto
+        # seguem idênticos para a Visão geral e os testes do v2 não mudarem.
+        "consolidado": {
+            "liquido": liquido, "bruto": bruto, **_capital_e_rendimento(ativos),
+            "disponivel": disponivel, "impostosEstimados": round(bruto - liquido, 2),
+            "posicoesAtivas": len(ativos), "posicoesEncerradas": len(posicoes) - len(ativos),
+            "classes": len(classes),
+            "disponivelHoje": liquidez_carteira["disponivelHoje"],
+            "vencendo30": liquidez_carteira["vencendo30"],
+            "vencendo90": liquidez_carteira["vencendo90"],
+            "rentabilidade": {"twr": twr_carteira, "xirr": xirr_carteira,
+                              "benchmark": benchmark},
+            **_aplicado_total(lotes),
+            "porOrigem": {"pluggy": {"liquido": liquido, "posicoes": len(ativos)}},
+            "dataReferencia": max((p["data_referencia"] for p in ativos), default=""),
+            "coletadoEm": max((p["importado_em"] for p in posicoes), default=""),
+        },
+        "classes": classes,
+        "liquidez": liquidez_carteira,
+        "indices": estado_indices,
+        "resumo": {"liquido": liquido, "bruto": bruto, **_capital_e_rendimento(ativos),
+                   "disponivel": disponivel,
                    "impostosEstimados": round(bruto-liquido, 2), "lotesAtivos": len(ativos),
                    "lotesEncerrados": len(posicoes)-len(ativos), "movimentos": len(movs),
                    "aplicacoesSemPosicao": _soma([m for m in sem_posicao if m["tipo"] == "BUY"], "valor"),
@@ -543,9 +844,9 @@ def payload() -> dict[str, Any]:
                                 "criterio": "por conexão, mês e tipo; fallback COFRINHOS apenas para carteira compatível",
                                 "mesesComDiscrepancia": len({d["mes"] for d in divergencias}),
                                 "divergenciasEndpointInvestimentos": divergencias},
-        "snapshots": [{"coletadoEm": k, **{x: round(v, 2) for x, v in d.items()}}
+        "snapshots": [{"coletadoEm": k, **{x: round(v, 2) if v is not None else None for x, v in d.items()}}
                       for k, d in sorted(por_coleta.items())],
         "instituicoes": [{**g, "liquido": round(g["liquido"], 2),
-                           "bruto": round(g["bruto"], 2), "original": round(g["original"], 2)}
+                           "bruto": round(g["bruto"], 2)}
                           for g in sorted(por_instituicao.values(), key=lambda x: -x["liquido"])],
     }

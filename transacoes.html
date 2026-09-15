@@ -490,9 +490,11 @@ function linha(tx) {
   if (tx.parcelaTotal > 1) det.push(`parcela ${tx.parcelaNumero}/${tx.parcelaTotal}`);
   if (!tx.incluidaNosCalculos) det.push(tx.motivoExclusao || "fora dos cálculos");
   if (tx.projetada) det.push(tx.recorrente ? "recorrente previsto" : "parcela projetada");
-  const acoes = tx.projetada
-    ? `<span class="icone" style="opacity:.5;cursor:default" title="Projeção: cobrança futura ainda não lançada pelo banco, não editável">≈</span>`
-    : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
+  const acoes = tx.projetada && Number(tx.parcelaTotal) > 1
+    ? `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações da projeção">⋯</button>`
+    : tx.projetada
+      ? `<span class="icone" title="Projeção recorrente">≈</span>`
+      : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
   return `
     <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""}">
       <td class="data" style="width:62px">${fmtData(tx.data)}</td>
@@ -1186,6 +1188,13 @@ function ligar() {
     const acoes = e.target.closest("[data-acoes-de]");
     if (acoes) {
       txAberta = acoes.dataset.acoesDe;
+      const tx = TRANSACOES.get(txAberta);
+      if (tx?.projetada) {
+        document.getElementById("popAcoesLista").innerHTML = `
+          <button class="pop-item" data-acao="ignorar-projecao">🚫  Ignorar essa projeção</button>`;
+        abrirPop(document.getElementById("popAcoes"), acoes, { alinhar: "direita" });
+        return;
+      }
       const tr = acoes.closest("tr");
       const ignorada = tr.classList.contains("ignorada");
       document.getElementById("popAcoesLista").innerHTML = `
@@ -1285,6 +1294,17 @@ function ligar() {
         const ignorada = tr?.classList.contains("ignorada");
         await pedir(`/extrato/transacoes/${encodeURIComponent(id)}`, "PUT",
                     { incluidaNosCalculos: ignorada ? null : false });
+        await recarregar();
+        return;
+      }
+      if (b.dataset.acao === "ignorar-projecao") {
+        const tx = TRANSACOES.get(id);
+        if (!tx || !confirm(`Ignorar a projeção da parcela ${tx.parcelaNumero}/${tx.parcelaTotal}?\n\nEla não será exibida novamente nas próximas atualizações.`)) return;
+        await pedir("/extrato/projecoes/excluir", "POST", {
+          compraId: tx.compraId,
+          mesRef: tx.mesRef,
+          parcelaNumero: tx.parcelaNumero,
+        });
         await recarregar();
         return;
       }

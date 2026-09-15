@@ -336,6 +336,14 @@ CREATE TABLE IF NOT EXISTS extrato_entradas_exclusoes (
   criado_em TEXT NOT NULL,
   FOREIGN KEY (transacao_id) REFERENCES pluggy_transacoes (transacao_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS extrato_projecoes_exclusoes (
+  compra_id TEXT NOT NULL,
+  mes_ref TEXT NOT NULL,
+  parcela_numero INTEGER NOT NULL,
+  criado_em TEXT NOT NULL,
+  PRIMARY KEY (compra_id, mes_ref, parcela_numero)
+);
 """
 
 
@@ -591,6 +599,7 @@ def _calcular_assinatura_extrato(conn: sqlite3.Connection) -> str:
         "status, categoria, parcela_numero, parcela_total, fatura_id, ordem "
         "FROM pluggy_transacoes ORDER BY transacao_id",
         "SELECT * FROM extrato_ajustes ORDER BY transacao_id",
+        "SELECT compra_id, mes_ref, parcela_numero FROM extrato_projecoes_exclusoes ORDER BY compra_id, mes_ref, parcela_numero",
         "SELECT id, campo, operador, termo, valor_min, valor_max, categoria_id, "
         "ignorar_calculos, prioridade, ativo, descricao_nova "
         "FROM extrato_regras ORDER BY id",

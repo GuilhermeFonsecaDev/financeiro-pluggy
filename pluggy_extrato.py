@@ -96,6 +96,25 @@ def chave_compra(linha: sqlite3.Row | dict) -> tuple[Any, ...]:
     )
 
 
+def excluir_projecao(compra_id: str, mes_ref: str, parcela_numero: int) -> dict[str, Any]:
+    """Oculta uma parcela prevista sem alterar o lançamento original."""
+    if not compra_id or not re.fullmatch(r"\d{4}-\d{2}", str(mes_ref)):
+        raise ValueError("Projeção inválida.")
+    try:
+        parcela_numero = int(parcela_numero)
+    except (TypeError, ValueError):
+        raise ValueError("Parcela inválida.") from None
+    with fin.connect() as conn:
+        cam.garantir_camada(conn)
+        conn.execute(
+            "INSERT OR IGNORE INTO extrato_projecoes_exclusoes "
+            "(compra_id, mes_ref, parcela_numero, criado_em) VALUES (?,?,?,datetime('now'))",
+            (compra_id, mes_ref, parcela_numero),
+        )
+        conn.commit()
+    return {"ok": True, "id": f"projetada:{compra_id}:{mes_ref}:{parcela_numero}"}
+
+
 def compra_da_transacao(conn: sqlite3.Connection,
                         transacao_id: str) -> tuple[Any, ...] | None:
     """chave_compra de uma transacao, buscando os metadados dela.
@@ -318,6 +337,14 @@ def _completar_faturas_abertas_e_parcelas(
             if ano_previsto != ano:
                 continue
 
+            compra_id = "|".join(str(p) for p in chave_compra(linha))
+            if conn.execute(
+                "SELECT 1 FROM extrato_projecoes_exclusoes "
+                "WHERE compra_id=? AND mes_ref=? AND parcela_numero=?",
+                (compra_id, f"{ano_previsto}-{numero_mes:02d}", atual + deslocamento),
+            ).fetchone():
+                continue
+
             indice = numero_mes - 1
             valores[conta_id][indice] += abs(float(linha["valor"] or 0))
             previstas[conta_id][indice] += 1
@@ -338,7 +365,7 @@ def _completar_faturas_abertas_e_parcelas(
                 "transacaoBaseId": linha["transacao_id"],
                 # Identidade da COMPRA: essa nao muda. Quem precisa saber "e a
                 # mesma compra?" entre meses usa esta, nao o id acima.
-                "compraId": "|".join(str(p) for p in chave_compra(linha)),
+                "compraId": compra_id,
                 "descricao": descricao_exibicao,
                 "valor": abs(float(linha["valor"] or 0)),
                 "parcelaAtual": atual + deslocamento,
@@ -1135,6 +1162,15 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
     fin.ensure_database()
     with fin.connect() as conn:
         garantir_tabelas(conn)
+        # A exclusão de uma parcela projetada é uma preferência da camada do
+        # extrato, mas o card de faturas também precisa enxergá-la. Garanta a
+        # tabela aqui porque esta tela pode ser aberta antes do extrato.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS extrato_projecoes_exclusoes ("
+            "compra_id TEXT NOT NULL, mes_ref TEXT NOT NULL, "
+            "parcela_numero INTEGER NOT NULL, criado_em TEXT NOT NULL, "
+            "PRIMARY KEY (compra_id, mes_ref, parcela_numero))"
+        )
 
         ativas = contas_ativas(conn)
         # Uma linha por CONTA de cartao; o apelido, a cor e o grupo saem do
@@ -1809,6 +1845,12 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     }
             agregados_categoria: dict[str, dict[str, Any]] = {}
             for cartao, item, mes_ref_item in pares:
+                if conn.execute(
+                    "SELECT 1 FROM extrato_projecoes_exclusoes "
+                    "WHERE compra_id=? AND mes_ref=? AND parcela_numero=?",
+                    (item.get("compraId"), mes_ref_item, item.get("parcelaAtual")),
+                ).fetchone():
+                    continue
                 categoria = categorias_base.get(item["transacaoBaseId"]) or {
                     "contaId": "",
                     "id": None, "nome": "Outros", "cor": "#9ba1ab", "emoji": "",
@@ -1836,6 +1878,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                         f"projetada:{item['compraId'] if item.get('recorrente') else item['transacaoBaseId']}:"
                         f"{mes_ref_item}:{item['parcelaAtual']}"
                     ),
+                    "compraId": item.get("compraId"),
                     "data": item.get("data") or f"{mes_ref_item}-01",
                     "mesRef": mes_ref_item,
                     "descricao": item["descricao"],

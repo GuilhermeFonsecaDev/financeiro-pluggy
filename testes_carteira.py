@@ -197,6 +197,92 @@ class CarteiraTests(unittest.TestCase):
         itens = CATALOGO if pagina == 1 else []
         return json.dumps({"items": itens, "total": len(CATALOGO), "total_pages": 1}).encode()
 
+    def test_perfis_dividem_aporte_em_duas_etapas_e_persistem(self):
+        carteira.adicionar("36181846000112", 100)
+        carteira.adicionar("63446494000152", 100, "arrojado")
+        itens = carteira.payload()["itens"]
+        for i in itens:
+            i["qualificado"] = "nao"
+        p = carteira.salvar(itens, 50000, conservador=90)
+        self.assertEqual([i["aporte"] for i in p["itens"]], [45000, 5000])
+        self.assertEqual(p["totalDistribuido"], 50000)
+        self.assertEqual(carteira.payload(50000)["perfis"]["arrojado"]["percentual"], 10)
+        p["itens"][0]["percentual"] = 80
+        q = carteira.salvar(p["itens"], 50000)
+        self.assertEqual(len(q["itens"]), 2)
+        self.assertEqual(q["perfis"]["arrojado"]["totalDistribuido"], 5000)
+
+    def test_aba_vazia_nao_transfere_fatia_e_iq_fica_no_perfil(self):
+        carteira.adicionar("36181846000112", 100)
+        p = carteira.salvar(carteira.payload()["itens"], 50000, conservador=90)
+        self.assertEqual(p["perfis"]["arrojado"]["naoDistribuido"], 5000)
+        self.assertEqual(p["totalDistribuido"], 45000)
+        carteira.adicionar("63446494000152", 100, "arrojado")
+        q = carteira.payload(50000)
+        self.assertTrue(q["perfis"]["arrojado"]["semElegivel"])
+        self.assertEqual(q["perfis"]["conservador"]["totalDistribuido"], 45000)
+
+    def test_porcentagem_invalida_nao_altera_carteira(self):
+        carteira.adicionar("36181846000112", 100)
+        for v in (-1, 101, "abc", float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                carteira.salvar([], 0, conservador=v)
+        self.assertEqual(len(carteira.payload()["itens"]), 1)
+        with self.assertRaises(ValueError):
+            carteira.adicionar("63446494000152", 100, "outro")
+
+    def test_perfis_centavos_e_limites(self):
+        carteira.adicionar("36181846000112", 100)
+        carteira.adicionar("63446494000152", 100, "arrojado")
+        itens = carteira.payload()["itens"]
+        for i in itens:
+            i["qualificado"] = "nao"
+        for porcentagem in (0, 33.33, 50, 90, 100):
+            p = carteira.salvar(itens, .03, conservador=porcentagem)
+            self.assertEqual(p["totalDistribuido"], .03)
+            self.assertEqual(round(sum(g["aporte"] for g in p["perfis"].values()), 2), .03)
+
+    def test_abas_dinamicas_renomear_preserva_fundos_e_divisao(self):
+        carteira.adicionar("36181846000112", 100)
+        carteira.salvar(carteira.payload()["itens"], conservador=90)
+        nova = carteira.salvar_aba("Internacional")["id"]
+        p = carteira.payload()
+        self.assertEqual(len(p["abas"]), 3)
+        self.assertEqual(p["perfis"][nova]["percentual"], 0)
+        self.assertEqual(p["perfis"]["conservador"]["percentual"], 90)
+        p["itens"][0]["perfil"] = nova
+        q = carteira.salvar(p["itens"], 50000, percentuais={"conservador": 70, "arrojado": 10, nova: 20})
+        self.assertEqual(q["itens"][0]["aporte"], 10000)
+        carteira.salvar_aba("Exterior", nova)
+        r = carteira.payload(50000)
+        self.assertEqual(r["perfis"][nova]["nome"], "Exterior")
+        self.assertEqual(r["itens"][0]["perfil"], nova)
+        self.assertEqual(r["perfis"][nova]["percentual"], 20)
+        for _ in range(2):
+            carteira.garantir_tabelas()
+        self.assertEqual(len(carteira.payload()["abas"]), 3)
+
+    def test_abas_validam_nome_e_percentuais_sem_perder_dados(self):
+        carteira.adicionar("36181846000112", 100)
+        for nome in ("", "   ", "a" * 51, "CONSERVADOR"):
+            with self.assertRaises(ValueError):
+                carteira.salvar_aba(nome)
+        with self.assertRaises(ValueError):
+            carteira.salvar_aba("Nova", "inexistente")
+        for pesos in ({"conservador": 80, "arrojado": 30}, {"conservador": 100}, {"conservador": -1, "arrojado": 101}):
+            with self.assertRaises(ValueError):
+                carteira.salvar([], percentuais=pesos)
+        self.assertEqual(len(carteira.payload()["itens"]), 1)
+
+    def test_permite_muitas_abas_e_centavos_conservados(self):
+        ids = [carteira.salvar_aba(f"Aba {n}")["id"] for n in range(12)]
+        p = carteira.payload()
+        self.assertEqual(len(p["abas"]), 14)
+        pesos = {a["id"]: 0 for a in p["abas"]}
+        pesos.update({ids[0]: 33.33, ids[1]: 33.33, ids[2]: 33.34})
+        q = carteira.salvar([], .05, percentuais=pesos)
+        self.assertEqual(round(sum(g["aporte"] for g in q["perfis"].values()), 2), .05)
+
     def liberar_iq(self, aporte=0):
         """Marca todos como não-IQ: sem isso, o fundo restrito sai da conta.
 

@@ -18,6 +18,7 @@
 .carteira-modal .modal-tit .estado:empty { display:none; }
 .cart-acoes { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .cart-acoes > button { white-space:nowrap; }
+.cart-acoes > button:not(.primario):not(.icone) { min-height:36px; padding:7px 11px; font-size:14px; }
 
 /* --- aporte no cabecalho do painel --------------------------------------- */
 /* Uma linha, na altura dos botoes: rotulo a esquerda e a caixa do valor ao
@@ -31,7 +32,7 @@
 .aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
 .aporte-entrada > span { color:var(--text-3); font-size:12.5px; }
 .aporte-entrada input { width:5ch; min-width:0; padding:0; border:0; background:transparent; color:var(--text); font:inherit; font-size:16px; font-weight:700; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
-.aporte-entrada input:focus { outline:none; }
+.aporte-entrada input:focus { outline:none; box-shadow:none; background:transparent; }
 .aporte-entrada input::placeholder { color:var(--text-3); font-weight:600; }
 
 /* --- tabela da carteira -------------------------------------------------- */
@@ -105,3 +106,30 @@
 .cadastro-achado { margin:10px 0 0; min-height:34px; color:var(--text-2); font-size:12.5px; line-height:1.4; }
 .cadastro-achado.nao { color:#f0b980; }
 @media (max-width:700px) { .painel-tit { flex-wrap:wrap; } }
+
+.cart-abas { display:flex; gap:6px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+.cart-abas button { background:transparent; border:0; border-bottom:2px solid transparent; border-radius:0; padding:10px 16px; color:var(--text-3); font-size:12px; font-weight:700; }
+.cart-abas button[aria-selected="true"] { color:var(--azul); border-bottom-color:var(--azul); }
+.cart-controles { justify-content:flex-start; }
+.cart-controles > div { flex-wrap:wrap; }
+.cart-controles .aporte-entrada { width:max-content; min-height:30px; padding:0 8px; gap:4px; }
+.cart-controles .aporte-entrada input { flex:none; font-size:14px; }
+.cart-percentual input { width:3.5ch; text-align:center; appearance:textfield; -moz-appearance:textfield; }
+.cart-percentual input::-webkit-inner-spin-button,
+.cart-percentual input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.cart-fatia { color:var(--text-2); font-size:12px; }
+.carteira .mover-perfil { width:27px; padding:0; color:var(--text-3); }
+
+.cart-barra-abas { display:flex; align-items:center; gap:8px; margin-bottom:20px; }
+.cart-barra-abas .cart-abas { flex:1; min-width:0; overflow-x:auto; margin-bottom:0; }
+.cart-barra-abas .cart-abas button { flex:none; white-space:nowrap; }
+.cart-barra-abas > button { flex:none; font-size:11px; padding:6px 9px; min-height:30px; }
+.lista-abas-modal { width:min(620px,100%); }
+.lista-abas { max-height:440px; overflow:auto; }
+.linha-aba { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.linha-aba:last-child { border-bottom:0; }
+.linha-aba-nome { flex:1; font-weight:650; }
+.linha-aba-pct { color:var(--text-3); font-size:12px; }
+.linha-aba button { min-height:32px; padding:6px 10px; }
+.carteira select.mover-perfil { width:32px; padding:0; background-image:none; cursor:pointer; }
+@media(max-width:700px) { .cart-barra-abas { flex-wrap:wrap; } .cart-barra-abas .cart-abas { flex-basis:100%; } }

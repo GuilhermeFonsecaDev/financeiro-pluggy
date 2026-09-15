@@ -17,6 +17,8 @@ aportar em menos fundos é quem investe.
 
 from __future__ import annotations
 
+import math
+from uuid import uuid4
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -26,6 +28,7 @@ import fundos
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS carteira_alvo (
   cnpj TEXT PRIMARY KEY,
+  perfil TEXT NOT NULL DEFAULT 'conservador',
   ordem INTEGER NOT NULL DEFAULT 0,
   percentual REAL NOT NULL DEFAULT 0,
   nome TEXT NOT NULL DEFAULT '',
@@ -42,6 +45,23 @@ CREATE TABLE IF NOT EXISTS carteira_alvo (
 REMOVIDAS = ("volatilidade", "taxas", "corretoras", "equivalente_xp")
 LIMITE_TEXTO = 120
 LIMITE_FUNDOS = 60
+def validar_perfil(perfil, permitidos=None):
+    if permitidos is None:
+        with fin.connect() as conn:
+            garantir_tabelas(conn)
+            permitidos = {r[0] for r in conn.execute("SELECT id FROM carteira_abas")}
+    if perfil not in permitidos:
+        raise ValueError("Aba não encontrada.")
+    return perfil
+
+def validar_porcentagem(valor):
+    try:
+        n = float(valor)
+    except (TypeError, ValueError):
+        raise ValueError("Porcentagem deve ficar entre 0 e 100.")
+    if not math.isfinite(n) or not 0 <= n <= 100:
+        raise ValueError("Porcentagem deve ficar entre 0 e 100.")
+    return round(n, 2)
 
 
 def garantir_tabelas(conn=None) -> None:
@@ -58,6 +78,15 @@ def garantir_tabelas(conn=None) -> None:
 def _remover_colunas(conn) -> None:
     """Apaga as colunas de texto livre de um banco criado antes."""
     existentes = {linha[1] for linha in conn.execute("PRAGMA table_info(carteira_alvo)")}
+    if "perfil" not in existentes:
+        conn.execute("ALTER TABLE carteira_alvo ADD COLUMN perfil TEXT NOT NULL DEFAULT 'conservador'")
+    conn.execute("CREATE TABLE IF NOT EXISTS carteira_config (id INTEGER PRIMARY KEY CHECK(id=1), conservador REAL NOT NULL)")
+    conn.execute("INSERT OR IGNORE INTO carteira_config VALUES (1,100)")
+    conn.execute("CREATE TABLE IF NOT EXISTS carteira_abas (id TEXT PRIMARY KEY, nome TEXT NOT NULL, percentual REAL NOT NULL DEFAULT 0, ordem INTEGER NOT NULL)")
+    if not conn.execute("SELECT 1 FROM carteira_abas LIMIT 1").fetchone():
+        percentual = conn.execute("SELECT conservador FROM carteira_config WHERE id=1").fetchone()[0]
+        conn.executemany("INSERT INTO carteira_abas VALUES (?,?,?,?)", [
+            ("conservador", "Conservador", percentual, 0), ("arrojado", "Arrojado", round(100-percentual, 2), 1)])
     for coluna in REMOVIDAS:
         if coluna in existentes:
             conn.execute(f"ALTER TABLE carteira_alvo DROP COLUMN {coluna}")
@@ -193,6 +222,7 @@ def payload(aporte: float = 0) -> dict[str, Any]:
             catalogo = _catalogo(conn, linha["cnpj"])
             itens.append({
                 "cnpj": linha["cnpj"],
+                "perfil": linha["perfil"],
                 "cnpjFormatado": fundos.formatar_cnpj(linha["cnpj"]),
                 "ordem": linha["ordem"],
                 "percentual": round(float(linha["percentual"] or 0), 4),
@@ -213,12 +243,29 @@ def payload(aporte: float = 0) -> dict[str, Any]:
             })
         for item in itens:
             item["dataResgate"] = _data_resgate(item["diasResgate"])
-        _distribuir(itens, aporte)
-        _marcar_minimos(itens)
+        abas = [dict(r) for r in conn.execute("SELECT * FROM carteira_abas ORDER BY ordem,id")]
+        fatias = [{"percentual": a["percentual"], "ordem": a["ordem"]} for a in abas]
+        _distribuir(fatias, aporte)
+        grupos = {}
+        for aba, fatia in zip(abas, fatias):
+            perfil, percentual = aba["id"], aba["percentual"]
+            cents = int(round(fatia["aporte"] * 100))
+            lista = [i for i in itens if i["perfil"] == perfil]
+            _distribuir(lista, cents / 100)
+            _marcar_minimos(lista)
+            soma_grupo = round(sum(i["percentual"] for i in lista), 4)
+            total = round(sum(i["aporte"] for i in lista), 2)
+            grupos[perfil] = {"nome": aba["nome"], "percentual": percentual, "aporte": cents / 100,
+                "somaPercentual": soma_grupo, "somaFecha": not lista or abs(soma_grupo-100) < .005,
+                "totalDistribuido": total, "naoDistribuido": round(cents/100-total, 2),
+                "semElegivel": bool(lista) and all(_peso(i) <= 0 for i in lista),
+                "abaixoDoMinimo": sum(i["abaixoDoMinimo"] for i in lista)}
         soma = round(sum(item["percentual"] for item in itens), 4)
         redistribuidos = [item for item in itens if item["redistribuido"]]
         return {
             "aporte": aporte,
+            "perfis": grupos,
+            "abas": abas,
             "itens": itens,
             "somaPercentual": soma,
             "somaFecha": not itens or abs(soma - 100) < 0.005,
@@ -241,7 +288,8 @@ def _conhecido(conn, cnpj: str) -> bool:
         or conn.execute("SELECT 1 FROM fundos_cvm WHERE cnpj=?", (cnpj,)).fetchone())
 
 
-def adicionar(cnpj: str, percentual: Any = 0) -> dict[str, Any]:
+def adicionar(cnpj: str, percentual: Any = 0, perfil: str = "conservador") -> dict[str, Any]:
+    validar_perfil(perfil)
     digitos = fundos.digitos(cnpj)
     if len(digitos) != 14:
         raise ValueError("Informe um CNPJ completo, com 14 dígitos.")
@@ -260,9 +308,9 @@ def adicionar(cnpj: str, percentual: Any = 0) -> dict[str, Any]:
             raise ValueError(f"A carteira já tem {LIMITE_FUNDOS} fundos.")
         proxima = conn.execute("SELECT COALESCE(MAX(ordem),0)+1 AS n FROM carteira_alvo").fetchone()["n"]
         conn.execute(
-            "INSERT INTO carteira_alvo (cnpj,ordem,percentual,atualizado_em) VALUES (?,?,?,?)",
+            "INSERT INTO carteira_alvo (cnpj,ordem,percentual,atualizado_em,perfil) VALUES (?,?,?,?,?)",
             (digitos, proxima, _numero(percentual) or 0.0,
-             datetime.now().isoformat(timespec="seconds")))
+             datetime.now().isoformat(timespec="seconds"), perfil))
         conn.commit()
     return payload()
 
@@ -276,7 +324,7 @@ def excluir(cnpj: str) -> dict[str, Any]:
     return payload()
 
 
-def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
+def salvar(itens: list[dict[str, Any]], aporte: float = 0, conservador=None, percentuais=None) -> dict[str, Any]:
     """Grava a carteira inteira: a tela manda a tabela como ela está.
 
     Campo que a tela não mostra também não é enviado, e o que não vem fica
@@ -287,9 +335,22 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
         raise ValueError("Carteira inválida.")
     if len(itens) > LIMITE_FUNDOS:
         raise ValueError(f"A carteira aceita até {LIMITE_FUNDOS} fundos.")
+    if conservador is not None:
+        conservador = validar_porcentagem(conservador)
     agora = datetime.now().isoformat(timespec="seconds")
     with fin.connect() as conn:
         garantir_tabelas(conn)
+        abas_atuais = {r["id"]: r["percentual"] for r in conn.execute("SELECT id,percentual FROM carteira_abas")}
+        if percentuais is not None:
+            if not isinstance(percentuais, dict) or set(percentuais) != set(abas_atuais):
+                raise ValueError("As abas mudaram. Recarregue a calculadora.")
+            percentuais = {k: validar_porcentagem(v) for k, v in percentuais.items()}
+            if abs(sum(percentuais.values()) - 100) > .005:
+                raise ValueError("As porcentagens das abas devem somar 100%.")
+        elif conservador is not None:
+            if set(abas_atuais) != {"conservador", "arrojado"}:
+                raise ValueError("Recarregue a calculadora para editar todas as abas.")
+            percentuais = {"conservador": conservador, "arrojado": round(100-conservador, 2)}
         atuais = {linha["cnpj"]: dict(linha)
                   for linha in conn.execute("SELECT * FROM carteira_alvo")}
     linhas = []
@@ -320,7 +381,7 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
         linhas.append((
             digitos, ordem, percentual, nome, anbima, minimo,
             int(item["diasResgate"]) if str(item.get("diasResgate") or "").strip().isdigit() else None,
-            qualificado, agora,
+            qualificado, agora, validar_perfil(item.get("perfil", atual.get("perfil", "conservador")), abas_atuais),
         ))
     with fin.connect() as conn:
         garantir_tabelas(conn)
@@ -328,6 +389,44 @@ def salvar(itens: list[dict[str, Any]], aporte: float = 0) -> dict[str, Any]:
         conn.execute("DELETE FROM carteira_alvo")
         conn.executemany(
             "INSERT INTO carteira_alvo (cnpj,ordem,percentual,nome,anbima,aporte_minimo,"
-            "dias_resgate,qualificado,atualizado_em) VALUES (?,?,?,?,?,?,?,?,?)", linhas)
+            "dias_resgate,qualificado,atualizado_em,perfil) VALUES (?,?,?,?,?,?,?,?,?,?)", linhas)
+        if percentuais is not None:
+            conn.executemany("UPDATE carteira_abas SET percentual=? WHERE id=?", [(v,k) for k,v in percentuais.items()])
         conn.commit()
     return payload(aporte)
+
+
+def salvar_aba(nome, aba_id=None):
+    nome = str(nome or "").strip()
+    if not nome or len(nome) > 50:
+        raise ValueError("Informe um nome de até 50 caracteres.")
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        abas = list(conn.execute("SELECT id,nome FROM carteira_abas"))
+        if aba_id is not None and aba_id not in {a["id"] for a in abas}:
+            raise ValueError("Aba não encontrada.")
+        if any(a["nome"].casefold() == nome.casefold() and a["id"] != aba_id for a in abas):
+            raise ValueError("Já existe uma aba com esse nome.")
+        if aba_id is None:
+            aba_id = uuid4().hex
+            ordem = conn.execute("SELECT COALESCE(MAX(ordem),0)+1 FROM carteira_abas").fetchone()[0]
+            conn.execute("INSERT INTO carteira_abas VALUES (?,?,0,?)", (aba_id,nome,ordem))
+        else:
+            conn.execute("UPDATE carteira_abas SET nome=? WHERE id=?", (nome,aba_id))
+        conn.commit()
+    return {"ok": True, "id": aba_id}
+
+
+def excluir_aba(aba_id: str):
+    with fin.connect() as conn:
+        garantir_tabelas(conn)
+        abas = list(conn.execute("SELECT id FROM carteira_abas ORDER BY ordem"))
+        if aba_id not in {a["id"] for a in abas}:
+            raise ValueError("Aba não encontrada.")
+        if len(abas) <= 1:
+            raise ValueError("Mantenha pelo menos uma aba.")
+        if conn.execute("SELECT 1 FROM carteira_alvo WHERE perfil=? LIMIT 1", (aba_id,)).fetchone():
+            raise ValueError("Mova os fundos desta aba antes de excluí-la.")
+        conn.execute("DELETE FROM carteira_abas WHERE id=?", (aba_id,))
+        conn.commit()
+    return {"ok": True}

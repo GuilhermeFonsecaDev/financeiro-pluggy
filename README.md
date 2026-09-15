@@ -36,6 +36,17 @@ entram na sincronização automaticamente, conforme os dados disponibilizados
 pela Pluggy. A tabela por instituição também mostra conexões sem posições
 informadas. A Visão geral usa o mesmo consolidado.
 
+Em **Minha carteira**, os filtros separam fundos, renda fixa e outros ativos.
+Cada posição mostra capital, saldo bruto/líquido e ganho; abrir seu nome revela
+CNPJ/código, referência, cotas e taxas disponíveis. A rentabilidade de 12 meses
+é do fundo, não da aplicação pessoal.
+
+Capital original ausente permanece não informado. Essas posições compõem o
+saldo, mas não o ganho: o resumo mostra o ganho parcial das posições com capital
+conhecido. Compras no histórico não comprovam, sozinhas, o custo da posição
+atual; o sistema não reconstrói esse custo a partir de um histórico possivelmente
+incompleto. Após atualizar o código, reinicie o backend para carregar essa regra.
+
 Investimentos são coletados mesmo se a sincronização do extrato falhar.
 A API é a fonte principal dos movimentos; a conferência complementar de
 Cofrinhos fica limitada à mesma conexão, mês e tipo, em carteiras compatíveis.

@@ -10,6 +10,8 @@ const el = id => document.getElementById(id);
 let D = null;
 let APORTE = 0;
 let SALVANDO;
+let PERFIL = "conservador";
+let FILA = Promise.resolve();
 // A carga inicial e um recalculo podem estar no ar ao mesmo tempo -- digitar
 // um valor logo ao abrir a tela. Cada leitura leva um numero e só a última
 // tem permissão de desenhar, senão a resposta antiga volta e zera o aporte.
@@ -128,6 +130,7 @@ function linha(item) {
       </select>
     </td>
     <td><div class="acoes">
+      <select class="mover-perfil" data-mover="${esc(item.cnpj)}" aria-label="Mover ${esc(item.nome)} para outra aba" title="Mover para outra aba"><option value="">⇄</option>${(D.abas || []).filter(a => a.id !== PERFIL).map(a => `<option value="${esc(a.id)}">${esc(a.nome)}</option>`).join('')}</select>
       <button class="icone" data-excluir="${esc(item.cnpj)}" title="Remover da carteira">×</button>
     </div></td>
   </tr>`;
@@ -140,9 +143,22 @@ function linha(item) {
 // ficam como estão.
 function render() {
   if (!D) return;
+  const abas = D.abas || [];
+  if (abas.length && !abas.some(a => a.id === PERFIL)) PERFIL = abas[0].id;
+  const assinatura = JSON.stringify(abas.map(a => [a.id,a.nome]));
+  if (el('cartAbas').dataset.assinatura !== assinatura) {
+    el('cartAbas').innerHTML = abas.map(a => `<button type="button" role="tab" id="cartTab-${esc(a.id)}" data-perfil="${esc(a.id)}" aria-controls="cartPainel">${esc(a.nome.toUpperCase())}</button>`).join('');
+    el('cartAbas').dataset.assinatura = assinatura;
+  }
+  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL);
+  // O atalho de foco vale para digitação, não para mudança de lista: excluir
+  // um fundo (ou movê-lo de aba) deixa o próprio botão com o foco dentro da
+  // tabela, e a linha que saiu continuava na tela até trocar de aba.
+  const naTela = [...el("cartCorpo").querySelectorAll("tr")].map(tr => tr.dataset.cnpj);
+  const mesmasLinhas = naTela.length === itens.length
+    && itens.every((item, i) => item.cnpj === naTela[i]);
   const editando = el("cartCorpo").contains(document.activeElement);
-  if (editando) { renderCalculos(); return; }
-  const itens = D.itens || [];
+  if (editando && mesmasLinhas) { renderCalculos(); return; }
   el("cartCorpo").innerHTML = itens.map(linha).join("");
   el("cartVazia").hidden = itens.length > 0;
   el("cartRodape").hidden = itens.length === 0;
@@ -150,10 +166,10 @@ function render() {
 }
 
 function renderCalculos() {
-  const itens = D.itens || [];
+  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL);
   // Campo que só o backend com redistribuição por IQ devolve. Sem ele, a
   // conta na tela seria a antiga -- e errada, sem dizer por quê.
-  const servidorAtualizado = typeof D.redistribuidos === "number";
+  const servidorAtualizado = !!D.perfis;
   el("cartAviso").hidden = servidorAtualizado;
   for (const item of itens) {
     const tr = el("cartCorpo").querySelector(`tr[data-cnpj="${item.cnpj}"]`);
@@ -166,30 +182,28 @@ function renderCalculos() {
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
       ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}`;
   }
-  el("cartSoma").textContent = pct(D.somaPercentual);
-  el("cartSoma").className = `num ${D.somaFecha ? "" : "desalinhado"}`;
-  el("cartTotal").textContent = fmtBRL(D.totalDistribuido);
+  const grupo = D.perfis?.[PERFIL] || D;
+  document.querySelectorAll('[data-perfil]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.perfil === PERFIL)));
+  el('cartPainel').setAttribute('aria-labelledby', `cartTab-${PERFIL}`);
+  if (document.activeElement !== el('cartPorcentagem')) el('cartPorcentagem').value = grupo.percentual ?? 100;
+  el('cartFatia').textContent = `${fmtBRL(grupo.aporte || 0)} nesta aba${grupo.naoDistribuido ? ` · ${fmtBRL(grupo.naoDistribuido)} não distribuídos` : ''}`;
+  el("cartSoma").textContent = pct(grupo.somaPercentual);
+  el("cartSoma").className = `num ${grupo.somaFecha ? "" : "desalinhado"}`;
+  el("cartTotal").textContent = fmtBRL(grupo.totalDistribuido);
   // A soma fora de 100% é o aviso que mais engana em silêncio: os pesos são
-  // normalizados pela própria soma, então a conta "fecha" mesmo errada. Já a
-  // redistribuição por IQ é o comportamento pedido -- informa, não alarma.
+  // normalizados pela própria soma, então a conta "fecha" mesmo errada.
   const problemas = [];
-  if (!D.somaFecha && itens.length) {
-    problemas.push(`as alocações somam ${pct(D.somaPercentual)}, não 100% — o aporte foi repartido na proporção informada`);
+  if (!grupo.somaFecha && itens.length) {
+    problemas.push(`as alocações somam ${pct(grupo.somaPercentual)}, não 100% — o aporte foi repartido na proporção informada`);
   }
-  if (D.semElegivel) problemas.push("todos os fundos estão marcados como IQ: não há onde alocar o aporte");
-  if (D.abaixoDoMinimo) problemas.push(`${D.abaixoDoMinimo} fundo(s) abaixo do aporte mínimo`);
-  const notas = [];
-  if (D.redistribuidos && !D.semElegivel) {
-    notas.push(`${D.redistribuidos === 1 ? "1 fundo restrito a IQ" : `${D.redistribuidos} fundos restritos a IQ`} fora do aporte: ${pct(D.percentualRedistribuido)} redistribuídos entre os demais`);
-  }
+  if (grupo.semElegivel) problemas.push("todos os fundos estão marcados como IQ: não há onde alocar o aporte");
+  if (grupo.abaixoDoMinimo) problemas.push(`${grupo.abaixoDoMinimo} fundo(s) abaixo do aporte mínimo`);
   if (!servidorAtualizado) {
     setEstado("cartEstado", "Reinicie o backend para carregar a atualização", "erro");
   } else if (problemas.length) {
-    setEstado("cartEstado", problemas.concat(notas).join(" · "), "erro");
-  } else if (notas.length) {
-    setEstado("cartEstado", notas.join(" · "));
+    setEstado("cartEstado", problemas.join(" · "), "erro");
   } else {
-    setEstado("cartEstado", `${itens.length} fundo(s) na carteira`, "ok");
+    setEstado("cartEstado", "");
   }
 }
 
@@ -205,39 +219,28 @@ async function carregar() {
   } catch (e) { if (pedido === PEDIDO) setEstado("cartEstado", e.message, "erro"); }
 }
 
-function itensDoFormulario() {
-  return [...document.querySelectorAll("#corpo tr")].map(tr => {
-    const valor = campo => {
-      const alvo = tr.querySelector(`[data-campo="${campo}"]`);
-      return alvo ? alvo.value.trim() : "";
-    };
-    // Só o que a tabela mostra. Nome, Anbima e aporte mínimo não são enviados,
-    // e o backend mantém o que já estava guardado para eles.
-    return {
-      cnpj: tr.dataset.cnpj,
-      percentual: lerNumero(valor("percentual")),
-      diasResgate: valor("diasResgate"),
-      qualificado: valor("qualificado"),
-    };
-  });
-}
-
 async function salvar() {
   clearTimeout(SALVANDO);
+  if (!D) return true;
   setEstado("cartSalvo", "salvando…");
   el("cartErro").textContent = "";
   const pedido = ++PEDIDO;
-  try {
-    const dados = await pedir("/carteira", "POST", { itens: itensDoFormulario(), aporte: APORTE });
-    if (pedido !== PEDIDO) return;
-    D = dados;
-    render();
-    setEstado("cartSalvo", "salvo", "ok");
-    setTimeout(() => setEstado("cartSalvo", ""), 2200);
-  } catch (e) {
-    el("cartErro").textContent = e.message;
-    setEstado("cartSalvo", "não salvo", "erro");
-  }
+  const corpo = { itens: structuredClone(D.itens), aporte: APORTE, percentuais: Object.fromEntries(Object.entries(D.perfis || {}).map(([id,g]) => [id,g.percentual])) };
+  const executar = async () => {
+    try {
+      const dados = await pedir("/carteira", "POST", corpo);
+      if (pedido === PEDIDO) {
+        D = dados; render(); setEstado("cartSalvo", "");
+      }
+      return true;
+    } catch (e) {
+      el("cartErro").textContent = e.message;
+      setEstado("cartSalvo", "não salvo", "erro");
+      return false;
+    }
+  };
+  FILA = FILA.then(executar, executar);
+  return FILA;
 }
 
 // Digitar não deve gravar a cada tecla, mas também não pode exigir um botão:
@@ -255,14 +258,26 @@ el("cartAporte").addEventListener("input", e => {
   APORTE = lerNumero(e.target.value);
   clearTimeout(SALVANDO);
   // Só recalcula: o aporte não é cadastro, não fica guardado.
-  SALVANDO = setTimeout(carregar, 250);
+  SALVANDO = setTimeout(salvar, 250);
 });
 el("cartCorpo").addEventListener("input", e => {
   if (!e.target.matches("input")) return;
+  const item = D?.itens.find(i => i.cnpj === e.target.closest('tr').dataset.cnpj);
+  if (item) item[e.target.dataset.campo] = e.target.dataset.campo === 'percentual' ? lerNumero(e.target.value) : e.target.value;
+  ++PEDIDO;
   salvarDepois();
 });
 el("cartCorpo").addEventListener("change", e => {
-  if (e.target.matches("select")) salvar();
+  if (e.target.matches('[data-mover]')) {
+    const item = D?.itens.find(i => i.cnpj === e.target.dataset.mover);
+    if (item && e.target.value) { item.perfil = e.target.value; e.target.blur(); render(); salvar(); }
+    return;
+  }
+  if (e.target.matches("select")) {
+    const item = D?.itens.find(i => i.cnpj === e.target.closest('tr').dataset.cnpj);
+    if (item) item[e.target.dataset.campo] = e.target.value;
+    salvar();
+  }
 });
 el("cartCorpo").addEventListener("click", async e => {
   const botao = e.target.closest("[data-excluir]");
@@ -270,10 +285,82 @@ el("cartCorpo").addEventListener("click", async e => {
   const item = (D.itens || []).find(i => i.cnpj === botao.dataset.excluir);
   if (!confirm(`Remover ${item ? item.nome : "este fundo"} da carteira?`)) return;
   try {
+    if (!await salvar()) return;
     await pedir("/carteira/excluir", "POST", { cnpj: botao.dataset.excluir });
     await carregar();
   } catch (err) { el("cartErro").textContent = err.message; }
 });
+
+el('cartAbas').addEventListener('click', e => {
+  const b = e.target.closest('[data-perfil]');
+  if (b) { PERFIL = b.dataset.perfil; render(); }
+});
+el('cartAbas').addEventListener('keydown', e => {
+  if (!['ArrowLeft','ArrowRight'].includes(e.key) || !D?.abas.length) return;
+  e.preventDefault();
+  const abas = D.abas, atual = abas.findIndex(a => a.id === PERFIL);
+  PERFIL = abas[(atual + (e.key === 'ArrowRight' ? 1 : -1) + abas.length) % abas.length].id;
+  render(); document.getElementById(`cartTab-${PERFIL}`).focus();
+});
+el('cartPorcentagem').addEventListener('input', e => {
+  if (!D?.perfis || !e.target.reportValidity() || e.target.value === '') return;
+  const valor = Number(e.target.value);
+  const outras = Object.entries(D.perfis).filter(([id]) => id !== PERFIL);
+  const restante = 10000 - Math.round(valor * 100);
+  const soma = outras.reduce((n,[,g]) => n+g.percentual,0);
+  let usado = 0;
+  outras.forEach(([id,g],i) => {
+    const cents = i === outras.length-1 ? restante-usado : Math.floor(restante*(soma ? g.percentual/soma : 1/outras.length));
+    D.perfis[id].percentual = cents/100; usado += cents;
+  });
+  D.perfis[PERFIL].percentual = valor;
+  ++PEDIDO;
+  salvarDepois();
+});
+
+let ABA_EDITANDO = null;
+function abrirAba(editar) {
+  if (!D?.abas) return;
+  ABA_EDITANDO = editar ? PERFIL : null;
+  el('cartTituloAba').textContent = editar ? 'Editar aba' : 'Cadastrar aba';
+  el('cartNomeAba').value = editar ? D.abas.find(a => a.id === PERFIL).nome : '';
+  el('cartAbaErro').textContent = '';
+  el('cartModalAba').hidden = false; el('cartNomeAba').focus();
+}
+function fecharAba() { el('cartModalAba').hidden = true; }
+async function confirmarAba() {
+  if (el('cartConfirmarAba').disabled) return;
+  el('cartConfirmarAba').disabled = true;
+  try {
+    if (!await salvar()) throw new Error('Salve as alterações da carteira antes de editar a aba.');
+    const r = await pedir('/carteira/abas', 'POST', {id: ABA_EDITANDO, nome: el('cartNomeAba').value});
+    PERFIL = r.id; await carregar(); fecharAba();
+  } catch(e) { el('cartAbaErro').textContent = e.message; }
+  finally { el('cartConfirmarAba').disabled = false; }
+}
+function renderListaAbas() {
+  el('cartListaAbas').innerHTML = (D?.abas || []).map(a => `<div class="linha-aba" data-aba="${esc(a.id)}"><span class="linha-aba-nome">${esc(a.nome)}</span><span class="linha-aba-pct">${pct(a.percentual)}</span><button type="button" data-editar-aba="${esc(a.id)}">✎ Editar</button><button type="button" data-excluir-aba="${esc(a.id)}">× Excluir</button></div>`).join('');
+}
+function abrirListaAbas() { renderListaAbas(); el('cartModalListaAbas').hidden = false; }
+function fecharListaAbas() { el('cartModalListaAbas').hidden = true; }
+el('cartGerenciarAbas').addEventListener('click', abrirListaAbas);
+el('cartFecharListaAbas').addEventListener('click', fecharListaAbas);
+el('cartNovaAbaLista').addEventListener('click', () => { fecharListaAbas(); abrirAba(false); });
+el('cartListaAbas').addEventListener('click', async e => {
+  const editar = e.target.closest('[data-editar-aba]');
+  if (editar) { PERFIL = editar.dataset.editarAba; fecharListaAbas(); abrirAba(true); return; }
+  const excluir = e.target.closest('[data-excluir-aba]');
+  if (!excluir) return;
+  const aba = (D.abas || []).find(a => a.id === excluir.dataset.excluirAba);
+  if (!aba || !confirm(`Excluir a aba ${aba.nome}? Ela precisa estar sem fundos.`)) return;
+  try { await pedir('/carteira/abas/excluir', 'POST', {id: aba.id}); await carregar(); renderListaAbas(); }
+  catch (err) { alert(err.message); }
+});
+el('cartFecharAba').addEventListener('click', fecharAba);
+el('cartConfirmarAba').addEventListener('click', confirmarAba);
+el('cartNomeAba').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarAba(); });
+el('cartModalAba').addEventListener('click', e => { if (e.target === el('cartModalAba')) fecharAba(); });
+el('cartModalListaAbas').addEventListener('click', e => { if (e.target === el('cartModalListaAbas')) fecharListaAbas(); });
 
 /* ------------------------------------------------------------- cadastro */
 
@@ -326,8 +413,9 @@ async function cadastrar() {
   el("cartCadastroErro").textContent = "";
   el("cartConfirmar").disabled = true;
   try {
+    if (!await salvar()) return;
     await pedir("/carteira/adicionar", "POST", {
-      cnpj: el("cartNovoCnpj").value, percentual: lerNumero(el("cartNovoPct").value),
+      perfil: PERFIL, cnpj: el("cartNovoCnpj").value, percentual: lerNumero(el("cartNovoPct").value),
     });
     fecharCadastro();
     await carregar();
@@ -364,7 +452,7 @@ async function abrirCarteira() {
 }
 
 function fecharCarteira() {
-  clearTimeout(SALVANDO);
+  salvar();
   el("cartModal").hidden = true;
 }
 
@@ -377,7 +465,9 @@ el("cartModal").addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   // Esc fecha a janela de cima primeiro: o cadastro abre sobre a carteira.
   if (e.key !== "Escape") return;
-  if (!el("cartModalCadastro").hidden) fecharCadastro();
+  if (!el("cartModalListaAbas").hidden) fecharListaAbas();
+  else if (!el("cartModalAba").hidden) fecharAba();
+  else if (!el("cartModalCadastro").hidden) fecharCadastro();
   else if (!el("cartModal").hidden) fecharCarteira();
 });
 })();

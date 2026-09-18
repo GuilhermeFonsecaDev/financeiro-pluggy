@@ -22,13 +22,34 @@ INTERVALO_MINIMO_DIAS = 24
 INTERVALO_MAXIMO_DIAS = 38
 RECENCIA_MAXIMA_DIAS = 45
 REGULARIDADE_MINIMA = 0.8
+# Hábitos são visibilidade de gastos que se repetem, não compromissos que a
+# aplicação possa prever com segurança. Ex.: combustível pode ocorrer quatro
+# vezes em um mês e nenhuma vez no seguinte; ainda é útil acompanhar.
+HABITO_MESES_MINIMOS = 4
+HABITO_MESES_RECENTES = 4
+HABITO_MESES_RECENTES_MINIMOS = 3
+# Reserva de CATEGORIA: vale a pena quando o gasto da categoria se espalha por
+# vários estabelecimentos. Um posto só não precisa de categoria -- o cadastro
+# do posto resolve; quatro postos diferentes, sim.
+CATEGORIA_LOJISTAS_MINIMOS = 3
+
+# Categorias que nunca são "hábito de consumo", por mais regulares que sejam.
+# Movimento entre contas, imposto, investimento e encargo não se orça assim.
+CATEGORIAS_FORA_DE_HABITO = {
+    "transferencia_propria", "transferencias", "fatura", "rendimentos",
+    "tarifas", "emprestimos", "investimentos", "impostos",
+    # "Outros" é o saco do que não foi classificado: um punhado de gastos sem
+    # relação entre si. Reservar a categoria inteira não quer dizer nada, e
+    # ela engoliria todo hábito individual cuja categoria ainda é desconhecida.
+    "outros", "sem_categoria",
+}
 
 REGRAS_SUGESTAO = [
     "Pelo menos 3 cobranças da mesma conta ou cartão.",
     "Intervalos de 24 a 38 dias em pelo menos 80% do histórico e nos 2 últimos ciclos.",
     "Última cobrança nos últimos 45 dias; lançamentos futuros não contam.",
     "Valor estável ou reajuste sequencial; planos de valores diferentes são separados.",
-    "Parcelas, duplicidades ambíguas e gastos frequentes não geram sugestões.",
+    "Parcelas, duplicidades ambíguas e gastos frequentes não viram previsões; hábitos aparecem em uma aba própria.",
     "Recorrências já cadastradas, recusadas ou cobertas por conta fixa não são sugeridas.",
 ]
 
@@ -200,6 +221,233 @@ def _analisar_series(itens: list) -> tuple[list[dict], str]:
     return resultado, "frequente" if any((b - a).days < 24 for a, b in zip(datas, datas[1:])) else "irregular"
 
 
+def _habitos_por_categoria(por_categoria, mes_atual, hoje, nomes):
+    """Reserva da categoria inteira, quando ela se espalha entre lojistas.
+
+    Mercado e restaurante têm dezenas de estabelecimentos diferentes: uma
+    descoberta por lojista produz uma lista inútil e nenhuma previsão que
+    preste. A categoria é a unidade certa nesses casos -- é o que permite
+    "qualquer posto que eu abastecer conta".
+
+    As regras de presença e recência são as mesmas do hábito por lojista; o
+    que se acrescenta é a exigência de vários lojistas, porque com um só o
+    cadastro do próprio lojista já resolve, e é mais preciso.
+    """
+    meses_recentes = {_recuar(mes_atual, passo) for passo in range(1, HABITO_MESES_RECENTES + 1)}
+    achados = []
+    for (conta_id, categoria_id), itens_brutos in por_categoria.items():
+        if categoria_id in CATEGORIAS_FORA_DE_HABITO:
+            continue
+        itens = sorted(itens_brutos, key=lambda i: (i["data"], i["transacao_id"]))
+        lojistas = {_chave(i["descricao"]) for i in itens}
+        if len(lojistas) < CATEGORIA_LOJISTAS_MINIMOS:
+            continue
+        por_mes = collections.defaultdict(list)
+        for item in itens:
+            por_mes[str(item["data"])[:7]].append(item)
+        if (len(por_mes) < HABITO_MESES_MINIMOS
+                or len(set(por_mes) & meses_recentes) < HABITO_MESES_RECENTES_MINIMOS):
+            continue
+        recente = itens[-1]
+        dias = (hoje - datetime.fromisoformat(str(recente["data"])[:10]).date()).days
+        if dias > RECENCIA_MAXIMA_DIAS:
+            continue
+        totais = [sum(abs(float(i["valor"] or 0)) for i in grupo)
+                  for _, grupo in sorted(por_mes.items())]
+        achados.append({
+            "chave": f"categoria:{conta_id}|{categoria_id}",
+            "descricao": nomes.get(categoria_id, {}).get("nome") or categoria_id,
+            "lojista": "",
+            "categoriaId": categoria_id,
+            "contaId": conta_id,
+            "noCartao": recente["conta_subtipo"] == "CREDIT_CARD",
+            "mesesAtivos": len(por_mes),
+            "quantidadeCompras": len(itens),
+            "lojistasDistintos": len(lojistas),
+            "mediaMensal": round(statistics.mean(totais), 2),
+            "ultimaCobranca": {"data": str(recente["data"])[:10],
+                               "valor": abs(float(recente["valor"] or 0))},
+            "diasDesdeUltima": dias,
+            "historicoMensal": [
+                {"mes": mes, "valor": round(sum(abs(float(i["valor"] or 0)) for i in grupo), 2),
+                 "compras": len(grupo)}
+                for mes, grupo in sorted(por_mes.items(), reverse=True)
+            ][:12],
+        })
+    # Como cada lançamento conta para a categoria e para as mães dela, a mãe
+    # CONTÉM a filha -- sugerir as duas somaria o mesmo gasto duas vezes.
+    # Fica a MAIS ESPECÍFICA: uma reserva de gasolina é útil, uma reserva de
+    # "Automotivo" com estacionamento e manutenção dentro já não é. A mãe só
+    # aparece quando nenhuma filha dela se qualificou sozinha.
+    presentes = {(a["contaId"], a["categoriaId"]) for a in achados}
+
+    def tem_filha_sugerida(achado):
+        familia = {achado["categoriaId"]}
+        while True:
+            filhas = {i for i, dados in nomes.items()
+                      if (dados or {}).get("paiId") in familia} - familia
+            if not filhas:
+                return False
+            if any((achado["contaId"], filha) in presentes for filha in filhas):
+                return True
+            familia |= filhas
+
+    achados = [a for a in achados if not tem_filha_sugerida(a)]
+    return sorted(achados, key=lambda a: (-a["mediaMensal"], a["descricao"].casefold()))
+
+
+def _habitos_mensais(grupos: dict[str, list], mes_atual: str, hoje) -> list[dict[str, Any]]:
+    """Consolida gastos repetidos que merecem acompanhamento, sem previsão.
+
+    A regra é deliberadamente diferente de recorrência: em vez de exigir uma
+    cobrança mensal única e estável, pede presença consistente em meses
+    recentes. Isto captura abastecimentos e outras despesas de rotina, sem
+    somá-las antecipadamente à fatura.
+    """
+    meses_recentes = {_recuar(mes_atual, passo) for passo in range(1, HABITO_MESES_RECENTES + 1)}
+    habitos: list[dict[str, Any]] = []
+    for chave_grupo, itens_brutos in grupos.items():
+        itens = sorted(itens_brutos, key=lambda i: (i["data"], i["transacao_id"]))
+        por_mes: dict[str, list] = collections.defaultdict(list)
+        for item in itens:
+            por_mes[str(item["data"])[:7]].append(item)
+        if len(por_mes) < HABITO_MESES_MINIMOS or len(set(por_mes) & meses_recentes) < HABITO_MESES_RECENTES_MINIMOS:
+            continue
+        recente = itens[-1]
+        dias_desde_ultima = (hoje - datetime.fromisoformat(str(recente["data"])[:10]).date()).days
+        if dias_desde_ultima > RECENCIA_MAXIMA_DIAS:
+            continue
+        # Uma sequência mensal com valor regular pertence às sugestões de
+        # previsão. Aqui entram os gastos que a regra conservadora recusou.
+        if _analisar_series(itens)[0]:
+            continue
+        totais = [sum(abs(float(i["valor"] or 0)) for i in grupo)
+                  for _, grupo in sorted(por_mes.items())]
+        if not any(len(grupo) > 1 for grupo in por_mes.values()) and len(totais) < 6:
+            continue
+        categoria = collections.Counter(
+            i["categoria_id"] for i in itens if i["categoria_id"]
+        ).most_common(1)
+        historico = [
+            {"mes": mes, "valor": round(sum(abs(float(i["valor"] or 0)) for i in grupo), 2),
+             "compras": len(grupo)}
+            for mes, grupo in sorted(por_mes.items(), reverse=True)
+        ]
+        habitos.append({
+            "chave": chave_grupo,
+            "descricao": recente["descricao"],
+            "lojista": chave_grupo.split("|", 1)[1],
+            "contaId": recente["conta_id"],
+            "noCartao": recente["conta_subtipo"] == "CREDIT_CARD",
+            "mesesAtivos": len(por_mes),
+            "quantidadeCompras": len(itens),
+            "mediaMensal": round(statistics.mean(totais), 2),
+            "ultimaCobranca": {"data": str(recente["data"])[:10], "valor": abs(float(recente["valor"] or 0))},
+            "diasDesdeUltima": dias_desde_ultima,
+            "historicoMensal": historico[:12],
+            "categoriaId": categoria[0][0] if categoria else None,
+        })
+    return sorted(habitos, key=lambda h: (-h["mediaMensal"], h["descricao"].casefold()))
+
+
+def _categorias_disponiveis(categorias: dict) -> list[dict[str, Any]]:
+    """Categorias para o seletor, com o caminho "Mãe › Filha".
+
+    Sem o caminho a lista fica cheia de nomes ambíguos ("Serviços" existe solto
+    e dentro de outra), e escolher a categoria errada muda silenciosamente o
+    que a reserva vai casar.
+    """
+    def caminho(chave):
+        nomes, visto = [], set()
+        while chave and chave not in visto:
+            visto.add(chave)
+            dados = categorias.get(chave) or {}
+            nomes.append(dados.get("nome") or chave)
+            chave = dados.get("paiId")
+        return " › ".join(reversed(nomes))
+
+    return sorted(
+        ({"id": chave, "nome": dados.get("nome") or chave, "caminho": caminho(chave),
+          "emoji": dados.get("emoji") or ""}
+         for chave, dados in categorias.items()
+         if chave not in CATEGORIAS_FORA_DE_HABITO),
+        key=lambda c: c["caminho"].casefold())
+
+
+def _descobertas(sugestoes: list[dict], habitos: list[dict],
+                 categorias_habito: list[dict] | None = None) -> list[dict]:
+    """Uma lista só, com o comportamento que cada achado pede.
+
+    A classificação continua sendo a heurística: o que tem cadência mensal e
+    valor estável entra como cobrança única; o que se repete sem cadência
+    entra como reserva do mês. A lista única existe porque, para quem olha,
+    as duas respondem a mesma pergunta -- "isto vai cair na minha fatura?" --
+    e a pessoa pode discordar da classificação na hora de ativar.
+    """
+    saida = []
+    for s in sugestoes:
+        saida.append({
+            "chave": s["chave"], "descricao": s["descricao"], "lojista": s["lojista"],
+            "contaId": s["contaId"], "noCartao": s.get("noCartao"),
+            "categoria": s.get("categoria"),
+            "comportamentoSugerido": "cobranca",
+            "valorSugerido": s["valorUltimo"],
+            "unidadeValor": "por mês",
+            "confianca": s.get("confianca") or "media",
+            "resumoEvidencia": s.get("resumoEvidencia") or "",
+            "avisos": s.get("avisos") or [],
+            "diaTipico": s.get("diaTipico"),
+            "historico": [
+                {"rotulo": str(h["data"])[8:10] + "/" + str(h["data"])[5:7],
+                 "detalhe": h.get("descricao") or "", "valor": h["valor"]}
+                for h in (s.get("historico") or [])
+            ],
+            "origem": "sugestao",
+        })
+    for h in habitos:
+        meses, compras = h.get("mesesAtivos") or 0, h.get("quantidadeCompras") or 0
+        saida.append({
+            "chave": h["chave"], "descricao": h["descricao"], "lojista": h["lojista"],
+            "contaId": h["contaId"], "noCartao": h.get("noCartao"),
+            "categoria": h.get("categoria"),
+            "comportamentoSugerido": "reserva",
+            "valorSugerido": h["mediaMensal"],
+            "unidadeValor": "média mensal",
+            # Sem cadência para medir: a confiança vem da presença nos meses.
+            "confianca": "alta" if meses >= 6 else "media",
+            "resumoEvidencia": f"{meses} meses · {compras} compras",
+            "avisos": [],
+            "diaTipico": 1,
+            "historico": [
+                {"rotulo": m["mes"], "detalhe": f"{m['compras']} compras", "valor": m["valor"]}
+                for m in (h.get("historicoMensal") or [])
+            ],
+            "origem": "habito",
+        })
+    for c in (categorias_habito or []):
+        saida.append({
+            "chave": c["chave"], "descricao": c["descricao"], "lojista": "",
+            "categoriaId": c["categoriaId"],
+            "contaId": c["contaId"], "noCartao": c.get("noCartao"),
+            "categoria": c.get("categoria"),
+            "comportamentoSugerido": "reserva",
+            "valorSugerido": c["mediaMensal"],
+            "unidadeValor": "média mensal",
+            "confianca": "alta" if c["mesesAtivos"] >= 6 else "media",
+            "resumoEvidencia": (f"{c['lojistasDistintos']} estabelecimentos · "
+                                f"{c['mesesAtivos']} meses · {c['quantidadeCompras']} compras"),
+            "avisos": [],
+            "diaTipico": 1,
+            "historico": [
+                {"rotulo": m["mes"], "detalhe": f"{m['compras']} compras", "valor": m["valor"]}
+                for m in (c.get("historicoMensal") or [])
+            ],
+            "origem": "categoria",
+        })
+    ordem = {"alta": 0, "media": 1, "baixa": 2}
+    return sorted(saida, key=lambda d: (ordem.get(d["confianca"], 9), -d["valorSugerido"]))
+
+
 def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
     """Sugestões elegíveis com evidência resumida, além das recorrências salvas."""
     mes_de, mes_ate = _janela(janela)
@@ -255,11 +503,12 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
         cadastradas = {l["chave"] for l in previsoes}
         categorias = {
             l["id"]: {"id": l["id"], "nome": l["nome"], "cor": l["cor"],
-                      "emoji": l["emoji"] or ""}
-            for l in conn.execute("SELECT id, nome, cor, emoji FROM extrato_categorias")
+                      "emoji": l["emoji"] or "", "paiId": l["pai_id"]}
+            for l in conn.execute("SELECT id, nome, cor, emoji, pai_id FROM extrato_categorias")
         }
 
     grupos: dict[str, list[sqlite3.Row]] = collections.defaultdict(list)
+    por_categoria: dict[tuple[str, str], list[sqlite3.Row]] = collections.defaultdict(list)
     for linha in linhas:
         descricao = cam.normalizar(linha["descricao"])
         if ((linha["parcela_total"] or 0) > 1 or re.search(
@@ -276,6 +525,13 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
         lojista = _chave(linha["descricao"])
         if lojista:
             grupos[linha["conta_id"] + "|" + lojista].append(linha)
+        # O lançamento conta para a própria categoria e para todas as mães: um
+        # cadastro de "Automotivo" casa também com "Postos de combustível", e o
+        # valor sugerido tem de refletir exatamente o que ele vai casar.
+        categoria = linha["categoria_id"]
+        while categoria:
+            por_categoria[(linha["conta_id"], categoria)].append(linha)
+            categoria = (categorias.get(categoria) or {}).get("paiId")
 
     sugestoes: list[dict[str, Any]] = []
     vinculos_quebrados: list[dict[str, Any]] = []
@@ -414,13 +670,65 @@ def sugestoes_payload(janela: int = JANELA_MESES) -> dict[str, Any]:
     chave_ordem = lambda s: (ordem_confianca[s["confianca"]], -s["valorMedio"])
     sugestoes.sort(key=chave_ordem)
     vinculos_quebrados.sort(key=chave_ordem)
+    cadastros_por_pagamento = {
+        (str(salva.get("contaId") or ""), _chave(salva.get("lojista") or salva.get("descricao", "")))
+        for salva in (json.loads(p["dados"]) for p in previsoes)
+    }
+    categorias_habito = []
+    for achado in _habitos_por_categoria(por_categoria, mes_ate, hoje, categorias):
+        if achado["chave"] in ignorados:
+            descartados["ignorado"] += 1
+            continue
+        if any((p.get("contaId") == achado["contaId"]
+                and p.get("categoriaId") == achado["categoriaId"])
+               for p in (json.loads(l["dados"]) for l in previsoes)):
+            descartados["jaPrevisto"] += 1
+            continue
+        achado["categoria"] = categorias.get(achado["categoriaId"])
+        categorias_habito.append(achado)
+
+    # O lojista individual não aparece duas vezes: se a categoria dele já foi
+    # sugerida como reserva, ele está coberto por ela.
+    cobertos_por_categoria = {(a["contaId"], a["categoriaId"]) for a in categorias_habito}
+
+    def categoria_cobre(conta_id, categoria_id):
+        """A categoria do lojista, ou qualquer mãe dela, já virou reserva?"""
+        while categoria_id:
+            if (conta_id, categoria_id) in cobertos_por_categoria:
+                return True
+            categoria_id = (categorias.get(categoria_id) or {}).get("paiId")
+        return False
+
+    habitos = []
+    for habito in _habitos_mensais(grupos, mes_ate, hoje):
+        if categoria_cobre(habito["contaId"], habito.get("categoriaId")):
+            descartados["cobertoPelaCategoria"] += 1
+            continue
+        if (habito["contaId"], habito["lojista"]) in cadastros_por_pagamento:
+            continue
+        # Dispensar tem de valer aqui também. Faltava, e o hábito reaparecia
+        # na lista logo depois de ser dispensado.
+        if habito["chave"] in ignorados or habito["lojista"] in ignorados:
+            descartados["ignorado"] += 1
+            continue
+        habito["categoria"] = categorias.get(habito.pop("categoriaId"))
+        habitos.append(habito)
     return {
         "janela": {"de": mes_de, "ate": mes_ate, "meses": janela},
         "sugestoes": sugestoes,
+        "habitos": habitos,
+        "categoriasHabito": categorias_habito,
+        "descobertas": _descobertas(sugestoes, habitos, categorias_habito),
         "possiveis": [],
         "regrasSugestao": REGRAS_SUGESTAO,
+        "regrasHabitos": [
+            "Apareceu em pelo menos 4 meses e em 3 dos últimos 4 meses completos.",
+            "A última cobrança foi há no máximo 45 dias.",
+            "O valor sugerido é a média dos meses com gasto.",
+        ],
         "previsoes": _previsoes_payload(previsoes),
         "contasPagamento": _contas_pagamento_payload(),
+        "categoriasDisponiveis": _categorias_disponiveis(categorias),
         "vinculosQuebrados": vinculos_quebrados,
         "totalMensal": round(sum(s["valorUltimo"] for s in sugestoes), 2),
         "descartados": dict(descartados),
@@ -502,6 +810,31 @@ def ignorados_payload() -> dict[str, Any]:
 def salvar_previsao(chave: str, ativa: bool = True) -> dict[str, Any]:
     from recorrencias_gestao import salvar
     return salvar(chave, ativa)
+
+
+def projetar_habito(chave: str) -> dict[str, Any]:
+    from recorrencias_gestao import projetar_habito as projetar
+    return projetar(chave)
+
+
+def ativar_previsao(chave: str, comportamento: str = "") -> dict[str, Any]:
+    from recorrencias_gestao import ativar
+    return ativar(chave, comportamento)
+
+
+def testar_previsao(dados: dict) -> dict[str, Any]:
+    from recorrencias_gestao import testar
+    return testar(dados)
+
+
+def converter_previsao(chave: str, comportamento: str) -> dict[str, Any]:
+    from recorrencias_gestao import converter
+    return converter(chave, comportamento)
+
+
+def previa_conversao(chave: str, comportamento: str) -> dict[str, Any]:
+    from recorrencias_gestao import previa_conversao as previa
+    return previa(chave, comportamento)
 
 
 def criar_previsao(dados: dict) -> dict[str, Any]:

@@ -149,17 +149,28 @@ button.perigo:hover { background: rgba(240, 106, 106, .12); }
 .segmentado button.ativo { background: var(--azul); color: #fff; font-weight: 600; }
 
 /* Botão de ícone: alvo de 28px, sem moldura até o hover. */
+/* Botão de ícone: o × das modais, mas também "Ações", "Editar" e "Detalhes".
+   Era 28px transparente, sem contorno e com o glifo pequeno -- ficava solto
+   no canto, sem parecer clicável até o mouse passar por cima. Ganhou moldura
+   discreta em repouso e área de toque de 30px. O hover segue neutro de
+   propósito: a mesma classe serve botões que não fecham nada. */
 .icone {
-  width: 28px;
-  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
   justify-content: center;
-  border-color: transparent;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
   color: var(--text-3);
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1;
 }
-.icone:hover { background: var(--surface-3); color: var(--text); }
+.icone:hover { border-color: var(--line-forte); background: var(--surface-3); color: var(--text); }
+.icone:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
 
 input, select, textarea {
   min-height: 36px;
@@ -186,7 +197,10 @@ select {
   background-position: right 10px center;
 }
 
-.campo { display: grid; gap: 5px; }
+/* min-width:0 porque um campo é item de grid ou de flex, e o mínimo
+   automático desses itens é o min-content -- um input de data ou um select de
+   texto longo passava a não encolher, estourando o contêiner de lado. */
+.campo { display: grid; gap: 5px; min-width: 0; }
 .campo > span { color: var(--text-3); font-size: 12px; font-weight: 600; }
 
 .check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--text-2); cursor: pointer; }
@@ -281,6 +295,57 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
 .pop-rodape { display: flex; justify-content: space-between; gap: 8px; padding: 7px 5px 3px; border-top: 1px solid var(--line); margin-top: 4px; }
 .pop-vazio { padding: 14px 10px; color: var(--text-3); font-size: 13px; text-align: center; }
 .pop-tit { padding: 9px 12px 7px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 650; }
+
+/* ------------------------------------------------------------- rolagem */
+/* A barra nativa vem clara e larga, e num tema escuro ela é a coisa mais
+   luminosa da tela -- dentro de uma modal, chega a competir com o conteúdo.
+   São dois mecanismos, e eles NÃO convivem: quando `scrollbar-width` está
+   declarada, o Chrome passa a desenhar a barra pelo caminho padrão e IGNORA
+   todas as regras `::-webkit-scrollbar-*` -- o raio, a folga e a remoção das
+   setinhas iam todos para o lixo. Por isso o padrão fica isolado num
+   @supports que só o Firefox (onde não existe o pseudo-elemento) enxerga. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-forte) transparent;
+  }
+}
+*::-webkit-scrollbar { width: 14px; height: 14px; }
+
+/* Folga no eixo da rolagem. Margem no TRILHO é o único jeito de afastar a
+   barra das pontas: o polegar não aceita margem, e sem isto ele encosta na
+   quina arredondada da modal. */
+*::-webkit-scrollbar-track { background: transparent; margin: 8px 0; }
+*::-webkit-scrollbar-track:horizontal { margin: 0 8px; }
+
+/* Folga lateral. Aqui o caminho é o contrário: borda transparente no polegar
+   com `background-clip: content-box`, porque margem no eixo perpendicular o
+   Chrome ignora. Sobram 6px de polegar dentro dos 14px da barra. */
+*::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  /* --line-forte, não --surface-3: contra o fundo da modal (--surface) o
+     surface-3 some. Precisa ser visível para arrastar, sem virar o elemento
+     mais claro da tela -- que era o problema da barra nativa. */
+  background: var(--line-forte);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+/* Sem os botõezinhos de seta -- eles não têm equivalente no resto do app, e
+   vinham brancos, encostados na quina arredondada da modal. `display:none`
+   sozinho não os remove neste Chrome: é preciso zerar o tamanho, e nomear os
+   quatro estados, senão sobra o do topo. */
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment,
+*::-webkit-scrollbar-button:start:increment,
+*::-webkit-scrollbar-button:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+*::-webkit-scrollbar-corner { background: transparent; }
 
 /* ----------------------------------------------------------------- modal */
 

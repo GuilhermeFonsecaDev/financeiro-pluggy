@@ -46,6 +46,7 @@ import fixas
 import fundos
 import indices
 import investimentos
+import previsao_fatura
 import recorrentes
 import visao_geral
 from pluggy_conexoes import criar_connect_token
@@ -277,6 +278,14 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Parâmetro year inválido.")
                 grupo = (query.get("group", ["fatura"])[0] or "fatura").strip()
                 self.send_json(cartoes_payload(ano, grupo))
+            elif path == "/api/pluggy-cartoes/previsao":
+                # Recorte proprio: /api/pluggy-cartoes ja e pesado e e consumido
+                # por quem nao precisa da decomposicao. O calculo e o mesmo.
+                try:
+                    meses = int(query.get("meses", ["2"])[0])
+                except (TypeError, ValueError):
+                    raise ValueError("Parâmetro meses inválido.")
+                self.send_json(previsao_fatura.previsao_payload(meses))
             elif path == "/api/backups":
                 self.send_json({"backups": list_database_backups()})
             else:
@@ -375,6 +384,24 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/fixas/recorrentes/excluir":
                 self.send_json(recorrentes.excluir_previsao(str(payload.get("chave") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/testar":
+                self.send_json(recorrentes.testar_previsao(payload))
+                return
+            if parsed.path == "/api/fixas/recorrentes/ativar":
+                self.send_json(recorrentes.ativar_previsao(
+                    str(payload.get("chave") or ""), str(payload.get("comportamento") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/comportamento":
+                self.send_json(recorrentes.converter_previsao(
+                    str(payload.get("chave") or ""), str(payload.get("comportamento") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/comportamento/previa":
+                self.send_json(recorrentes.previa_conversao(
+                    str(payload.get("chave") or ""), str(payload.get("comportamento") or "")))
+                return
+            if parsed.path == "/api/fixas/recorrentes/projetar-habito":
+                self.send_json(recorrentes.projetar_habito(str(payload.get("chave") or "")))
                 return
             if parsed.path == "/api/fixas/recorrentes/prever":
                 self.send_json(recorrentes.salvar_previsao(

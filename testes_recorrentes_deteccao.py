@@ -108,6 +108,23 @@ class PayloadDeteccaoTests(unittest.TestCase):
         self.assertEqual(dados["sugestoes"][0]["evidencia"]["cobrancas"], 3)
         self.assertEqual(dados["sugestoes"][0]["confianca"], "alta")
 
+    def test_posto_frequente_vira_habito_sem_previsao(self):
+        # Há compras em vários meses, mas não há uma cobrança mensal única:
+        # este é precisamente o caso de abastecimento que deve ganhar visão,
+        # sem somar uma previsão incerta ao cartão.
+        for indice, (data, valor) in enumerate((
+            ("2026-04-04", 237.44), ("2026-04-25", 100),
+            ("2026-05-16", 229.44), ("2026-06-14", 204.76),
+            ("2026-07-29", 230.25), ("2026-08-22", 246.30),
+        )):
+            self.inserir(f"posto-{indice}", data, "POSTO CENTRAL AVENIDA BRA", valor)
+        dados = rec.sugestoes_payload()
+        self.assertFalse(any(s["lojista"] == "posto central avenida bra" for s in dados["sugestoes"]))
+        posto = next(h for h in dados["habitos"] if h["lojista"] == "posto central avenida bra")
+        self.assertEqual((posto["mesesAtivos"], posto["quantidadeCompras"]), (5, 6))
+        self.assertEqual(posto["ultimaCobranca"]["data"], "2026-08-22")
+        self.assertEqual(posto["historicoMensal"][0], {"mes": "2026-08", "valor": 246.30, "compras": 1})
+
     def test_recencia_futuros_e_exclusao_manual(self):
         self.mensal("Cancelada", "cancelada", meses=(5, 6, 7))
         self.mensal("Futura", "futura", meses=(7, 8, 9))

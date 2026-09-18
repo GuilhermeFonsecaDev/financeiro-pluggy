@@ -138,7 +138,15 @@ select.forma.herdada { color: var(--text-2); }
 .previa .l { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; color: var(--text-2); }
 .previa .l span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* minmax(0,…) e não 1fr: o mínimo de `1fr` é o min-content, e input[type=date]
+   tem um min-content largo (o texto do formato mais o ícone). A coluna não
+   conseguia encolher, o grid passava 34px do próprio box e a modal ganhava
+   uma barra de rolagem horizontal. */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Fora caixa de marcar: ela não é um campo de texto, e 100% de largura a
+   descolava do próprio rótulo. */
+.form-grid input:not([type="checkbox"]):not([type="radio"]),
+.form-grid select { width: 100%; }
 .form-grid .full { grid-column: 1 / -1; }
 
 /* Cards de fatura portados do dashboard manual. Os valores exibidos vêm
@@ -185,7 +193,7 @@ select.forma.herdada { color: var(--text-2); }
 .vinculos-total span { display: block; margin-bottom: 3px; color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .vinculos-total strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .vinculos-tabela { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
-.vinculos-cabec, .vinculos-linha { display: grid; grid-template-columns: minmax(150px,1fr) 110px 80px 110px 95px; min-width:640px; gap: 16px; align-items: center; }
+.vinculos-cabec, .vinculos-linha { display: grid; grid-template-columns: minmax(150px,1fr) 110px 135px 80px 110px 95px; min-width:800px; gap: 16px; align-items: center; }
 .vinculos-cabec { padding: 10px 14px; background: var(--surface-2); color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .vinculos-linha { padding: 13px 14px; border-top: 1px solid var(--line); font-size: 12.5px; }
 .vinculos-linha:first-child { border-top: 0; }
@@ -256,6 +264,9 @@ select.forma.herdada { color: var(--text-2); }
 /* -------------------------------------------------------- recorrências */
 .badge-sug { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--azul); color: #fff; font-size: 11px; font-weight: 700; }
 .rec-modal { width: min(880px, 100%); }
+/* O formulário de conta fixa tem dois campos por linha, datas e seletores:
+   nos 620px padrão tudo ficava encostado. */
+.modal-larga { width: min(720px, 100%); }
 .rec-intro { margin: 0 0 18px; max-width: 66ch; color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
 .rec-barra { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .rec-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--surface-2); }
@@ -263,6 +274,43 @@ select.forma.herdada { color: var(--text-2); }
 .rec-tabs button[aria-selected="true"] { color: var(--text-1); background: var(--surface-3); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .rec-tabs span { margin-left: 5px; font-variant-numeric: tabular-nums; opacity: .7; }
 .sug-lista { display: grid; gap: 9px; }
+
+/* Previsão da fatura. O assunto é o gasto que se repete e NÃO é parcela --
+   parcela é fato conhecido, e vive na tela de Cartões. Por isso o número
+   grande é o previsto, as parcelas só aparecem na linha de contexto do pé, e
+   a reserva ganha uma barra de consumo em vez de dois valores em texto. */
+.prev-lista { display: grid; gap: 12px; }
+.prev-cartao { padding: 14px 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.prev-quem { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
+.prev-quem small { color: var(--text-3); font-size: 11px; font-weight: 500; letter-spacing: .04em; }
+.prev-ponto { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.prev-meses { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+
+.prev-mes { display: flex; flex-direction: column; min-width: 0; padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface); }
+.prev-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.prev-cab h4 { margin: 0; color: var(--text-2); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.prev-fecha { color: var(--text-3); font-size: 10.5px; white-space: nowrap; }
+.prev-total { display: flex; align-items: baseline; gap: 6px; margin: 5px 0 10px; font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.prev-total small { color: var(--text-3); font-size: 11px; font-weight: 500; }
+
+.prev-itens { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+.prev-linha { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 4px 8px; align-items: baseline; font-size: 12.5px; }
+.prev-tipo { width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; flex: none; }
+.prev-recorrencia { background: var(--verde); }
+.prev-reserva { background: var(--azul); }
+.prev-nome { color: var(--text-2); overflow-wrap: anywhere; }
+.prev-linha b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Barra e legenda ocupam as duas colunas de texto, alinhadas com o nome. */
+.prev-consumo { grid-column: 2 / -1; height: 3px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.prev-consumo i { display: block; height: 100%; background: var(--azul); }
+.prev-linha em { grid-column: 2 / -1; font-style: normal; color: var(--text-3); font-size: 11px; }
+
+.prev-vazio { margin: 0; color: var(--text-3); font-size: 12px; }
+.prev-lacuna { margin: 11px 0 0; color: var(--laranja); font-size: 11.5px; line-height: 1.5; }
+.prev-link { min-height: 0; padding: 0; border: 0; background: none; color: var(--laranja); font-size: 11.5px; text-decoration: underline; cursor: pointer; }
+.prev-rodape { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 10.5px; }
+.prev-acuracia { margin: 0 0 12px; color: var(--text-3); font-size: 12px; }
+.prev-acuracia b { color: var(--text-2); font-weight: 600; }
 .rec-vazio { padding: 30px 20px; border: 1px dashed var(--line-forte); border-radius: 12px; color: var(--text-3); font-size: 13px; text-align: center; line-height: 1.7; }
 .rec-vazio strong { display: block; color: var(--text-2); font-weight: 600; }
 .rec-regras { margin: 0 0 18px; color: var(--text-3); font-size: 12px; }
@@ -275,6 +323,8 @@ select.forma.herdada { color: var(--text-2); }
 .rec-cobranca { display: grid; grid-template-columns: 92px minmax(0, 1fr) 86px; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); }
 .rec-cobranca span { overflow-wrap: anywhere; }
 .rec-cobranca strong { color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.rec-marca { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: 10.5px; font-weight: 600; }
+.rec-marca-cat { background: rgba(74,149,234,.16); color: var(--azul); }
 .rec-status { color: var(--verde); }
 .rec-alerta { color: var(--laranja); }
 .rec-excluir { color: var(--vermelho); }
@@ -284,6 +334,10 @@ select.forma.herdada { color: var(--text-2); }
 .rec-form-grid .full { grid-column: 1 / -1; }
 .rec-form-grid input, .rec-form-grid select { width: 100%; }
 .rec-form-grid small { color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
+.rec-previa { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 9px; background: var(--surface-3); color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.rec-previa:empty { display: none; }
+.rec-previa b { font-variant-numeric: tabular-nums; }
+.rec-previa em { font-style: normal; color: var(--text-3); }
 .rec-form-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 22px; }
 #modalSug [hidden] { display: none !important; }
 #sAviso { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -299,7 +353,7 @@ select.forma.herdada { color: var(--text-2); }
 .termos-lista { display:grid; gap:7px; }
 .termo-add { display:block; width:100%; height:34px; min-height:34px; margin-top:7px; padding:0; border:1px dashed var(--line-forte); border-radius:8px; background:transparent; color:var(--azul); font-size:12.5px; cursor:pointer; }
 .termo-add:hover { border-style:solid; border-color:var(--azul); background:var(--surface-2); }
-.sug-item { display: grid; grid-template-columns: minmax(0,1fr) 112px auto; gap: 12px 16px; align-items: center; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.sug-item { display: grid; grid-template-columns: minmax(0,1fr) 128px auto; gap: 12px 16px; align-items: center; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .sug-nome { font-size: 13.5px; font-weight: 650; overflow-wrap: anywhere; }
 .sug-meta { margin-top: 5px; color: var(--text-3); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
 .sug-meta b { color: var(--text-2); font-weight: 600; }
@@ -330,8 +384,8 @@ select.forma.herdada { color: var(--text-2); }
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
-      <button id="btnSugerir" title="Gerenciar recorrências e previsões mensais">
-        Recorrências<span id="badgeSugestoes" class="badge-sug" hidden></span>
+      <button id="btnSugerir" title="Prever a fatura do mês e gerenciar hábitos e recorrências">
+        Hábitos e recorrências<span id="badgeSugestoes" class="badge-sug" hidden></span>
       </button>
       <button class="primario" id="btnNova">+ Nova conta</button>
     </div>
@@ -363,11 +417,11 @@ select.forma.herdada { color: var(--text-2); }
       </div>
       <section class="painel vinculos-painel" aria-labelledby="vinculosTitulo">
         <div class="vinculos-topo">
-          <div><h2 id="vinculosTitulo">Itens vinculados às faturas</h2></div>
+          <div><h2 id="vinculosTitulo">Itens vinculados às faturas</h2><p>Valor a ser pago: fatura atual menos os reembolsos vinculados às cobranças já incluídas.</p></div>
           <div class="vinculos-total"><span>Total bruto dos cartões</span><strong id="vinculosTotal">R$ 0,00</strong></div>
         </div>
         <div class="vinculos-tabela">
-          <div class="vinculos-cabec"><span>Cartão</span><span>Fatura Bruto</span><span>Vínculos</span><span>Valor vinculado</span><span></span></div>
+          <div class="vinculos-cabec"><span>Cartão</span><span>Fatura Bruto</span><span>Valor a ser pago</span><span>Vínculos</span><span>Valor vinculado</span><span></span></div>
           <div id="vinculosLista"></div>
         </div>
       </section>
@@ -439,7 +493,7 @@ select.forma.herdada { color: var(--text-2); }
 </div>
 
 <div class="modal-fundo" id="modal" hidden>
-  <div class="modal">
+  <div class="modal modal-larga">
     <div class="modal-tit">
       <h2 id="modalTitulo">Nova conta fixa</h2>
       <button class="icone" id="btnFechar" aria-label="Fechar">×</button>
@@ -535,27 +589,31 @@ select.forma.herdada { color: var(--text-2); }
 
 <!-- Gestão de previsões recorrentes; a cobrança real substitui a previsão. -->
 <div class="modal-fundo" id="modalSug" hidden>
-  <div class="modal rec-modal" role="dialog" aria-modal="true" aria-labelledby="sTitulo" aria-describedby="sResumo" tabindex="-1">
+  <div class="modal rec-modal" role="dialog" aria-modal="true" aria-labelledby="sTitulo" tabindex="-1">
     <div class="modal-tit">
-      <h2 id="sTitulo">Recorrências</h2>
-      <button class="icone" id="sFechar" aria-label="Fechar recorrências">×</button>
+      <h2 id="sTitulo">Hábitos e recorrências</h2>
+      <button class="icone" id="sFechar" aria-label="Fechar hábitos e recorrências">×</button>
     </div>
-    <p class="rec-intro" id="sResumo">Antecipe cobranças mensais no cartão ou na conta. Quando a transação for identificada, ela substitui a previsão daquele mês. Recorrências não criam contas fixas.</p>
     <div id="sGerenciar">
       <div class="rec-barra">
-        <div class="rec-tabs" role="tablist" aria-label="Recorrências">
-          <button id="sTabAtivas" role="tab" aria-selected="true" aria-controls="sPainelAtivas" data-rec-tab="ativas">Ativas<span id="sTotalAtivas">0</span></button>
-          <button id="sTabSugestoes" role="tab" aria-selected="false" aria-controls="sPainelSugestoes" tabindex="-1" data-rec-tab="sugestoes">Sugestões<span id="sTotalSugestoes">0</span></button>
+        <div class="rec-tabs" role="tablist" aria-label="Hábitos e recorrências">
+          <button id="sTabPrevisao" role="tab" aria-selected="true" aria-controls="sPainelPrevisao" data-rec-tab="previsao">Previsão</button>
+          <button id="sTabAtivas" role="tab" aria-selected="false" aria-controls="sPainelAtivas" tabindex="-1" data-rec-tab="ativas">Ativas<span id="sTotalAtivas">0</span></button>
+          <button id="sTabDescobertas" role="tab" aria-selected="false" aria-controls="sPainelDescobertas" tabindex="-1" data-rec-tab="descobertas">Descobertas<span id="sTotalDescobertas">0</span></button>
           <button id="sTabPausadas" role="tab" aria-selected="false" aria-controls="sPainelPausadas" tabindex="-1" data-rec-tab="pausadas">Pausadas<span id="sTotalPausadas">0</span></button>
         </div>
-        <button id="sNova">+ Nova recorrência</button>
+        <button id="sNova">+ Nova previsão</button>
       </div>
       <p id="sCarregando" class="muted" role="status" hidden>Carregando recorrências…</p>
-      <section id="sPainelAtivas" role="tabpanel" aria-labelledby="sTabAtivas" tabindex="0">
+      <section id="sPainelPrevisao" role="tabpanel" aria-labelledby="sTabPrevisao" tabindex="0">
+        <p id="sAcuracia" class="prev-acuracia" hidden></p>
+        <div id="sPrevisao" class="prev-lista"></div>
+      </section>
+      <section id="sPainelAtivas" role="tabpanel" aria-labelledby="sTabAtivas" tabindex="0" hidden>
         <div id="sPrevisoes" class="sug-lista"></div>
       </section>
-      <section id="sPainelSugestoes" role="tabpanel" aria-labelledby="sTabSugestoes" tabindex="0" hidden>
-        <details class="rec-regras" id="sRegras"><summary>Como identificamos uma recorrência</summary><ul id="sRegrasLista"></ul></details>
+      <section id="sPainelDescobertas" role="tabpanel" aria-labelledby="sTabDescobertas" tabindex="0" hidden>
+        <details class="rec-regras" id="sRegras"><summary>Como um gasto é classificado</summary><ul id="sRegrasLista"></ul><ul id="sRegrasHabitosLista"></ul></details>
         <div id="sLista" class="sug-lista"></div>
       </section>
       <section id="sPainelPausadas" role="tabpanel" aria-labelledby="sTabPausadas" tabindex="0" hidden>
@@ -565,9 +623,20 @@ select.forma.herdada { color: var(--text-2); }
     <form id="sFormulario" hidden>
       <div class="rec-form-grid">
         <label class="campo full"><span>Nome da recorrência</span><input id="sNome" required maxlength="160" placeholder="Ex.: Netflix" autocomplete="off" /></label>
-        <label class="campo full"><span>Identificação no extrato</span><input id="sLojista" required maxlength="250" aria-describedby="sLojistaAjuda" autocomplete="off" /><small id="sLojistaAjuda">Use a descrição completa da cobrança no extrato. A comparação usa a identificação normalizada, sem procurar palavras isoladas dentro de outras descrições.</small></label>
+        <label class="campo full"><span>Identificação no extrato</span><input id="sLojista" maxlength="250" aria-describedby="sLojistaAjuda" autocomplete="off" /><small id="sLojistaAjuda">A descrição completa da cobrança, comparada por igualdade. Nunca pega nada errado, mas vale para um estabelecimento só.</small></label>
+        <div class="campo full"><span>Ou qualquer descrição que CONTENHA</span>
+          <div class="termos-lista" id="sTermos"></div>
+          <button type="button" class="termo-add" id="sAddTermo">+ Adicionar termo</button>
+          <small>Uma palavra por linha, a partir de 3 letras. "posto" pega qualquer posto.</small>
+        </div>
+        <label class="campo full"><span>Ou tudo de uma categoria</span><select id="sCategoria"></select><small>Pega também as subcategorias, e vale para estabelecimento que você ainda não conhece.</small></label>
+        <p class="rec-previa" id="sPrevia" role="status"></p>
+        <label class="campo full"><span>Comportamento</span><select id="sComportamento" aria-describedby="sComportamentoAjuda">
+          <option value="cobranca">Cobrança única — a transação real substitui a previsão</option>
+          <option value="reserva">Reserva do mês — as compras vão consumindo o previsto</option>
+        </select><small id="sComportamentoAjuda">Assinatura, mensalidade e conta de consumo são cobrança única. Mercado, posto e farmácia são reserva: o previsto diminui conforme você gasta.</small></label>
         <label class="campo full"><span>Forma de pagamento</span><select id="sConta" required aria-describedby="sContaAjuda"></select><small id="sContaAjuda">A previsão entra neste cartão ou conta, e a cobrança é procurada somente nele.</small></label>
-        <label class="campo"><span>Valor da previsão</span><select id="sModoValor"><option value="ultimo">Usar o último valor cobrado</option><option value="fixo">Usar valor definido</option></select></label>
+        <label class="campo"><span>Valor da previsão</span><select id="sModoValor"><option value="ultimo">Usar o último valor cobrado</option><option value="fixo">Usar valor definido</option><option value="media">Usar a média dos últimos 3 ciclos</option></select></label>
         <label class="campo"><span id="sValorRotulo">Valor inicial (R$)</span><input id="sValor" inputmode="decimal" required placeholder="0,00" aria-describedby="sValorAjuda" /><small id="sValorAjuda">Usado enquanto não houver cobrança identificada.</small></label>
         <label class="campo"><span>Dia habitual da cobrança</span><input id="sDia" type="number" min="1" max="31" step="1" required /></label>
       </div>
@@ -864,8 +933,14 @@ function calcularCards() {
     const aLancar = detalhes[grupoId]
       .filter(d => !d.lancado).reduce((s, d) => s + d.valor, 0);
     const descontado = Math.max(0, original - jaContabilizado);
+    // A parte pessoal das contas fixas continua a ser paga no cartão.
+    // Só reembolsos de cobranças incluídas reduzem o desembolso próprio.
+    const reembolsosNaFatura = detalhes[grupoId]
+      .filter(d => d.lancado && d.tipo === "Reembolso")
+      .reduce((s, d) => s + Math.round(d.valor * 100), 0);
+    const valorAPagar = Math.max(0, Math.round(original * 100) - reembolsosNaFatura) / 100;
     return { id: grupoId, nome: nomeInstrumento(cartao), cor: corInstrumento(cartao), original, jaContabilizado, aLancar,
-             previsto: original + aLancar, descontado,
+             previsto: original + aLancar, descontado, valorAPagar,
              detalhes: detalhes[grupoId] };
   });
   const totalFaturas = cartoes.reduce((s, c) => s + c.original, 0);
@@ -920,6 +995,7 @@ function renderCardsFaturas() {
     const vinculado = c.detalhes.reduce((s, d) => s + d.valor, 0);
     return `<div class="vinculos-linha">
       <strong>${esc(c.nome)}</strong><strong>${fmtBRL(c.previsto)}</strong>
+      <strong title="Sua parte da fatura atual, após os reembolsos cadastrados">${fmtBRL(c.valorAPagar)}</strong>
       <span>${c.detalhes.length} ${c.detalhes.length === 1 ? "item" : "itens"}</span>
       <span class="muted">${fmtBRL(vinculado)}</span>
       <button class="sutil" data-lista-cartao="${esc(c.id)}">Ver lista</button>
@@ -1238,10 +1314,163 @@ function renderHistorico(p) {
 
 /* ------------------------------------------------------- recorrências */
 
-let SUGESTOES = [], RECORRENCIAS = [], REC_CONTAS = [];
+let SUGESTOES = [], DESCOBERTAS = [], RECORRENCIAS = [], REC_CONTAS = [], REC_CATEGORIAS = [];
 let recAba = "ativas", recEditando = null, recExcluindo = null;
 let recSalvando = false, recPedido = 0, recFocoAnterior = null, recFocoEditor = null;
-const REC_ABAS = { ativas: "Ativas", sugestoes: "Sugestoes", pausadas: "Pausadas" };
+const REC_ABAS = { previsao: "Previsao", ativas: "Ativas", descobertas: "Descobertas", pausadas: "Pausadas" };
+
+const PREV_MESES = ["janeiro","fevereiro","março","abril","maio","junho",
+  "julho","agosto","setembro","outubro","novembro","dezembro"];
+
+function nomeCompetencia(competencia, comAno = false) {
+  const [ano, mes] = String(competencia).split("-");
+  const nome = PREV_MESES[Number(mes) - 1] || "";
+  return comAno ? `${nome} de ${ano}` : nome;
+}
+
+function quandoFecha(mes) {
+  if (mes.diasParaFechar === null || mes.diasParaFechar === undefined) return "";
+  if (mes.diasParaFechar > 1) return `fecha em ${mes.diasParaFechar} dias`;
+  if (mes.diasParaFechar === 1) return "fecha amanhã";
+  if (mes.diasParaFechar === 0) return "fecha hoje";
+  return "ciclo encerrado";
+}
+
+function mesPrevisto(mes, descobertas) {
+  // Uma linha por gasto previsto. A reserva ganha uma barrinha de consumo:
+  // "R$ 0,00 de R$ 227,10" em texto era a informação certa, ilegível.
+  const itens = mes.previstos.map(i => {
+    const base = Number(i.valorBase) || 0, gasto = Number(i.valorLancado) || 0;
+    const consumo = i.tipo === "reserva" && base
+      ? `<div class="prev-consumo"><i style="width:${Math.min(100, gasto / base * 100).toFixed(1)}%"></i></div>
+         <em>reserva de ${fmtBRL(base)} · ${gasto ? `${fmtBRL(gasto)} já gastos` : "nada gasto ainda"}</em>`
+      : "";
+    return `<li class="prev-linha">
+      <span class="prev-tipo prev-${i.tipo}" title="${i.tipo === "reserva" ? "Reserva do mês" : "Cobrança única"}"></span>
+      <span class="prev-nome">${esc(i.descricao)}</span>
+      <b>${fmtBRL(i.valor)}</b>${consumo}</li>`;
+  }).join("");
+
+  return `<div class="prev-mes">
+    <div class="prev-cab"><h4>${esc(nomeCompetencia(mes.competencia))}</h4>
+      ${quandoFecha(mes) ? `<span class="prev-fecha">${esc(quandoFecha(mes))}</span>` : ""}</div>
+    <div class="prev-total">${fmtBRL(mes.previsto)}<small>previsto</small></div>
+    ${itens ? `<ul class="prev-itens">${itens}</ul>`
+            : '<p class="prev-vazio">Nada previsto para este mês.</p>'}
+    ${mes.gastoNovo ? `<p class="prev-lacuna">+ ${fmtBRL(mes.gastoNovo)} de compra nova, pelo histórico${
+      descobertas ? ` · <button class="prev-link" data-ir-descobertas="1">${descobertas} sem prever</button>` : ""}</p>` : ""}
+    <p class="prev-rodape">fatura ${fmtBRL(mes.total)} · ${fmtBRL(mes.lancado)} lançado${
+      mes.parcelas ? ` · ${fmtBRL(mes.parcelas)} parcelas` : ""}</p></div>`;
+}
+
+function descobertasDoCartao(c) {
+  const contas = new Set((c.contas || [c.id]).map(String));
+  return DESCOBERTAS.filter(d => contas.has(String(d.contaId))).length;
+}
+
+function cartaoPrevisto(c) {
+  const descobertas = descobertasDoCartao(c);
+  return `<article class="prev-cartao">
+    <div class="prev-quem"><span class="prev-ponto" style="background:${esc(c.cor || "var(--azul)")}"></span>${esc(c.nome)}${
+      c.numero ? `<small>···· ${esc(c.numero)}</small>` : ""}</div>
+    <div class="prev-meses">${c.meses.map(m => mesPrevisto(m, descobertas)).join("")}</div>
+  </article>`;
+}
+
+function renderPrevisao(p) {
+  const cartoes = (p && p.cartoes) || [];
+  // Acurácia só aparece quando existe: dizer "0% de erro" sem base medida
+  // seria pior do que não dizer nada.
+  const acuracia = (p && p.acuracia) || {};
+  const linha = el("sAcuracia");
+  if (acuracia.viesMedio === null || acuracia.viesMedio === undefined) {
+    linha.hidden = true;
+  } else {
+    const vies = acuracia.viesMedio, meses = acuracia.meses.length;
+    const lado = Math.abs(vies) < 1 ? "praticamente no alvo"
+      : vies < 0 ? `<b>${Math.abs(vies).toLocaleString("pt-BR")}% abaixo</b> da fatura`
+      : `<b>${vies.toLocaleString("pt-BR")}% acima</b> da fatura`;
+    linha.innerHTML = `Últimas ${meses} faturas: previsto ${lado}.`;
+    linha.hidden = false;
+  }
+  
+  el("sPrevisao").innerHTML = cartoes.map(cartaoPrevisto).join("")
+    || '<div class="rec-vazio"><strong>Nada previsto para os próximos meses.</strong>Assim que houver fatura aberta, parcela a vencer ou recorrência ativa, a composição aparece aqui.</div>';
+}
+
+/* Um cadastro, dois comportamentos. É só isto que separava "recorrência" de
+   "hábito": se a transação real substitui a previsão ou se a consome. */
+const COMPORTAMENTOS = {
+  cobranca: { rotulo: "Cobrança única", verbo: "Ativar como cobrança",
+              nota: "A transação real substitui a previsão do mês." },
+  reserva:  { rotulo: "Reserva do mês", verbo: "Ativar como reserva",
+              nota: "As compras do mês vão consumindo o valor previsto." },
+};
+
+function comportamentoDe(s) {
+  if (s.comportamento === "cobranca" || s.comportamento === "reserva") return s.comportamento;
+  return s.tipo === "habito" ? "reserva" : "cobranca";
+}
+
+function criarLinhaTermoRec(valor = "") {
+  const linha = document.createElement("div");
+  linha.className = "termo-linha";
+  const input = document.createElement("input");
+  Object.assign(input, { type: "text", className: "s-termo", value: valor, autocomplete: "off" });
+  input.placeholder = "ex.: posto";
+  input.setAttribute("aria-label", "Termo que a descrição deve conter");
+  input.addEventListener("input", agendarPreviaRecorrencia);
+  const remover = document.createElement("button");
+  Object.assign(remover, { type: "button", className: "termo-remover", textContent: "×" });
+  remover.dataset.removeTermoRec = "1";
+  remover.setAttribute("aria-label", "Remover termo");
+  linha.append(input, remover);
+  el("sTermos").appendChild(linha);
+  return input;
+}
+
+function lerTermosRecorrencia() {
+  return [...document.querySelectorAll("#sTermos .s-termo")]
+    .map(i => i.value.trim()).filter(Boolean);
+}
+
+/* Um termo de três letras pode pegar meio extrato sem a pessoa perceber.
+   Contar antes de salvar é mais honesto do que avisar depois. */
+let previaRecTimer = null;
+function agendarPreviaRecorrencia() {
+  clearTimeout(previaRecTimer);
+  previaRecTimer = setTimeout(atualizarPreviaRecorrencia, 450);
+}
+
+async function atualizarPreviaRecorrencia() {
+  const alvo = el("sPrevia");
+  const contaId = el("sConta").value;
+  const corpo = {
+    chave: recEditando || "", contaId,
+    lojista: el("sLojista").value.trim(),
+    termos: lerTermosRecorrencia(),
+    categoriaId: el("sCategoria").value,
+  };
+  if (!contaId || (!corpo.lojista && !corpo.termos.length && !corpo.categoriaId)) {
+    alvo.textContent = "";
+    return;
+  }
+  try {
+    const r = await pedir("/fixas/recorrentes/testar", "POST", corpo);
+    if (!r.lancamentos) {
+      alvo.innerHTML = "<em>Nenhum lançamento deste pagamento casa com isso ainda.</em>";
+      return;
+    }
+    const criterios = Object.entries(r.porCriterio)
+      .map(([k, n]) => `${n} por ${{ lojista: "identificação", termo: "termo", categoria: "categoria" }[k] || k}`)
+      .join(", ");
+    alvo.innerHTML = `Casa com <b>${r.lancamentos}</b> lançamentos em <b>${r.meses}</b> meses `
+      + `(${esc(criterios)}). Média dos 3 últimos ciclos: <b>${fmtBRL(r.mediaCiclos)}</b>.`
+      + `<br><em>${r.exemplos.slice(0, 3).map(e => esc(e.descricao)).join(" · ")}</em>`;
+  } catch (erro) {
+    alvo.innerHTML = `<em>${esc(erro.message)}</em>`;
+  }
+}
 
 function pagamentoRecorrencia(s) {
   const conta = REC_CONTAS.find(c => String(c.id) === String(s.contaId));
@@ -1249,26 +1478,40 @@ function pagamentoRecorrencia(s) {
   return nome ? `${s.noCartao ? "Cartão" : "Conta"} · ${nome}` : "Pagamento não definido";
 }
 
-function itemSugestao(s) {
-  const historico = s.historico || [];
-  const evidencia = historico.length ? `${historico.length} cobranças analisadas` : `${s.meses || 0} meses com cobrança`;
-  const variacao = Number(s.variacao) >= 1 ? `Variação de ${Number(s.variacao).toLocaleString("pt-BR")}%` : "Valor estável";
-  return `<article class="sug-item" data-chave="${esc(s.chave)}">
-    <div><div class="sug-nome">${esc(s.descricao)}</div>
-      <div class="sug-meta">${esc(pagamentoRecorrencia(s))}${s.diaTipico ? ` · dia ${esc(String(s.diaTipico))}` : ""}</div>
-      <div class="sug-meta">${esc(evidencia)} · frequência mensal</div>
+function itemDescoberta(d) {
+  const sugerido = d.comportamentoSugerido, outro = sugerido === "reserva" ? "cobranca" : "reserva";
+  const historico = d.historico || [];
+  // Uma categoria inteira nunca é "cobrança única": são muitas compras de
+  // estabelecimentos diferentes, e a única leitura possível é a reserva.
+  const porCategoria = d.origem === "categoria";
+  return `<article class="sug-item" data-chave="${esc(d.chave)}">
+    <div><div class="sug-nome">${esc(d.descricao)}</div>
+      <div class="sug-meta"><span class="rec-marca${porCategoria ? " rec-marca-cat" : ""}">${
+        porCategoria ? "Categoria inteira" : esc(COMPORTAMENTOS[sugerido].rotulo)}</span> ${esc(pagamentoRecorrencia(d))}${
+        sugerido === "cobranca" && d.diaTipico ? ` · dia ${esc(String(d.diaTipico))}` : ""}</div>
+      <div class="sug-meta">${esc(d.resumoEvidencia)}</div>
     </div>
-    <div class="sug-valor">${fmtBRL(s.valorUltimo)}<small>por mês</small></div>
+    <div class="sug-valor">${fmtBRL(d.valorSugerido)}<small>${esc(d.unidadeValor)}</small></div>
     <div class="sug-acoes">
-      <button class="primario" data-sug-add="${esc(s.chave)}" aria-label="Ativar ${esc(s.descricao)}">Ativar</button>
-      <button class="sutil" data-sug-nao="${esc(s.chave)}" title="Não sugerir novamente" aria-label="Dispensar sugestão ${esc(s.descricao)}">Dispensar</button>
+      <button class="primario" data-desc-ativar="${esc(d.chave)}" data-comportamento="${sugerido}" aria-label="${esc(COMPORTAMENTOS[sugerido].verbo)} ${esc(d.descricao)}">Ativar</button>
+      ${porCategoria ? "" : `<button class="sutil" data-desc-ativar="${esc(d.chave)}" data-comportamento="${outro}" aria-label="${esc(COMPORTAMENTOS[outro].verbo)} ${esc(d.descricao)}">Como ${esc(outro === "reserva" ? "reserva" : "cobrança")}</button>`}
+      <button class="sutil" data-sug-nao="${esc(d.chave)}" data-descricao="${esc(d.descricao)}" aria-label="Dispensar ${esc(d.descricao)}">Dispensar</button>
     </div>
     <details class="rec-evidencias"><summary>Ver evidências</summary>
-      <p>${esc(variacao)} · média ${fmtBRL(s.valorMedio)}.${s.categoria?.nome ? ` ${esc(s.categoria.nome)}.` : ""}</p>
-      ${(s.avisos || []).length ? `<p>${s.avisos.map(esc).join("<br>")}</p>` : ""}
-      <div class="rec-historico">${historico.map(h => `<div class="rec-cobranca"><span>${esc(fmtData(h.data))}</span><span>${esc(h.descricao || s.descricao)}</span><strong>${fmtBRL(h.valor)}</strong></div>`).join("")}</div>
+      <p>${porCategoria ? "Qualquer compra desta categoria, inclusive de estabelecimento novo, abate o previsto do mês." : esc(COMPORTAMENTOS[sugerido].nota)}${(d.avisos || []).length ? " " + esc(d.avisos.join(" ")) : ""}</p>
+      <div class="rec-historico">${historico.map(h => `<div class="rec-cobranca"><span>${esc(h.rotulo)}</span><span>${esc(h.detalhe)}</span><strong>${fmtBRL(h.valor)}</strong></div>`).join("")}</div>
     </details>
   </article>`;
+}
+
+/* Por que este cadastro casa: é a pergunta que a lista tinha de responder e
+   não respondia, agora que há três crivos possíveis. */
+function criteriosDaRecorrencia(s) {
+  const partes = [];
+  if (s.lojista) partes.push(`identificação "${s.lojista}"`);
+  if (s.termos?.length) partes.push(`contém ${s.termos.map(t => `"${t}"`).join(" ou ")}`);
+  if (s.categoriaNome) partes.push(`categoria ${s.categoriaNome}`);
+  return partes.join(" · ") || "sem critério de busca";
 }
 
 function itemRecorrencia(s) {
@@ -1276,16 +1519,22 @@ function itemRecorrencia(s) {
   const proxima = s.proximaPrevisao;
   const status = !s.ativa ? "Previsões pausadas" : !contaDisponivel ? "Edite para escolher uma conta ou cartão disponível."
     : s.statusPrevisao || (proxima ? `Próxima previsão em ${labelMes(proxima.mes)}` : "Aguardando a próxima cobrança");
-  const valor = proxima?.valor ?? s.valorAtual ?? (s.modoValor === "fixo" ? s.valorPrevisto : s.valorUltimo ?? s.valorPrevisto);
+  const comportamento = comportamentoDe(s), eHabito = comportamento === "reserva";
+  const valor = eHabito ? (proxima?.valorBase ?? s.valorAtual ?? s.valorPrevisto)
+    : proxima?.valor ?? s.valorAtual ?? (s.modoValor === "fixo" ? s.valorPrevisto : s.valorUltimo ?? s.valorPrevisto);
+  const detalheHabito = eHabito && proxima ? ` · ${fmtBRL(proxima.valorLancado || 0)} lançado · ${fmtBRL(proxima.valor)} restante` : "";
   const excluindo = recExcluindo === s.chave;
   return `<article class="sug-item" data-chave="${esc(s.chave)}">
     <div><div class="sug-nome">${esc(s.descricao)}</div>
-      <div class="sug-meta">${esc(pagamentoRecorrencia(s))}${s.diaTipico ? ` · dia ${esc(String(s.diaTipico))}` : ""}</div>
-      <div class="sug-meta"><span class="${s.ativa ? contaDisponivel ? "rec-status" : "rec-alerta" : ""}">${esc(status)}</span></div>
+      <div class="sug-meta"><span class="rec-marca">${esc(COMPORTAMENTOS[comportamento].rotulo)}</span> ${esc(pagamentoRecorrencia(s))}${
+        s.diaTipico && comportamento === "cobranca" ? ` · dia ${esc(String(s.diaTipico))}` : ""}</div>
+      <div class="sug-meta">${esc(criteriosDaRecorrencia(s))}</div>
+      <div class="sug-meta"><span class="${s.ativa ? contaDisponivel ? "rec-status" : "rec-alerta" : ""}">${esc(status)}</span>${detalheHabito}</div>
     </div>
-    <div class="sug-valor">${fmtBRL(valor)}<small>${s.modoValor === "fixo" ? "valor definido" : "última cobrança"}</small></div>
+    <div class="sug-valor">${fmtBRL(valor)}<small>${eHabito ? "média dos ciclos" : s.modoValor === "fixo" ? "valor definido" : "última cobrança"}</small></div>
     <div class="sug-acoes">
       <button class="sutil" data-rec-editar="${esc(s.chave)}" aria-label="Editar ${esc(s.descricao)}">Editar</button>
+      <button class="sutil" data-rec-converter="${esc(s.chave)}" data-comportamento="${eHabito ? "cobranca" : "reserva"}" aria-label="Tornar ${esc(s.descricao)} ${esc(COMPORTAMENTOS[eHabito ? "cobranca" : "reserva"].rotulo.toLowerCase())}">Virar ${esc(COMPORTAMENTOS[eHabito ? "cobranca" : "reserva"].rotulo.toLowerCase())}</button>
       <button class="sutil" data-sug-prever="${esc(s.chave)}" data-ativa="${!s.ativa}" aria-label="${s.ativa ? "Pausar" : "Retomar"} ${esc(s.descricao)}">${s.ativa ? "Pausar" : "Retomar"}</button>
       <button class="sutil rec-excluir" data-rec-excluir="${esc(s.chave)}" aria-expanded="${excluindo}" aria-label="Excluir ${esc(s.descricao)}">Excluir</button>
     </div>
@@ -1306,15 +1555,21 @@ function renderListaRecorrencias() {
 
 function renderSugestoes(p) {
   SUGESTOES = (p.sugestoes || []).filter(s => s.confianca !== "baixa");
+  // O badge continua contando só as cobranças detectadas: reserva é um
+  // convite, não uma pendência, e um badge alto toda semana vira ruído.
+  DESCOBERTAS = (p.descobertas || []).filter(
+    d => d.origem !== "sugestao" || d.confianca !== "baixa");
   RECORRENCIAS = p.previsoes || [];
   REC_CONTAS = p.contasPagamento || [];
+  REC_CATEGORIAS = p.categoriasDisponiveis || [];
   el("badgeSugestoes").hidden = !SUGESTOES.length;
   el("badgeSugestoes").textContent = SUGESTOES.length;
   el("badgeSugestoes").setAttribute("aria-label", `${SUGESTOES.length} sugestões`);
-  el("sTotalSugestoes").textContent = SUGESTOES.length;
-  el("sLista").innerHTML = SUGESTOES.map(itemSugestao).join("") || '<div class="rec-vazio"><strong>Nenhuma nova sugestão com evidência mensal suficiente.</strong>Você pode cadastrar uma recorrência a qualquer momento.</div>';
+  el("sTotalDescobertas").textContent = DESCOBERTAS.length;
+  el("sLista").innerHTML = DESCOBERTAS.map(itemDescoberta).join("") || '<div class="rec-vazio"><strong>Nada novo por aqui.</strong>Quando um gasto passar a se repetir no seu histórico, ele aparece nesta lista antes de virar previsão.</div>';
   el("sRegrasLista").innerHTML = (p.regrasSugestao || []).map(r => `<li>${esc(r)}</li>`).join("");
   el("sRegras").hidden = !(p.regrasSugestao || []).length;
+  el("sRegrasHabitosLista").innerHTML = (p.regrasHabitos || []).map(r => `<li>${esc(r)}</li>`).join("");
   renderListaRecorrencias();
   selecionarAbaRecorrencias(recAba);
   ocuparRecorrencias(recSalvando);
@@ -1347,15 +1602,20 @@ async function carregarSugestoes({ abrir = false } = {}) {
     recFocoAnterior = document.activeElement;
     recExcluindo = null;
     voltarRecorrencias(false);
-    selecionarAbaRecorrencias("ativas");
+    selecionarAbaRecorrencias("previsao");
     renderListaRecorrencias();
     el("modalSug").hidden = false;
     el("sCarregando").hidden = false;
-    el("sTabAtivas").focus();
+    el("sTabPrevisao").focus();
   }
   try {
-    const p = await pedir("/fixas/recorrentes");
-    if (pedido === recPedido) renderSugestoes(p);
+    // As duas leituras são independentes: a previsão não pode derrubar a
+    // gestão de cadastros, nem o contrário.
+    const [p, previsao] = await Promise.all([
+      pedir("/fixas/recorrentes"),
+      pedir("/pluggy-cartoes/previsao?meses=2").catch(() => null),
+    ]);
+    if (pedido === recPedido) { renderSugestoes(p); renderPrevisao(previsao); }
   } catch (e) {
     if (pedido === recPedido && abrir) el("sErro").textContent = e.message;
   } finally {
@@ -1368,6 +1628,28 @@ function ocuparRecorrencias(ocupada) {
   el("modalSug").querySelector('[role="dialog"]').setAttribute("aria-busy", String(ocupada));
   el("modalSug").querySelectorAll("button, input, select").forEach(c => { c.disabled = ocupada; });
   el("sSalvar").textContent = ocupada ? "Salvando…" : recEditando ? "Salvar alterações" : "Criar recorrência";
+}
+
+/* Converter no meio do ciclo mexe no número na hora: virar cobrança única
+   apaga a previsão inteira de uma competência que já teve compra. Mostrar a
+   diferença antes é a única forma de a troca não parecer um bug. */
+async function converterRecorrencia(chave, comportamento) {
+  if (recSalvando) return;
+  const alvo = COMPORTAMENTOS[comportamento];
+  let aviso = "";
+  try {
+    const previa = await pedir("/fixas/recorrentes/comportamento/previa", "POST", { chave, comportamento });
+    if (previa && previa.diferenca) {
+      aviso = `
+
+A previsão deste mês passa de ${fmtBRL(previa.antes)} para ${fmtBRL(previa.depois)}.`;
+    }
+  } catch (erro) { /* a prévia é um conforto, não um pré-requisito */ }
+  if (!confirm(`Tornar esta previsão "${alvo.rotulo}"?
+
+${alvo.nota}${aviso}`)) return;
+  return alterarRecorrencia("comportamento", { chave, comportamento },
+    { mensagem: `Agora é ${alvo.rotulo.toLowerCase()}.` });
 }
 
 async function alterarRecorrencia(rota, dados, { aba = recAba, mensagem = "Recorrência atualizada.", fecharEditor = false } = {}) {
@@ -1404,7 +1686,7 @@ function abrirEditorRecorrencia(chave = null) {
   if (chave && !s) return;
   recFocoEditor = document.activeElement;
   recEditando = s?.chave || null;
-  el("sTitulo").textContent = s ? "Editar recorrência" : "Nova recorrência";
+  el("sTitulo").textContent = s ? "Editar previsão" : "Nova previsão recorrente";
   el("sGerenciar").hidden = true;
   el("sRodape").hidden = true;
   el("sFormulario").hidden = false;
@@ -1416,13 +1698,21 @@ function abrirEditorRecorrencia(chave = null) {
   el("sConta").innerHTML = `<option value="">${placeholder}</option>` + REC_CONTAS.map(c => `<option value="${esc(String(c.id))}">${esc(`${c.noCartao ? "Cartão" : "Conta"} · ${c.nome}`)}</option>`).join("");
   el("sConta").value = disponivel ? String(s.contaId) : "";
   el("sContaAjuda").textContent = REC_CONTAS.length ? "A previsão entra neste cartão ou conta, e a cobrança é procurada somente nele." : "Nenhuma conta ou cartão disponível. Conecte uma conta para cadastrar previsões.";
-  el("sModoValor").value = s?.modoValor === "fixo" ? "fixo" : "ultimo";
-  el("sValor").value = s ? fmtValor(s.valorPrevisto ?? s.valorUltimo) : "";
+  el("sTermos").innerHTML = "";
+  for (const termo of s?.termos?.length ? s.termos : [""]) criarLinhaTermoRec(termo);
+  el("sCategoria").innerHTML = '<option value="">Nenhuma</option>'
+    + REC_CATEGORIAS.map(c => `<option value="${esc(String(c.id))}">${esc(c.caminho)}</option>`).join("");
+  el("sCategoria").value = s?.categoriaId || "";
+  el("sPrevia").textContent = "";
+  el("sComportamento").value = s ? comportamentoDe(s) : "cobranca";
+  el("sModoValor").value = s?.modoValor === "media" ? "media" : s?.modoValor === "fixo" ? "fixo" : "ultimo";
+  el("sValor").value = s ? fmtValor(comportamentoDe(s) === "reserva" ? s.valorAtual ?? s.valorPrevisto : s.valorPrevisto ?? s.valorUltimo) : "";
   el("sDia").value = s?.diaTipico || "";
   el("sValor").setCustomValidity("");
   atualizarModoValorRecorrencia();
   ocuparRecorrencias(false);
   el("sNome").focus();
+  atualizarPreviaRecorrencia();
 }
 
 function voltarRecorrencias(focar = true) {
@@ -1430,7 +1720,7 @@ function voltarRecorrencias(focar = true) {
   el("sFormulario").hidden = true;
   el("sGerenciar").hidden = false;
   el("sRodape").hidden = false;
-  el("sTitulo").textContent = "Recorrências";
+  el("sTitulo").textContent = "Hábitos e recorrências";
   el("sErro").textContent = "";
   if (focar) {
     if (recFocoEditor?.isConnected) recFocoEditor.focus();
@@ -1438,10 +1728,19 @@ function voltarRecorrencias(focar = true) {
   }
 }
 
+/* Duas dimensões independentes: o COMPORTAMENTO diz o que a transação real faz
+   com a previsão; o MODO DE VALOR diz de onde sai o número. "Média" já foi
+   exclusiva de hábito, mas conta de luz é cobrança única e varia todo mês. */
 function atualizarModoValorRecorrencia() {
-  const fixo = el("sModoValor").value === "fixo";
-  el("sValorRotulo").textContent = fixo ? "Valor mensal (R$)" : "Valor inicial (R$)";
-  el("sValorAjuda").textContent = fixo ? "Este valor será mantido nas próximas previsões." : "Usado enquanto não houver cobrança identificada.";
+  const modo = el("sModoValor").value;
+  const reserva = el("sComportamento").value === "reserva";
+  el("sValor").readOnly = modo === "media";
+  el("sValorRotulo").textContent = modo === "media" ? "Média atual (R$)"
+    : modo === "fixo" ? (reserva ? "Reserva mensal (R$)" : "Valor mensal (R$)") : "Valor inicial (R$)";
+  el("sValorAjuda").textContent = modo === "media"
+    ? `A média usa os três últimos ciclos com gasto.${reserva ? " Cada compra reduz a reserva do mês." : ""}`
+    : modo === "fixo" ? (reserva ? "Esta é a reserva de cada mês; as compras vão consumindo." : "Este valor será mantido nas próximas previsões.")
+    : "Usado enquanto não houver cobrança identificada.";
 }
 
 function salvarRecorrencia(e) {
@@ -1454,17 +1753,23 @@ function salvarRecorrencia(e) {
   const dados = {
     descricao: el("sNome").value.trim(), lojista: el("sLojista").value.trim(),
     contaId: el("sConta").value, modoValor: el("sModoValor").value,
+    comportamento: el("sComportamento").value,
+    termos: lerTermosRecorrencia(), categoriaId: el("sCategoria").value,
     valorPrevisto: valor, diaTipico: Number(el("sDia").value),
   };
-  if (!dados.descricao || !dados.lojista) {
-    el("sErro").textContent = "Preencha o nome e a identificação no extrato.";
+  if (!dados.descricao) {
+    el("sErro").textContent = "Dê um nome à previsão.";
+    return;
+  }
+  if (!dados.lojista && !dados.termos.length && !dados.categoriaId) {
+    el("sErro").textContent = "Informe a identificação no extrato, um termo ou uma categoria.";
     return;
   }
   const existente = RECORRENCIAS.find(r => r.chave === recEditando);
   if (recEditando) dados.chave = recEditando;
   alterarRecorrencia(recEditando ? "editar" : "criar", dados, {
     aba: existente && !existente.ativa ? "pausadas" : "ativas", fecharEditor: true,
-    mensagem: recEditando ? "Recorrência atualizada." : "Recorrência criada e ativada.",
+    mensagem: recEditando ? "Previsão atualizada." : "Previsão criada e ativada.",
   });
 }
 
@@ -1863,6 +2168,20 @@ function ligar() {
   el("sVoltar").addEventListener("click", () => { if (!recSalvando) voltarRecorrencias(); });
   el("sFormulario").addEventListener("submit", salvarRecorrencia);
   el("sModoValor").addEventListener("change", atualizarModoValorRecorrencia);
+  el("sAddTermo").addEventListener("click", () => criarLinhaTermoRec("").focus());
+  el("sLojista").addEventListener("input", agendarPreviaRecorrencia);
+  el("sConta").addEventListener("change", agendarPreviaRecorrencia);
+  el("sCategoria").addEventListener("change", agendarPreviaRecorrencia);
+  el("sTermos").addEventListener("click", e => {
+    if (!e.target.closest("[data-remove-termo-rec]")) return;
+    if (el("sTermos").querySelectorAll(".termo-linha").length > 1) {
+      e.target.closest(".termo-linha")?.remove();
+      agendarPreviaRecorrencia();
+    } else {
+      e.target.closest(".termo-linha").querySelector("input").value = "";
+      agendarPreviaRecorrencia();
+    }
+  });
   el("sValor").addEventListener("input", () => el("sValor").setCustomValidity(""));
   el("modalSug").addEventListener("keydown", tecladoRecorrencias);
   el("modalSug").addEventListener("click", e => {
@@ -1891,12 +2210,22 @@ function ligar() {
     if (confirmar) return alterarRecorrencia("excluir", { chave: confirmar.dataset.recConfirmarExclusao }, { mensagem: "Recorrência excluída. Transações preservadas." });
     const prever = e.target.closest("[data-sug-prever]");
     if (prever) return alterarRecorrencia("prever", { chave: prever.dataset.sugPrever, ativa: prever.dataset.ativa === "true" }, { mensagem: prever.dataset.ativa === "true" ? "Recorrência retomada." : "Recorrência pausada." });
-    const add = e.target.closest("[data-sug-add]");
-    if (add) return alterarRecorrencia("prever", { chave: add.dataset.sugAdd, ativa: true }, { aba: "ativas", mensagem: "Recorrência ativada." });
+    if (e.target.closest("[data-ir-descobertas]")) return selecionarAbaRecorrencias("descobertas", true);
+    const ativar = e.target.closest("[data-desc-ativar]");
+    if (ativar) {
+      const comportamento = ativar.dataset.comportamento;
+      return alterarRecorrencia("ativar", { chave: ativar.dataset.descAtivar, comportamento },
+        { aba: "ativas", mensagem: comportamento === "reserva"
+          ? "Reserva do mês ativada: as compras vão consumindo o previsto."
+          : "Cobrança única ativada: o lançamento real substitui a previsão." });
+    }
+    const converter = e.target.closest("[data-rec-converter]");
+    if (converter) return converterRecorrencia(converter.dataset.recConverter, converter.dataset.comportamento);
     const nao = e.target.closest("[data-sug-nao]");
     if (nao) {
-      const s = SUGESTOES.find(r => r.chave === nao.dataset.sugNao);
-      return alterarRecorrencia("ignorar", { chave: nao.dataset.sugNao, descricao: s?.descricao || "" }, { mensagem: "Sugestão dispensada." });
+      return alterarRecorrencia("ignorar",
+        { chave: nao.dataset.sugNao, descricao: nao.dataset.descricao || "" },
+        { mensagem: "Achado dispensado." });
     }
   });
 

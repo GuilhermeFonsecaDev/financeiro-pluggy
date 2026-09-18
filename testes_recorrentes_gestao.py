@@ -238,6 +238,31 @@ class RecorrentesGestaoTests(unittest.TestCase):
         self.assertEqual(atual["valorAtual"], 25.9)
         self.assertEqual(atual["valorPrevisto"], 20.9)
 
+    def test_habito_de_cartao_projeta_somente_o_saldo_ainda_nao_gasto(self):
+        # Posto aparece como hábito porque há repetição mensal, mas os valores
+        # e as datas não formam uma cobrança mensal única. Ao projetar, a
+        # compra real reduz a reserva em vez de apagar ou duplicar a fatura.
+        for indice, (mes, valor) in enumerate(((4, 237.44), (4, 100), (5, 229.44),
+                                               (6, 204.76), (7, 230.25), (8, 246.30))):
+            self.inserir(f"posto-{indice}", mes, "POSTO CENTRAL AVENIDA BRA", valor)
+        with banco.connect() as conn:
+            conn.execute("UPDATE pluggy_transacoes SET data='2026-04-25' WHERE transacao_id='posto-1'")
+        habito = next(h for h in rec.sugestoes_payload()["habitos"] if h["lojista"] == "posto central avenida bra")
+        rec.projetar_habito(habito["chave"])
+        ativo = next(p for p in rec.sugestoes_payload()["previsoes"] if p["tipo"] == "habito")
+        self.assertEqual(ativo["modoValor"], "media")
+        self.assertFalse(any(h["chave"] == habito["chave"] for h in rec.sugestoes_payload()["habitos"]))
+        with banco.connect() as conn:
+            antes = next(i for i in rec.projetados(conn, 2026) if i.get("tipoPrevisao") == "habito")
+        self.assertGreater(antes["valorBase"], 0)
+        self.assertEqual(antes["valor"], antes["valorBase"])
+        self.inserir("posto-no-ciclo", antes["mes"], "POSTO CENTRAL AVENIDA BRA", 30)
+        with banco.connect() as conn:
+            conn.execute("UPDATE pluggy_transacoes SET data=? WHERE transacao_id='posto-no-ciclo'", (antes["data"],))
+            depois = next(i for i in rec.projetados(conn, 2026)
+                          if i.get("tipoPrevisao") == "habito" and i["mes"] == antes["mes"])
+        self.assertEqual(depois["valor"], round(antes["valor"] - 30, 2))
+
     def test_transacao_excluida_nao_substitui_nem_reajusta_previsao(self):
         self.aceitar()
         self.inserir("netflix-excluida-set", 9, "Netflix.com", 80)

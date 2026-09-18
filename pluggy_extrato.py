@@ -138,6 +138,22 @@ def compra_da_transacao(conn: sqlite3.Connection,
     return chave_compra(linha)
 
 
+# Baldes da previsao de um mes. "reservaConsumida" nao entra na soma: e o
+# quanto do habito ja foi gasto, e esse gasto ja esta dentro de "aberta".
+COMPONENTES_VAZIOS = {
+    "aberta": 0.0,
+    "parcelas": 0.0,
+    "recorrencias": 0.0,
+    "reservaRestante": 0.0,
+    "reservaConsumida": 0.0,
+    # Credito que sobrou da quitacao da fatura anterior e abate esta. Entra
+    # negativo porque _conciliar_pagamentos_adicionais subtrai do total.
+    "abatimentos": 0.0,
+}
+COMPONENTES_SOMADOS = (
+    "aberta", "parcelas", "recorrencias", "reservaRestante", "abatimentos")
+
+
 def _completar_faturas_abertas_e_parcelas(
     conn: sqlite3.Connection,
     ano: int,
@@ -146,7 +162,7 @@ def _completar_faturas_abertas_e_parcelas(
     quantidades: dict[str, list[int]],
 ) -> tuple[
     dict[str, list[str]], dict[str, list[int]], set[int],
-    dict[str, list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]], dict[str, list[dict[str, float]]],
 ]:
     """Inclui a fatura aberta e projeta as parcelas que ainda vao vencer.
 
@@ -171,6 +187,14 @@ def _completar_faturas_abertas_e_parcelas(
 
     origens = {conta_id: ["vazio"] * 12 for conta_id in ids_cartoes}
     previstas = {conta_id: [0] * 12 for conta_id in ids_cartoes}
+    # De que a previsao do mes e feita. Nao e um calculo paralelo: cada parcela
+    # somada em `valores` e somada aqui tambem, no balde a que pertence. Assim
+    # a tela decompoe o total sem nunca recalcula-lo -- recalcular perderia as
+    # protecoes contra dupla contagem (fixas x recorrentes x parcelas).
+    componentes = {
+        conta_id: [dict(COMPONENTES_VAZIOS) for _ in range(12)]
+        for conta_id in ids_cartoes
+    }
     itens: dict[str, list[dict[str, Any]]] = {conta_id: [] for conta_id in ids_cartoes}
     anos_projetados: set[int] = set()
     for conta_id in ids_cartoes:
@@ -254,6 +278,7 @@ def _completar_faturas_abertas_e_parcelas(
             indice = mes_fatura - 1
             valores[conta_id][indice] += float(linha["gasto"] or 0)
             quantidades[conta_id][indice] += int(linha["quantidade"] or 0)
+            componentes[conta_id][indice]["aberta"] += float(linha["gasto"] or 0)
             origens[conta_id][indice] = "aberta"
 
     series: dict[tuple[Any, ...], sqlite3.Row] = {}
@@ -348,6 +373,7 @@ def _completar_faturas_abertas_e_parcelas(
             indice = numero_mes - 1
             valores[conta_id][indice] += abs(float(linha["valor"] or 0))
             previstas[conta_id][indice] += 1
+            componentes[conta_id][indice]["parcelas"] += abs(float(linha["valor"] or 0))
             if origens[conta_id][indice] == "aberta":
                 origens[conta_id][indice] = "aberta_projecao"
             elif origens[conta_id][indice] == "vazio":
@@ -382,6 +408,13 @@ def _completar_faturas_abertas_e_parcelas(
             continue
         valores[conta_id][indice] += item["valor"]
         previstas[conta_id][indice] += 1
+        if item.get("tipoPrevisao") == "habito":
+            componentes[conta_id][indice]["reservaRestante"] += item["valor"]
+            # So rotulo: o que ja foi gasto no ciclo esta dentro de "aberta".
+            componentes[conta_id][indice]["reservaConsumida"] += float(
+                item.get("valorLancado") or 0)
+        else:
+            componentes[conta_id][indice]["recorrencias"] += item["valor"]
         origens[conta_id][indice] = (
             "aberta_projecao" if origens[conta_id][indice] in {"aberta", "aberta_projecao"}
             else "projecao"
@@ -389,7 +422,7 @@ def _completar_faturas_abertas_e_parcelas(
         itens[conta_id].append(item)
         anos_projetados.add(ano)
 
-    return origens, previstas, anos_projetados, itens
+    return origens, previstas, anos_projetados, itens, componentes
 
 
 _tabelas_prontas = False
@@ -853,6 +886,7 @@ def _consolidar_por_grupo(
     origens: dict[str, list[str]],
     previstas: dict[str, list[int]],
     itens: dict[str, list[dict[str, Any]]],
+    componentes: dict[str, list[dict[str, float]]],
 ) -> tuple[list[dict[str, Any]], dict[str, set[str]]]:
     """Consolida resultados individuais já resolvidos, somente pela tag.
 
@@ -879,6 +913,11 @@ def _consolidar_por_grupo(
         ]
         previstas[destino] = [
             sum(previstas[c][i] for c in contas) for i in range(12)
+        ]
+        componentes[destino] = [
+            {balde: round(sum(componentes[c][i][balde] for c in contas), 2)
+             for balde in COMPONENTES_VAZIOS}
+            for i in range(12)
         ]
         origens[destino] = []
         for indice in range(12):
@@ -933,6 +972,7 @@ def _aplicar_faturas_oficiais(
     origens: dict[str, list[str]],
     previstas: dict[str, list[int]],
     itens: dict[str, list[dict[str, Any]]],
+    componentes: dict[str, list[dict[str, float]]],
     contas_do_cartao: dict[str, set[str]],
 ) -> None:
     """Sobrescreve os meses de fatura FECHADA com o total que o banco emitiu.
@@ -989,6 +1029,8 @@ def _aplicar_faturas_oficiais(
         # A fatura fechou: o que havia de previsto para este mes ja esta
         # dentro do total oficial, entao nao pode continuar contando junto.
         previstas[cartao_id][indice] = 0
+        if cartao_id in componentes:
+            componentes[cartao_id][indice] = dict(COMPONENTES_VAZIOS)
         if cartao_id in itens:
             itens[cartao_id] = [
                 item for item in itens[cartao_id] if item["mes"] != indice + 1
@@ -1093,6 +1135,82 @@ def _aplicar_faturas_pagas(
             continue
         valores[conta_id][indice] = round(pago, 2)
         origens[conta_id][indice] = "pagamento"
+
+
+def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
+                                     componentes=None):
+    """Abate crédito confirmado após quitação integral da fatura anterior.
+
+    Só concilia o ciclo seguinte de uma fatura oficial positiva, com um
+    pagamento exatamente igual ao total anterior. Não estima IOF nem presume
+    que um pagamento parcial quitou a dívida. Preserva lançamentos brutos.
+
+    `componentes` é opcional porque a conciliação vale por si: quem só quer
+    auditar o abatimento não precisa montar os baldes da previsão.
+    """
+    conciliacoes = []
+    for conta in ids_cartoes:
+        movimentos = [dict(r) for r in conn.execute(
+            f"SELECT t.transacao_id, t.data, t.status, t.fatura_id, ABS(t.valor) valor "
+            f"FROM pluggy_transacoes t WHERE t.conta_id=? AND t.tipo='CREDIT' "
+            f"AND {EH_PAGAMENTO_FATURA} ORDER BY t.data, t.transacao_id", (conta,))]
+        for ciclo in conn.execute(
+            "SELECT inicio,fim,competencia FROM pluggy_ciclos WHERE conta_id=? AND competencia LIKE ?",
+            (conta, f"{ano}-%"),
+        ):
+            indice = int(ciclo['competencia'][5:7]) - 1
+            if origens[conta][indice] not in {'aberta', 'aberta_projecao'}:
+                continue
+            if conn.execute("SELECT 1 FROM pluggy_faturas WHERE conta_id=? AND competencia=?",
+                            (conta, ciclo['competencia'])).fetchone():
+                continue
+            anteriores = list(conn.execute(
+                "SELECT fatura_id,valor_total FROM pluggy_faturas WHERE conta_id=? "
+                "AND substr(fechamento,1,10)=? AND valor_total>0", (conta, ciclo['inicio'])))
+            if len(anteriores) != 1:
+                continue
+            anterior = anteriores[0]
+            candidatos = [m for m in movimentos
+                          if ciclo['inicio'] <= m['data'][:10] < ciclo['fim']
+                          and m['status'] in {'POSTED', 'PENDING'}
+                          and (not m['fatura_id'] or m['fatura_id'] == anterior['fatura_id'])]
+            # Pareamento um a um, apenas entre estágios diferentes. Pagamentos
+            # reais de mesmo valor não são eliminados por uma simples soma/max.
+            pendentes = [m for m in candidatos if m['status'] == 'PENDING']
+            confirmados = [m for m in candidatos if m['status'] == 'POSTED']
+            pareados = set()
+            ambiguo = False
+            for pendente in pendentes:
+                pares = [m for m in confirmados if m['transacao_id'] not in pareados
+                         and round(m['valor'] * 100) == round(pendente['valor'] * 100)
+                         and abs(_dias_entre(m['data'], pendente['data'])) <= 2]
+                if len(pares) > 1:
+                    ambiguo = True
+                    break
+                if pares:
+                    pareados.add(pares[0]['transacao_id'])
+                    pendente['pareado'] = True
+            if ambiguo:
+                continue
+            unicos = confirmados + [m for m in pendentes if not m.get('pareado')]
+            quitacoes = [m for m in unicos if round(m['valor'] * 100) == round(anterior['valor_total'] * 100)]
+            if len(quitacoes) != 1:
+                continue
+            quitacao = quitacoes[0]
+            extras = [m for m in confirmados if m['transacao_id'] != quitacao['transacao_id']
+                      and m['data'][:10] > quitacao['data'][:10]]
+            credito = round(sum(m['valor'] for m in extras), 2)
+            if credito <= 0:
+                continue
+            antes = round(valores[conta][indice], 2)
+            valores[conta][indice] = round(antes - credito, 2)
+            if componentes is not None:
+                componentes[conta][indice]["abatimentos"] -= credito
+            conciliacoes.append({'contaId': conta, 'mes': indice + 1,
+                'cobrancas': antes, 'credito': credito, 'saldo': valores[conta][indice],
+                'faturaAnteriorId': anterior['fatura_id'], 'quitacaoId': quitacao['transacao_id'],
+                'pagamentosIds': [m['transacao_id'] for m in extras]})
+    return conciliacoes
 
 
 def _aplicar_faturas_confirmadas(
@@ -1301,7 +1419,7 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                 quantidades[conta_id][indice] = int(linha["quantidade"] or 0)
 
         if agrupamento == "fatura":
-            origens, quantidades_previstas, anos_projetados, itens = (
+            origens, quantidades_previstas, anos_projetados, itens, componentes = (
                 _completar_faturas_abertas_e_parcelas(
                     conn, ano, ids_cartoes, valores, quantidades
                 )
@@ -1323,13 +1441,20 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
                 conta_id: [0] * 12 for conta_id in ids_cartoes
             }
             itens = {conta_id: [] for conta_id in ids_cartoes}
+            componentes = {
+                conta_id: [dict(COMPONENTES_VAZIOS) for _ in range(12)]
+                for conta_id in ids_cartoes
+            }
 
         if agrupamento == "fatura":
             _aplicar_faturas_oficiais(
                 conn, ano, valores, quantidades, origens,
-                quantidades_previstas, itens,
+                quantidades_previstas, itens, componentes,
                 {conta_id: {conta_id} for conta_id in ids_cartoes},
             )
+
+        conciliacoes = (_conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens, componentes)
+                        if agrupamento == "fatura" else [])
 
         # Retira detalhes apenas dos membros cujo valor foi substituído por
         # uma fonte completa. Os irmãos projetados de uma tag continuam lá.
@@ -1342,6 +1467,11 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             for indice, origem in enumerate(origens[conta_id]):
                 if origem not in {"projecao", "aberta_projecao"}:
                     quantidades_previstas[conta_id][indice] = 0
+                # Mes cujo valor veio de fonte completa (oficial, pagamento,
+                # confirmada) nao se decompoe: o total nao e mais a soma dos
+                # baldes. "aberta" sobrevive porque e a propria soma do ciclo.
+                if origem not in {"aberta", "projecao", "aberta_projecao"}:
+                    componentes[conta_id][indice] = dict(COMPONENTES_VAZIOS)
 
         # Nomes e tags só entram depois de todos os cálculos individuais.
         cartoes, contas_do_cartao = _consolidar_por_grupo(
@@ -1352,6 +1482,7 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
             origens,
             quantidades_previstas,
             itens,
+            componentes,
         )
 
     total_mes = [
@@ -1369,8 +1500,10 @@ def _cartoes_payload(ano: int, agrupamento: str = "fatura") -> dict[str, Any]:
         "quantidadesPrevistas": quantidades_previstas,
         "origens": origens,
         "itens": itens,
+        "componentes": componentes,
         "totalMes": total_mes,
         "totalAno": sum(total_mes),
+        "conciliacoesPagamentos": conciliacoes,
     }
 
 

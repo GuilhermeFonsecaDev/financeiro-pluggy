@@ -327,6 +327,9 @@ function renderCarteira() {
     const valor = valorMes(cartao.id, mesSelecionado);
     const origem = origemMes(cartao.id, mesSelecionado);
     const limite = limiteColuna(cartao);
+    const credito = (dados.conciliacoesPagamentos || [])
+      .filter(c => c.mes === mesSelecionado + 1 && (cartao.contas || [cartao.id]).includes(c.contaId))
+      .reduce((total, c) => total + c.credito, 0);
     return `
     <article class="cartao-tile" style="--faixa:${esc(corInstrumento(cartao))}">
       <div class="cab">
@@ -339,6 +342,7 @@ function renderCarteira() {
       <div class="corpo">
         <div class="rot">Fatura de ${esc(MONTHS[mesSelecionado])}</div>
         <div class="fatura">${fmtBRL(valor)}</div>
+        ${credito > 0 ? `<div class="limite">${fmtBRL(credito)} em pagamentos adicionais abatidos automaticamente</div>` : ""}
         ${limite ? `
           <div class="trilha"><i style="width:${limite.pct.toFixed(1)}%"></i></div>
           <div class="limite">${limite.pct.toFixed(0)}% de ${fmtBRL(limite.total)} usado</div>

@@ -545,9 +545,9 @@ function renderPosicoes() {
       `<li><span class="sub">${i.vencimento ? `vence ${dataIso(i.vencimento)}` : i.dataAplicacao ? `desde ${dataIso(i.dataAplicacao)}` : 'sem vencimento'}</span><span>${fmtBRL(i.liquido)}</span></li>`).join('')}</ul>` : '';
     const ganho = l.rendimentoBrutoEstimado, rent = l.rentabilidadeBrutaEstimada;
     const origem = l.aplicado == null || l.origemAplicado === 'pluggy' ? ''
-      : !l.aplicadoConfiavel ? '<div class="origem-valor conferir">confira: aportes maiores que o saldo</div>'
+      : !l.aplicadoConfiavel ? '<div class="origem-valor conferir">histórico de aportes divergente</div>'
       : '<div class="origem-valor">pelos aportes registrados</div>';
-    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num">${l.aplicado == null ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
+    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num">${l.aplicado == null || !l.aplicadoConfiavel ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="5" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
   // O aplicado pelos aportes só existe no backend novo; sem ele a coluna cai
   // para o custo da Pluggy, e quem está com o processo antigo precisa saber.
@@ -559,7 +559,7 @@ function renderPosicoes() {
     faltantes.length && (backendAntigo
       ? `Capital aplicado não informado pela Pluggy em ${faltantes.length} ${faltantes.length === 1 ? 'posição' : 'posições'}. Reinicie o backend para o aplicado ser calculado pelos aportes registrados.`
       : `Capital aplicado indisponível em ${faltantes.length} ${faltantes.length === 1 ? 'posição' : 'posições'}: a Pluggy não informou o custo e o histórico de aportes não cobre a posição.`),
-    duvidosas.length && `Em ${duvidosas.length} ${duvidosas.length === 1 ? 'posição' : 'posições'} os aportes registrados somam mais que o saldo atual sem resgate correspondente; o ganho fica de fora até a conferência.`,
+    duvidosas.length && `Em ${duvidosas.length} ${duvidosas.length === 1 ? 'posição' : 'posições'} os aportes registrados somam mais que o saldo atual sem resgate correspondente. O capital aplicado e o ganho ficam indisponíveis até a conferência; o saldo informado pela instituição permanece na carteira.`,
   ].filter(Boolean).join(' ');
 }
 

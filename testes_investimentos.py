@@ -455,6 +455,35 @@ class CarteiraTests(unittest.TestCase):
         self.assertEqual(lote['motivoSemAplicado'], 'sem_aporte_no_historico')
         self.assertEqual(investimentos.payload()['consolidado']['posicoesSemAplicado'], 1)
 
+    def test_exclusao_confirmada_nao_reimporta_duplicata_e_preserva_aporte_correto(self):
+        self.item('btg', 'BTG')
+        chave = self.posicao('btg', 'western', 1037, 'Western')
+        self.movimento(chave, 'provisorio', 1037)
+        self.movimento(chave, 'cotizado', 1037)
+        with patch.object(banco, 'create_database_backup') as backup:
+            investimentos.excluir_movimento(chave, 'provisorio', 'Duplicata confirmada pelo usuário')
+        backup.assert_called_once()
+
+        def listar(api_key, caminho, params):
+            if caminho == '/investments':
+                return [{'id': 'western', 'name': 'Western', 'type': 'MUTUAL_FUND',
+                         'status': 'ACTIVE', 'balance': 1037, 'amount': 1037}]
+            return [{'id': 'provisorio', 'amount': 1037, 'type': 'BUY', 'date': '2026-09-11'},
+                    {'id': 'cotizado', 'amount': 1037, 'type': 'BUY', 'date': '2026-09-11'}]
+
+        with patch.object(investimentos, 'get_api_key', return_value='teste'), \
+                patch.object(investimentos, '_listar', side_effect=listar):
+            self.assertEqual(investimentos.sincronizar(['btg'])['movimentos'], 1)
+        dados = investimentos.payload()
+        self.assertEqual([m['id'] for m in dados['movimentos']], ['cotizado'])
+        self.assertEqual(dados['lotes'][0]['aplicado'], 1037)
+        self.assertTrue(dados['lotes'][0]['aplicadoConfiavel'])
+        self.assertEqual(dados['meses'][0]['aplicacoes'], 1037)
+        with banco.connect() as conn:
+            audit = conn.execute('SELECT registro_json FROM pluggy_investimento_movimentos_excluidos').fetchone()
+            self.assertEqual(json.loads(audit[0])['movimento_id'], 'provisorio')
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM pluggy_investimento_movimentos').fetchone()[0], 1)
+
     def test_aporte_repetido_pela_api_nao_vira_prejuizo(self):
         """Dois BUY iguais no mesmo dia e saldo de um só: a conta não fecha."""
         self.item('btg', 'BTG')

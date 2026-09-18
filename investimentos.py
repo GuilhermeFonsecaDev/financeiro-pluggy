@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS pluggy_investimento_movimentos (
     ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS pluggy_investimento_movimentos_excluidos (
+  investimento_id TEXT NOT NULL,
+  movimento_id TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  excluido_em TEXT NOT NULL,
+  registro_json TEXT NOT NULL,
+  PRIMARY KEY (investimento_id, movimento_id)
+);
+
 CREATE TABLE IF NOT EXISTS pluggy_investimento_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   investimento_chave TEXT NOT NULL,
@@ -122,6 +131,36 @@ def garantir_tabelas(conn=None) -> None:
     with fin.connect() as banco:
         banco.executescript(SCHEMA)
         banco.commit()
+
+
+def excluir_movimento(investimento_chave: str, movimento_id: str, motivo: str) -> None:
+    """Exclusão local explícita; preserva auditoria e impede reimportação por ID."""
+    if not motivo.strip():
+        raise ValueError("Informe o motivo da exclusão.")
+    with _trava:
+        garantir_tabelas()
+        fin.create_database_backup("excluir_movimento_investimento", min_interval_seconds=0)
+        with fin.connect() as conn:
+            linha = conn.execute(
+                "SELECT m.*, i.investimento_id FROM pluggy_investimento_movimentos m "
+                "JOIN pluggy_investimentos i ON i.investimento_chave=m.investimento_chave "
+                "WHERE m.investimento_chave=? AND m.movimento_id=?",
+                (investimento_chave, movimento_id),
+            ).fetchone()
+            if linha is None:
+                raise ValueError("Movimento não encontrado.")
+            conn.execute(
+                "INSERT INTO pluggy_investimento_movimentos_excluidos "
+                "VALUES (?,?,?,?,?) ON CONFLICT(investimento_id,movimento_id) DO NOTHING",
+                (linha["investimento_id"], movimento_id, motivo.strip(),
+                 datetime.now().isoformat(timespec="seconds"), json.dumps(dict(linha), ensure_ascii=False)),
+            )
+            # O mesmo investimento pode ter cópias de uma reconexão.
+            conn.execute(
+                "DELETE FROM pluggy_investimento_movimentos WHERE movimento_id=? AND investimento_chave IN "
+                "(SELECT investimento_chave FROM pluggy_investimentos WHERE investimento_id=?)",
+                (movimento_id, linha["investimento_id"]),
+            )
 
 
 def _listar(api_key: str, caminho: str, parametros: dict[str, Any]) -> list[dict[str, Any]]:
@@ -256,9 +295,13 @@ def sincronizar(item_ids: list[str] | None = None) -> dict[str, Any]:
                     falhas.append(f"{inv_id[:8]} movimentos: {exc}")
                     continue
                 with fin.connect() as conn:
+                    excluidos = {r[0] for r in conn.execute(
+                        "SELECT movimento_id FROM pluggy_investimento_movimentos_excluidos WHERE investimento_id=?",
+                        (inv_id,),
+                    )}
                     for mov in movimentos:
                         mov_id = _texto(mov.get("id"))
-                        if not mov_id:
+                        if not mov_id or mov_id in excluidos:
                             continue
                         mov_chave = f"{chave}:{mov_id}"
                         conn.execute(

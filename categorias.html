@@ -101,6 +101,10 @@
 
   <div class="filtros-barra" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
     <button id="btnFiltros" data-abre-pop>⚙ Filtros</button>
+    <!-- O mês sai do popover: é o filtro que se troca o tempo todo, e enterrá-lo
+         atrás de "Filtros → Aplicar" custava três cliques para uma escolha que
+         é a principal da tela. -->
+    <input id="fMes" type="month" aria-label="Mês" />
     <span id="resumoFiltro" class="muted" style="font-size:12.5px"></span>
     <label class="check" style="margin-left:auto"><input type="checkbox" id="chkTodas" /> Mostrar sem gasto</label>
     <span id="totalGeral" hidden></span>
@@ -119,7 +123,6 @@
 <div class="pop" id="popFiltros" hidden style="min-width:250px">
   <div class="pop-rotulo">Filtrar por</div>
   <div style="display:grid;gap:9px;padding:5px 8px 8px">
-    <label class="campo"><span>Mês</span><select id="fMes"></select></label>
     <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
     <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
   </div>
@@ -291,7 +294,7 @@ async function carregar() {
   const conta = CONTAS.find(c => c.id === filtros.account)?.nome;
   const cartao = CARTOES.find(c => c.id === filtros.card)?.nome;
   document.getElementById("resumoFiltro").textContent =
-    [filtros.month ? labelMes(filtros.month) : "Todos os meses", conta, cartao].filter(Boolean).join(" · ");
+    [conta, cartao].filter(Boolean).join(" · ");
   setEstado("estado", `${p.categorias.filter(c => c.total > 0).length} categorias com gasto`, "ok");
 }
 
@@ -522,10 +525,6 @@ async function carregarFiltros() {
   CONTAS = p.contas || [];
   CARTOES = p.cartoes || [];
   MES_ATUAL = p.mesAtual || "";
-  const meses = p.meses.includes(MES_ATUAL) || !MES_ATUAL ? p.meses : [MES_ATUAL, ...p.meses];
-  document.getElementById("fMes").innerHTML =
-    ['<option value="">Todos os meses</option>']
-      .concat(meses.map(m => `<option value="${m}">${labelMes(m)}</option>`)).join("");
   document.getElementById("fConta").innerHTML =
     ['<option value="">Todas as contas</option>']
       .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
@@ -536,13 +535,11 @@ async function carregarFiltros() {
 
 function ligar() {
   document.getElementById("btnFiltros").addEventListener("click", e => {
-    document.getElementById("fMes").value = filtros.month;
     document.getElementById("fConta").value = filtros.account;
     document.getElementById("fCartao").value = filtros.card;
     abrirPop(document.getElementById("popFiltros"), e.currentTarget);
   });
   document.getElementById("fAplicar").addEventListener("click", () => {
-    filtros.month = document.getElementById("fMes").value;
     filtros.account = document.getElementById("fConta").value;
     filtros.card = document.getElementById("fCartao").value;
     salvarUltimoMes(filtros.month);
@@ -551,9 +548,18 @@ function ligar() {
   });
   document.getElementById("fLimpar").addEventListener("click", () => {
     filtros = { month: MES_ATUAL, account: "", card: "" };
+    document.getElementById("fMes").value = filtros.month;
     salvarUltimoMes(filtros.month);
     fecharPop();
     carregar().catch(e => setEstado("estado", e.message, "erro"));
+  });
+
+  // Sem "Aplicar": trocar o mês já é a intenção inteira, e um segundo clique
+  // para confirmar seria cerimônia.
+  document.getElementById("fMes").addEventListener("change", e => {
+    filtros.month = e.target.value;
+    salvarUltimoMes(filtros.month);
+    carregar().catch(err => setEstado("estado", err.message, "erro"));
   });
 
   document.getElementById("chkTodas").addEventListener("change", () =>
@@ -646,6 +652,7 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("categorias.html");
+  campoMesTodos();
   observarIdentidadeCartoes(async () => { await carregarFiltros(); await carregar(); });
   ligar();
   try {
@@ -653,6 +660,7 @@ function ligar() {
     await carregarCatalogoEmojis();
     await carregarFiltros();
     filtros.month = ultimoMesSalvo() || MES_ATUAL;
+    document.getElementById("fMes").value = filtros.month;
     salvarUltimoMes(filtros.month);
     await carregar();
   } catch (e) {

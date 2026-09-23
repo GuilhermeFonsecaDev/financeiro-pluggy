@@ -34,6 +34,14 @@
   --sombra-pop: 0 12px 32px rgba(0, 0, 0, .42);
 
   --nav-w: 260px;
+
+  /* O calendario de input[type=month|date], o menu de <select> e o autofill
+     sao desenhados pelo navegador, e nenhum CSS nosso chega neles. O que
+     chega e esta declaracao: sem ela o Chrome assume tema claro e abre uma
+     caixa branca no meio de uma tela escura. `accent-color` acerta o resto,
+     que e o azul da selecao -- o do sistema nao e o nosso. */
+  color-scheme: dark;
+  accent-color: var(--azul);
 }
 
 * { box-sizing: border-box; }
@@ -104,6 +112,9 @@ button, .btn {
   font: inherit;
   font-size: 14px;
   font-weight: 550;
+  /* .btn tambem veste <a>: sem isto o link herda o sublinhado do navegador e
+     o botao fica com um traco que nenhum <button> tem. */
+  text-decoration: none;
   cursor: pointer;
   transition: background .12s ease, border-color .12s ease;
 }
@@ -261,7 +272,9 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
 
 .pop {
   position: fixed;
-  z-index: 200;
+  /* Acima da modal (300): um popover sempre pertence à frente do que o abriu,
+     e dentro de uma modal ele abria por trás. */
+  z-index: 400;
   min-width: 230px;
   padding: 5px;
   border: 1px solid var(--line-forte);
@@ -452,3 +465,70 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
   .grid-3,
   .grid-4 { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------- seletor de mês */
+/* O calendário nativo de input[type=month] é desenhado pelo navegador e
+   nenhum CSS chega nele: caixa clara, azul do sistema, cantos do sistema.
+   Este é o mesmo controle, feito com as peças do projeto -- o input continua
+   no DOM guardando o valor, e só a interface é nossa. */
+/* Numa barra, o campo tem a largura do que escreve e o ícone fica colado no
+   texto. Largura travada no pior caso ("Novembro 2026", 108px) abria um vão
+   de 40px em "Abril 2026" -- e o vão era mais visível que o deslocamento que
+   ele evitava, porque trocar de mês recarrega a tela inteira de qualquer
+   jeito. */
+.mes-campo {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-variant-numeric: tabular-nums;
+}
+/* Dentro de um formulário é o contrário: o campo ocupa a coluna inteira,
+   como os outros, e aí o ícone vai para a borda -- é onde ele está em todo
+   select ao lado. */
+.campo .mes-campo { width: 100%; justify-content: space-between; }
+.mes-campo .mes-icone { color: var(--text-3); flex: none; }
+.mes-campo:hover .mes-icone { color: var(--text-2); }
+/* Sem mês escolhido muda só a cor do texto: mesma caixa, mesma altura,
+   mesma largura. Um campo que encolhe ou incha conforme o conteúdo faz a
+   barra de filtros inteira dançar. */
+.mes-campo.sem-mes { color: var(--text-3); font-weight: 500; }
+/* Lado a lado com o controle segmentado, o campo copia a altura e a
+   tipografia dele: o segmentado mede 42px (2 de padding + botão de 36 + 2) e
+   escreve em 13px, contra 36/14px do botão comum -- cinco pixels e um ponto
+   de diferença entre duas caixas vizinhas leem como desalinho.
+
+   Duas regras porque a ordem varia entre as telas e CSS não tem "irmão
+   anterior": `~` cobre o campo depois do segmentado, e `:has(~ ...)` o campo
+   antes dele. Irmão geral e não adjacente porque o botão nasce depois do
+   input original, que continua no DOM guardando o valor. */
+.segmentado ~ .mes-campo,
+.mes-campo:has(~ .segmentado) { min-height: 42px; font-size: 13px; }
+.mes-campo[aria-expanded="true"] { border-color: var(--azul); }
+
+.pop-mes { min-width: 268px; padding: 0; }
+.pop-ano {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 8px 8px 10px; border-bottom: 1px solid var(--line);
+}
+.pop-ano strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+/* Botões só de ícone: quadrados, para os dois lados do ano ficarem simétricos
+   e a seta cair no centro. */
+.pop-ano button { min-height: 30px; width: 30px; padding: 0; justify-content: center;
+                  border-radius: 8px; font-size: 13px; }
+.pop-meses { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px; }
+.pop-meses button {
+  min-height: 34px; justify-content: center; padding: 0;
+  border-color: transparent; background: transparent; color: var(--text-2);
+  font-size: 12.5px; text-transform: capitalize;
+}
+.pop-meses button:hover { background: var(--surface-3); color: var(--text); }
+/* Mês escolhido em azul cheio; mês corrente só contornado. Os dois precisam
+   ser distinguíveis quando são o mesmo mês, daí um ser fundo e o outro borda. */
+.pop-meses button.escolhido { background: var(--azul); border-color: var(--azul);
+                              color: #fff; font-weight: 650; }
+.pop-meses button.hoje { border-color: var(--line-forte); }
+.pop-meses button.escolhido.hoje { border-color: #fff; }
+.pop-mes .pop-rodape { margin: 0; padding: 7px 8px; }
+.pop-mes .pop-rodape button { min-height: 28px; padding: 4px 10px; font-size: 12px;
+                              border-color: transparent; background: transparent;
+                              color: var(--text-2); }
+.pop-mes .pop-rodape button:hover { background: var(--surface-3); color: var(--text); }
+.pop-mes .pop-rodape button.acento { color: var(--azul); }

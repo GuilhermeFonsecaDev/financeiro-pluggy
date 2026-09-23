@@ -237,7 +237,7 @@
       <button class="ativo" data-filtro-mov="todos">Todas</button>
       <button data-filtro-mov="BUY">Aportes</button>
       <button data-filtro-mov="SELL">Resgates</button>
-      <select id="filtroPeriodo" aria-label="Filtrar por mês e ano"><option value="todos">Todos os meses</option></select>
+      <input id="filtroPeriodo" type="month" aria-label="Filtrar por mês" />
     </div>
     <div class="tabela-wrap tabela-scroll-10"><table>
       <thead><tr><th>Data</th><th>Movimento</th><th>Descrição</th><th class="num">Valor</th><th>Instituição / conta</th><th>Origem</th></tr></thead>
@@ -612,9 +612,7 @@ function render() {
 
   const maxMes=Math.max(1,...D.meses.map(m=>Math.max(m.aplicacoes,m.resgates)));
   el("meses").innerHTML=[...D.meses].reverse().map(m=>`<tr><td>${labelMes(m.mes)}</td><td class="num positivo">${fmtBRL(m.aplicacoes)}</td><td class="num negativo">${fmtBRL(m.resgates)}</td><td class="num ${m.liquido>=0?'ganho':'perda'}">${fmtBRL(m.liquido)}</td><td class="num">${m.quantidade}</td><td><div class="barra-mes"><div class="barra-trilho"><div class="barra-fill" style="width:${Math.max(2,Math.max(m.aplicacoes,m.resgates)/maxMes*100)}%"></div></div></div></td></tr>`).join("");
-  const periodos=[...new Set(D.movimentos.map(m=>String(m.data).slice(0,7)).filter(Boolean))].sort().reverse();
-  el("filtroPeriodo").innerHTML=`<option value="todos">Todos os meses</option>${periodos.map(p=>`<option value="${esc(p)}">${labelMes(p)}</option>`).join("")}`;
-  el("filtroPeriodo").value=filtroPeriodo;
+  el("filtroPeriodo").value = filtroPeriodo === "todos" ? "" : filtroPeriodo;
   renderMovimentos();
   renderGraficos();
   setEstado("estado", !servidorAtualizado ? "Reinicie o backend para carregar a atualização" : r.coletadoEm ? `posição coletada em ${new Date(r.coletadoEm).toLocaleString('pt-BR')}` : 'Aguardando posições das instituições conectadas', servidorAtualizado ? "ok" : "erro");
@@ -627,7 +625,7 @@ el("filtrosMovimentos").addEventListener("click",e=>{
   el("filtrosMovimentos").querySelectorAll("button").forEach(b=>b.classList.toggle("ativo",b===botao));
   renderMovimentos();
 });
-el("filtroPeriodo").addEventListener("change",e=>{ filtroPeriodo=e.target.value; renderMovimentos(); });
+el("filtroPeriodo").addEventListener("change",e=>{ filtroPeriodo=e.target.value||"todos"; renderMovimentos(); });
 el("btnAtualizar").addEventListener("click",async e=>{ e.currentTarget.disabled=true; try{ await pedir('/pluggy-sync','POST',{}); setEstado('estado','atualização iniciada; a tela continua disponível','ok'); }catch(err){setEstado('estado',err.message,'erro');}finally{e.currentTarget.disabled=false;} });
 /* ------------------------------------------------- identificar fundo */
 
@@ -872,7 +870,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !el("modalFundos").hidden) el("modalFundos").hidden = true;
 });
 
-montarNav("investimentos.html"); carregar();
+montarNav("investimentos.html"); campoMesTodos(); carregar();
 let resizeGrafico;
 window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) renderGraficos(); },120); });
 </script>

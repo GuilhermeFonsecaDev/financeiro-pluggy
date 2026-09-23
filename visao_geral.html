@@ -856,6 +856,7 @@ async function recarregar() {
 
 (async function iniciar() {
   montarNav("visao_geral.html");
+  campoMesTodos();   // troca o calendário nativo pelo do projeto
   observarIdentidadeCartoes(recarregar);
   ligarHoverLinha("grafCartao");
   ligarHoverLinha("grafInvest");

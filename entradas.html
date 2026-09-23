@@ -290,6 +290,7 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("entradas.html");
+  campoMesTodos();   // troca o calendário nativo pelo do projeto
   ligar();
   el("mes").value = mesAtual();
   try { await recarregar(); }

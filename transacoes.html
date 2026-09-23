@@ -287,8 +287,10 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
         <option value="custom">Escolher meses…</option>
       </select></label>
     <div id="fPeriodoCustom" style="display:none;grid-template-columns:1fr 1fr;gap:9px">
-      <label class="campo"><span>De</span><select id="fMesDe"></select></label>
-      <label class="campo"><span>Até</span><select id="fMesAte"></select></label>
+      <label class="campo"><span>De</span>
+        <input id="fMesDe" type="month" data-mes-obrigatorio="1" aria-label="Mês inicial" /></label>
+      <label class="campo"><span>Até</span>
+        <input id="fMesAte" type="month" data-mes-obrigatorio="1" aria-label="Mês final" /></label>
     </div>
     <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
     <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
@@ -328,16 +330,6 @@ let EMOJI_CATALOGO = [], EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
 let TRANSACOES = new Map();
 let offset = 0, buscaTimer = null, requisicao = 0;
 let txAberta = null;   // id da transação cujo popover de categoria está aberto
-function completarAteFimDoAno(meses, referencia) {
-  const todos = new Set(Array.isArray(meses) ? meses : []);
-  const ano = String(referencia || "").slice(0, 4);
-  if (/^\d{4}$/.test(ano)) {
-    for (let numero = 1; numero <= 12; numero += 1) {
-      todos.add(`${ano}-${String(numero).padStart(2, "0")}`);
-    }
-  }
-  return [...todos].sort().reverse();
-}
 
 /* ---------------------------------------------------------------- período */
 
@@ -500,7 +492,7 @@ function linha(tx) {
       <td class="data" style="width:62px">${fmtData(tx.data)}</td>
       <td class="desc">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
       <td style="width:1%">${chipCategoria(tx)}</td>
-      <td class="conta-tag" style="width:1%" title="${esc(tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal || "")}">${esc(tx.nomeExibicao || tx.contaNome)}</td>
+      <td class="conta-tag" style="width:1%" title="${esc([tx.nomeExibicao || tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.nomeExibicao || tx.contaNome)}</td>
       <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
       <td style="width:34px">${acoes}</td>
     </tr>`;
@@ -522,21 +514,11 @@ function nomeMesCard(mesRef, anoCorrente) {
   return ano === String(anoCorrente) ? nome.replace(` ${ano}`, "") : nome.replace(` ${ano}`, ` '${ano.slice(2)}`);
 }
 
-/** Garante que todo mês da série exista nos seletores De/Até, preservando a
- *  escolha atual. Ordem decrescente, igual ao resto da tela. */
-function garantirMesesNosSelects(serie = []) {
-  const doSelect = [...document.getElementById("fMesDe").options].map(o => o.value);
-  const todos = new Set([...doSelect, ...serie.map(i => i.mes)]);
-  if (todos.size === doSelect.length) return;
-  const ordenados = [...todos].filter(Boolean).sort().reverse();
-  const html = ordenados.map(m => `<option value="${m}">${labelMes(m)}</option>`).join("");
-  for (const id of ["fMesDe", "fMesAte"]) {
-    const sel = document.getElementById(id);
-    const valor = sel.value;
-    sel.innerHTML = html;
-    if (valor) sel.value = valor;
-  }
-}
+/* `garantirMesesNosSelects` deixou de existir: De/Até viraram seletores de
+   mês próprios, que alcançam qualquer mês do calendário. A função existia só
+   para acrescentar à lista de <option> um mês que a série trouxesse e o
+   seletor ainda não tivesse -- problema que uma lista fixa tem e um
+   calendário não. */
 
 /** Setas só existem quando há o que rolar, e cada uma só quando há para onde
  *  ir naquela direção. */
@@ -714,10 +696,6 @@ async function carregar({ mais = false } = {}) {
 
   renderMetricas(p.resumo, p.evolucaoMensal);
   renderCategorias(p.porCategoria);
-  // A série pode passar do ano corrente (parcelamento longo projeta fatura em
-  // 2027). Os seletores De/Até vêm de /extrato/filtros, que só conhece o que
-  // está no banco -- sem isso, um mês visível na tira não seria filtrável.
-  garantirMesesNosSelects(p.evolucaoMensal);
   renderFiltrosAtivos();
 
   const n = corpo.querySelectorAll("tr").length;
@@ -973,12 +951,6 @@ function aplicarFiltros(p) {
   CONTAS_EDICAO = p.instrumentos || p.contasEdicao || [];
   MES_ATUAL = p.mesAtual || "";
 
-  const meses = completarAteFimDoAno(p.meses, MES_ATUAL);
-  const opcoesMes = meses.map(m => `<option value="${m}">${labelMes(m)}</option>`).join("");
-  // Sem opção vazia: o "De"/"Até" só aparece no modo personalizado, e ali um
-  // dos dois em branco viraria intervalo aberto sem o usuário pedir.
-  document.getElementById("fMesDe").innerHTML = opcoesMes;
-  document.getElementById("fMesAte").innerHTML = opcoesMes;
   document.getElementById("fConta").innerHTML =
     ['<option value="">Todas as contas</option>']
       .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
@@ -1320,6 +1292,7 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("transacoes.html");
+  campoMesTodos();   // De/Até do período usam o seletor do projeto
   observarIdentidadeCartoes(async () => { await carregarFiltros(); await carregar(); });
   ligar();
   try {

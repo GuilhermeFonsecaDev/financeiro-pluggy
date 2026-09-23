@@ -35,6 +35,7 @@ from extrato_camada import (
     definir_entrada_ativa,
     definir_valor_esperado_entradas,
     entradas_payload,
+    serie_entradas_por_regra,
     regras_payload,
     remover_categoria,
     remover_regra_entrada,
@@ -228,6 +229,13 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(regras_payload())
             elif path == "/api/extrato/entradas":
                 self.send_json(entradas_payload(self.query_mes(query)))
+            elif path == "/api/extrato/entradas/serie":
+                try:
+                    meses = int(query.get("meses", ["12"])[0])
+                except (TypeError, ValueError):
+                    raise ValueError("Parâmetro meses inválido.")
+                self.send_json(serie_entradas_por_regra(
+                    meses, (query.get("ate", [""])[0] or "").strip()))
             elif path == "/api/extrato/categoria-transacoes":
                 filtros = self.query_extrato(query)
                 categoria = (query.get("category", [""])[0] or "").strip()

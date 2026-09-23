@@ -37,8 +37,18 @@ Três crivos, em OU, do mais específico para o mais amplo (`_casa`):
    incluídas. É o que faz "qualquer posto que eu abastecer" funcionar sem
    cadastrar um posto por vez, inclusive um que ainda não existe no histórico.
 
-Sempre no **mesmo pagamento**: a reserva pertence a um cartão ou conta, para
-que cada fatura preveja o que é dela. Um cadastro precisa de pelo menos um dos
+**Escopo.** Um cadastro de identificação ou termo vale num pagamento só:
+Netflix é uma cobrança num cartão específico. Já um cadastro de **categoria
+pura** (sem texto nenhum a casar) soma **todos os pagamentos** -- "quanto eu
+gasto de comida por mês" é um fato sobre a pessoa, não sobre um cartão. Nesse
+caso o pagamento escolhido diz apenas em qual fatura a previsão entra.
+
+Base e consumo vêm sempre da MESMA fonte. Se a base somasse todos os cartões e
+o consumo olhasse um só, gastar no outro não abateria nada e a reserva nunca
+fecharia.
+
+A régua é a **competência**, não o mês da compra: no cartão a compra cai na
+fatura do mês seguinte, e é nessa fatura que ela precisa ser prevista. Um cadastro precisa de pelo menos um dos
 três; uma reserva de categoria pode não ter estabelecimento nenhum.
 
 **O mais específico ganha.** Um lançamento que outro cadastro ativo já
@@ -50,9 +60,51 @@ do posto da esquina somariam o mesmo abastecimento duas vezes.
 quantos meses, com um exemplo por estabelecimento e a média dos três ciclos.
 Um termo de três letras pode pegar meio extrato sem a pessoa perceber.
 
-Cada compra que casa abate o previsto do ciclo; o que sobra é
-`base − lançado`, e a base é a média dos três últimos ciclos com gasto (ou o
-valor fixo, se `modoValor` for `fixo`).
+O valor só é **pedido** no modo "valor definido". Nos outros dois ele é
+derivado do histórico que os crivos casam no momento do salvamento -- pedir um
+"valor inicial" a quem escolheu "último valor cobrado" é pedir justamente o
+número que o app existe para descobrir. Derivar só pode melhorar a estimativa:
+sem base no histórico, o que já se sabia continua valendo, e trocar o pagamento
+de um cadastro não faz esquecer o preço dele.
+
+O **ciclo ainda aberto fica fora** dessa média: ele está incompleto, e usá-lo
+como base é circular -- a base viraria "o que já gastei neste ciclo" e o
+restante a prever seria sempre zero.
+
+A base é a média dos últimos N ciclos **com gasto** (`janelaMedia`: 3, 6 ou
+12) ou o valor fixo, conforme `modoValor`. Ciclo sem gasto nenhum não entra na
+média: costuma ser mês sem importação ou anterior ao cadastro, e puxaria o
+número para baixo por um motivo que não é o comportamento da pessoa. A média
+vale para os dois comportamentos -- conta de luz é cobrança única e varia todo
+mês.
+
+**Quanto ainda se prevê.** Dois limites honestos, e vale o menor:
+
+1. o que falta do orçamento, `base − lançado`;
+2. o que ainda cabe no tempo que sobra, `base × fração restante do ciclo`.
+
+Sem o segundo, faltando dois dias para fechar a fatura a tela previa um mês
+inteiro de mercado -- uma compra que não caberia no tempo que resta. O rateio
+é opcional (`rateioProporcional`, ligado por padrão): ele só faz sentido em
+gasto ESPALHADO pelo ciclo. Um abastecimento por mês é um evento -- acontece
+inteiro ou não acontece --, e ao promover uma descoberta o padrão vem do
+próprio histórico: menos de duas compras por mês nasce sem rateio. No começo
+do ciclo a fração é ~1 e sobra o saldo inteiro, como antes. A fração sai da janela real do ciclo (`pluggy_ciclos`) no cartão e do mês
+corrido na conta. Ciclo que ainda não começou vale 1. **Cartão sem ciclo
+conhecido** -- recém-conectado, nenhuma fatura fechada -- usa o mês anterior à
+competência: não é premissa nova, é a mesma que a competência já assume nesse
+caso (compra de hoje cai na fatura do mês seguinte), e sem ela o rateio ficava
+inerte justamente no cartão novo.
+
+**Reserva consumida continua na tela.** Gasta por inteiro, ela não projeta
+nada -- não há o que prever --, mas sumir faz parecer que o cadastro se
+perdeu. `consumidas()` devolve as reservas ativas já esgotadas na competência,
+e a tela as mostra apagadas, com valor zero. Soma zero: o gasto delas já está
+dentro de "já lançado".
+
+**Reserva não tem dia.** `diaTipico` é gravado como 1 e o campo some do
+formulário: uma reserva é o orçamento do ciclo inteiro, consumido aos poucos.
+Pedir um dia seria pedir um dado que não existe.
 
 ## Descoberta por categoria
 
@@ -102,8 +154,13 @@ mercado, Netflix, Livelo. Parcela e valor já lançado são fato conhecido -- el
 compõem o total da fatura e aparecem na tela de Cartões, mas não se decide nada
 sobre eles aqui. Por isso o card de cada mês mostra:
 
-1. **Previsto aqui** -- a soma das recorrências e reservas daquele mês, com um
-   item por linha. Reserva mostra quanto dela já foi consumido.
+1. **Previsto aqui** -- a soma das recorrências e reservas daquele mês,
+   separada em **Reserva do mês** e **Lançamentos únicos**: misturadas, a
+   lista não dizia qual número se comporta de que jeito. A reserva mostra a
+   barra de consumo, que fica cheia e laranja quando o orçamento acaba.
+   Cartão sem nada previsto não ganha um card só para dizer "R$ 0,00": ele vai
+   para uma linha de resumo no pé, que é onde a informação dele ainda serve --
+   quanto de gasto novo costuma entrar e quantas descobertas esperam.
 2. **Sem previsão** -- o gasto novo típico (abaixo) e quantos gastos repetidos
    daquele cartão ainda não viraram previsão, com atalho para Descobertas.
 3. **Contexto**, uma linha discreta no pé: o total da fatura prevista, quanto

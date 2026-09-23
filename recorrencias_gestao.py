@@ -8,7 +8,7 @@ import re
 import statistics
 import uuid
 from calendar import monthrange
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import ciclos
 import extrato_camada as cam
@@ -28,6 +28,11 @@ COMPORTAMENTOS = ("cobranca", "reserva")
 
 # Um termo curto casa com qualquer coisa ("ar" dentro de "farmacia"). Três
 # letras é o mínimo que ainda distingue algo.
+# Quantos ciclos entram na média. Três pega o hábito recente; doze atravessa
+# o ano inteiro e dilui sazonalidade (escola em fevereiro, viagem em julho).
+JANELAS_MEDIA = (3, 6, 12)
+JANELA_MEDIA_PADRAO = 3
+
 TERMO_MINIMO = 3
 TERMOS_MAXIMO = 12
 
@@ -52,6 +57,14 @@ def _descendentes(conn, categoria_id):
             break
         familia |= novos
     return familia
+
+
+def janela_de(s):
+    try:
+        janela = int(s.get("janelaMedia") or JANELA_MEDIA_PADRAO)
+    except (TypeError, ValueError):
+        return JANELA_MEDIA_PADRAO
+    return janela if janela in JANELAS_MEDIA else JANELA_MEDIA_PADRAO
 
 
 def termos_de(s):
@@ -109,7 +122,7 @@ def _normalizar(conn, dados, anterior=None):
     anterior = anterior or {}
     s = {**anterior, **{k: dados[k] for k in (
         "descricao", "lojista", "contaId", "valorPrevisto", "modoValor", "diaTipico",
-        "comportamento", "termos", "categoriaId",
+        "comportamento", "termos", "categoriaId", "janelaMedia", "rateioProporcional",
     ) if k in dados}}
     _aplicar_comportamento(s, comportamento_de(s))
     s["descricao"] = str(s.get("descricao") or "").strip()
@@ -137,26 +150,46 @@ def _normalizar(conn, dados, anterior=None):
     if not conta or cid not in px.contas_ativas(conn):
         raise ValueError("Escolha uma conta ou cartão ativo para o pagamento.")
     s["contaId"], s["noCartao"] = cid, conta["subtipo"] == "CREDIT_CARD"
-    try:
-        valor = float(s.get("valorPrevisto", s.get("valorUltimo", 0)))
-    except (ValueError, TypeError):
-        raise ValueError("Informe um valor previsto maior que zero.") from None
-    if not math.isfinite(valor) or round(valor, 2) <= 0:
-        raise ValueError("Informe um valor previsto maior que zero.")
-    s["valorPrevisto"] = round(valor, 2)
     modo = s.get("modoValor", "ultimo")
     if modo not in ("ultimo", "fixo", "media"):
         raise ValueError("Escolha último valor cobrado, valor definido ou média dos ciclos.")
-    # "media" já foi exclusiva de hábito. Ela é uma forma de estimar o valor,
-    # não um comportamento: conta de luz é cobrança única e varia todo mês.
     s["modoValor"] = modo
-    try:
-        dia = float(s.get("diaTipico") or 0)
-        if not math.isfinite(dia) or not dia.is_integer() or not 1 <= dia <= 31:
-            raise ValueError
-    except (ValueError, TypeError):
-        raise ValueError("Informe um dia da cobrança entre 1 e 31.") from None
-    s["diaTipico"] = int(dia)
+    s["janelaMedia"] = janela_de(s)
+    # Valor informado é validado como sempre. Valor OMITIDO é derivado do
+    # histórico que os crivos casam -- a tela deixou de pedir um "valor
+    # inicial" a quem escolheu "último valor cobrado" ou "média", porque era
+    # pedir justamente o número que o app existe para descobrir. Quem precisa
+    # fixar um número usa "valor definido", e a API continua aceitando um.
+    if "valorPrevisto" in dados or modo == "fixo":
+        try:
+            valor = float(dados.get("valorPrevisto", s.get("valorPrevisto", 0)))
+        except (ValueError, TypeError):
+            raise ValueError("Informe um valor previsto maior que zero.") from None
+        if not math.isfinite(valor) or round(valor, 2) <= 0:
+            raise ValueError("Informe um valor previsto maior que zero.")
+    else:
+        # Derivar só pode MELHORAR a estimativa. Sem base no histórico, o que
+        # já se sabia continua valendo -- trocar o pagamento de um cadastro
+        # não é motivo para esquecer o preço dele.
+        valor = (_valor_do_historico(conn, s, modo)
+                 or float(anterior.get("valorPrevisto") or 0)
+                 or float(s.get("valorUltimo") or 0))
+    s["valorPrevisto"] = round(valor, 2)
+    # Só faz sentido ratear gasto ESPALHADO pelo ciclo. Um abastecimento por
+    # mês é um evento: ou acontece inteiro, ou não acontece.
+    s["rateioProporcional"] = bool(s.get("rateioProporcional", True))
+    if comportamento_de(s) == "reserva":
+        # Reserva não tem dia: ela é o orçamento do ciclo inteiro, consumido
+        # aos poucos. Pedir um dia seria pedir um dado que não existe.
+        s["diaTipico"] = 1
+    else:
+        try:
+            dia = float(s.get("diaTipico") or 0)
+            if not math.isfinite(dia) or not dia.is_integer() or not 1 <= dia <= 31:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError("Informe um dia da cobrança entre 1 e 31.") from None
+        s["diaTipico"] = int(dia)
     if anterior and s["lojista"] and s["lojista"] != anterior.get("lojista"):
         # Faixa inferida pertence ao estabelecimento anterior.
         s["faixaValor"] = None
@@ -165,6 +198,42 @@ def _normalizar(conn, dados, anterior=None):
     s.setdefault("transacaoBaseId", "")
     s.setdefault("faixaValor", None)
     return s
+
+
+def _competencia_corrente(conn, s):
+    """A competência do ciclo que está aberto agora."""
+    hoje = datetime.now().date().isoformat()
+    if not s.get("noCartao"):
+        return hoje[:7]
+    # Cartão sem ciclo conhecido cai no mês seguinte, como faz `_calendario` e
+    # o último degrau de `ciclos.expressao_competencia`: a compra de hoje entra
+    # na fatura que vence no mês que vem, não na do mês corrente.
+    return ciclos.competencia_de(conn, s["contaId"], hoje) or rec._recuar(hoje[:7], -1)
+
+
+def _valor_do_historico(conn, s, modo):
+    """Último valor cobrado, ou a média da janela, conforme o modo.
+
+    Roda no salvamento para o cadastro nascer com um número em vez de um
+    palpite digitado. Sem histórico devolve 0: honesto, e a projeção
+    simplesmente não emite nada até a primeira cobrança aparecer.
+    """
+    try:
+        reais = _reais(conn, s)
+    except Exception:
+        return 0.0
+    hoje = datetime.now().date().isoformat()
+    passados = [r for r in reais if str(r["data"])[:10] <= hoje]
+    if not passados:
+        return 0.0
+    if modo == "media":
+        # O ciclo AINDA ABERTO fica fora: ele está incompleto, e usá-lo como
+        # base é circular -- a base viraria "o que já gastei neste ciclo", e o
+        # restante a prever seria sempre zero.
+        return _media_dos_ciclos(
+            s, _totais_por_competencia(conn, s, passados),
+            _competencia_corrente(conn, s)) or 0.0
+    return abs(float(passados[0]["valor"] or 0))
 
 
 def _verificar_duplicata(conn, s):
@@ -247,6 +316,10 @@ def projetar_habito(chave):
                 "valorPrevisto": habito["mediaMensal"],
                 "valorUltimo": habito["ultimaCobranca"]["valor"],
                 "modoValor": "media", "diaTipico": 1,
+                # Gasto espalhado (mais de uma compra por mês) rateia; gasto
+                # de evento, como um abastecimento mensal, não.
+                "rateioProporcional": (habito.get("quantidadeCompras") or 0)
+                                      >= 2 * max(1, habito.get("mesesAtivos") or 1),
                 "transacaoBaseId": "", "faixaValor": None,
             }
             _gravar(conn, s)
@@ -335,6 +408,8 @@ def testar(dados):
             "lojista": rec._chave(str(dados.get("lojista") or "")),
             "termos": dados.get("termos") or [],
             "categoriaId": str(dados.get("categoriaId") or "") or None,
+            "janelaMedia": dados.get("janelaMedia"),
+            "modoValor": "media",
         }
         if not s["contaId"]:
             raise ValueError("Escolha a conta ou o cartão do pagamento.")
@@ -344,14 +419,15 @@ def testar(dados):
         totais = _totais_por_competencia(conn, {**s, "noCartao": bool(
             conn.execute("SELECT 1 FROM pluggy_contas WHERE conta_id=? AND subtipo='CREDIT_CARD'",
                          (s["contaId"],)).fetchone())}, passados)
-        com_gasto = sorted((v for v in totais.values() if v > 0), reverse=True)
+        com_gasto = [v for v in totais.values() if v > 0]
         por_criterio = collections.Counter(r.get("criterio") for r in passados)
         return {
             "lancamentos": len(passados),
             "meses": len([v for v in totais.values() if v > 0]),
             "porCriterio": dict(por_criterio),
-            # Mesma base que a reserva vai usar: média dos 3 ciclos com gasto.
-            "mediaCiclos": round(sum(com_gasto[:3]) / len(com_gasto[:3]), 2) if com_gasto else 0.0,
+            # Mesma conta que o cadastro vai fazer, com a mesma janela.
+            "mediaCiclos": _media_dos_ciclos(s, totais) or 0.0,
+            "janelaMedia": janela_de(s),
             # Um exemplo por estabelecimento: repetir o mesmo nome três vezes
             # não mostra a abrangência do termo, que é a dúvida de quem lê.
             "exemplos": _exemplos(passados),
@@ -456,13 +532,17 @@ def _reservados_por_outros(conn, s):
     esquina somariam o mesmo abastecimento nos dois, e a previsão da fatura
     ficaria com o dobro da gasolina. O mais específico ganha.
     """
+    amplo = por_categoria(s)
     outros = []
     for linha in conn.execute(
             "SELECT chave, dados FROM recorrentes_previsoes WHERE ativo=1"):
         if linha["chave"] == s.get("chave"):
             continue
         outro = json.loads(linha["dados"])
-        if outro.get("contaId") != s["contaId"]:
+        # Escopo amplo enxerga todos os pagamentos, então um cadastro
+        # específico de qualquer cartão pode reivindicar a linha; escopo de um
+        # cartão só disputa com os cadastros daquele cartão.
+        if not amplo and outro.get("contaId") != s["contaId"]:
             continue
         termos = termos_de(outro)
         if outro.get("lojista") or termos:
@@ -470,16 +550,30 @@ def _reservados_por_outros(conn, s):
     if not outros:
         return set()
 
+    contas = sorted(px.contas_ativas(conn)) if amplo else [s["contaId"]]
+    marcadores = ", ".join("?" for _ in contas) or "NULL"
     reservados = set()
     for linha in conn.execute(
-        "SELECT transacao_id,descricao,categoria_id FROM extrato_efetivo_cache "
-        "WHERE conta_id=? AND tipo='DEBIT' AND incluida=1", (s["contaId"],)
+        "SELECT transacao_id,conta_id,descricao,categoria_id FROM extrato_efetivo_cache "
+        f"WHERE conta_id IN ({marcadores}) AND tipo='DEBIT' AND incluida=1", contas
     ):
         for outro, termos in outros:
+            if outro["contaId"] != linha["conta_id"]:
+                continue
             if _casa(outro, linha, termos, set()):
                 reservados.add(linha["transacao_id"])
                 break
     return reservados
+
+
+def por_categoria(s):
+    """O cadastro é de uma categoria inteira, sem texto nenhum a casar?
+
+    Só nesse caso o escopo é a pessoa, não o cartão: "quanto eu gasto de
+    comida por mês" é um fato sobre mim. Netflix, ao contrário, é uma cobrança
+    num cartão específico.
+    """
+    return bool(s.get("categoriaId")) and not s.get("lojista") and not termos_de(s)
 
 
 def _reais(conn, s, criterios=False):
@@ -488,12 +582,23 @@ def _reais(conn, s, criterios=False):
     familia = _descendentes(conn, s.get("categoriaId"))
     reservados = _reservados_por_outros(conn, s) if familia else set()
 
+    # Cadastro de categoria olha TODOS os pagamentos: a média de comida do mês
+    # é a soma dos cartões, e o consumo tem de vir da mesma fonte -- se a base
+    # somasse tudo mas o consumo só um cartão, gastar no outro não abateria
+    # nada e a reserva nunca fecharia.
+    if por_categoria(s):
+        onde, parametros = "conta_id IN ({})".format(
+            ", ".join("?" for _ in px.contas_ativas(conn)) or "NULL"
+        ), tuple(sorted(px.contas_ativas(conn)))
+    else:
+        onde, parametros = "conta_id=?", (s["contaId"],)
+
     saida = []
     for linha in conn.execute(
-        "SELECT transacao_id,descricao,valor,data,competencia_fatura,categoria_id "
-        "FROM extrato_efetivo_cache "
-        "WHERE conta_id=? AND tipo='DEBIT' AND incluida=1 AND COALESCE(parcela_total,1)<=1 "
-        "ORDER BY data DESC, transacao_id", (s["contaId"],)
+        "SELECT transacao_id,conta_id,descricao,valor,data,competencia_fatura,categoria_id "
+        f"FROM extrato_efetivo_cache "
+        f"WHERE {onde} AND tipo='DEBIT' AND incluida=1 AND COALESCE(parcela_total,1)<=1 "
+        "ORDER BY data DESC, transacao_id", parametros
     ):
         criterio = _casa(s, linha, termos, familia)
         if not criterio:
@@ -515,12 +620,25 @@ def _reais(conn, s, criterios=False):
 
 
 def _competencia_real(conn, s, real):
+    """Em que competência este lançamento caiu.
+
+    Num cadastro de categoria as linhas vêm de vários pagamentos, então a
+    pergunta é feita sobre a conta DA LINHA, não a do cadastro: uma compra no
+    cartão A cai no ciclo do cartão A.
+    """
     competencia = str(real.get("competencia_fatura") or "")[:7]
-    if s.get("noCartao") and len(competencia) == 7:
+    if len(competencia) == 7:
         return competencia
-    if s.get("noCartao"):
-        return ciclos.competencia_de(conn, s["contaId"], real["data"]) or str(real["data"])[:7]
+    conta = real["conta_id"] if por_categoria(s) and "conta_id" in real.keys()         else s["contaId"]
+    if _e_cartao(conn, conta):
+        return ciclos.competencia_de(conn, conta, real["data"]) or str(real["data"])[:7]
     return str(real["data"])[:7]
+
+
+def _e_cartao(conn, conta_id):
+    linha = conn.execute(
+        "SELECT subtipo FROM pluggy_contas WHERE conta_id=?", (conta_id,)).fetchone()
+    return bool(linha) and linha["subtipo"] == "CREDIT_CARD"
 
 
 def _totais_por_competencia(conn, s, reais):
@@ -534,12 +652,27 @@ def _totais_por_competencia(conn, s, reais):
     return {competencia: round(valor, 2) for competencia, valor in totais.items()}
 
 
-def _base_habito(s, totais, competencia):
-    """Média dos três últimos ciclos com gasto anteriores à competência."""
+def _media_dos_ciclos(s, totais, competencia=None):
+    """Média dos últimos N ciclos COMPLETOS com gasto.
+
+    `competencia` é o limite: entram só os ciclos ANTERIORES a ela. Quem chama
+    passa sempre o ciclo aberto, nunca o mês que está sendo projetado -- senão
+    a previsão de novembro usaria outubro, que ainda está pela metade, e sairia
+    baixa por um motivo que não é o comportamento da pessoa.
+
+    Ciclo sem gasto nenhum também fica fora: costuma ser mês sem importação ou
+    anterior ao cadastro.
+    """
     anteriores = [valor for mes, valor in sorted(totais.items(), reverse=True)
-                  if mes < competencia and valor > 0][:3]
-    if s.get("modoValor") == "media" and anteriores:
-        return round(statistics.mean(anteriores), 2)
+                  if (competencia is None or mes < competencia) and valor > 0]
+    anteriores = anteriores[:janela_de(s)]
+    return round(statistics.mean(anteriores), 2) if anteriores else None
+
+
+def _base_habito(s, totais, competencia):
+    media = _media_dos_ciclos(s, totais, competencia)
+    if s.get("modoValor") == "media" and media is not None:
+        return media
     return round(float(s.get("valorPrevisto") or 0), 2)
 
 
@@ -578,18 +711,69 @@ def _calendario(conn, s):
     return datas
 
 
-def _valor(s, reais, limite=None):
+def _valor(s, reais, limite=None, totais=None, competencia=None):
+    """Quanto prever para uma COBRANÇA ÚNICA, conforme o modo de valor.
+
+    "media" existia só para reserva e era aceita aqui sem fazer nada -- caía
+    silenciosamente no valor fixo. Ela é útil na cobrança também: conta de luz
+    e água variam demais para "último valor" e continuam sendo uma cobrança
+    por ciclo.
+    """
     base = next((r for r in reais if limite is None or r["data"][:10] <= limite), None)
+    modo = s.get("modoValor", "ultimo")
     valor = s.get("valorPrevisto", s.get("valorUltimo", 0))
-    if s.get("modoValor", "ultimo") == "ultimo" and base:
+    if modo == "ultimo" and base:
         valor = abs(float(base["valor"]))
+    elif modo == "media" and totais is not None:
+        media = _media_dos_ciclos(s, totais, competencia)
+        if media is not None:
+            valor = media
     return round(float(valor), 2), base
+
+
+def _fracao_restante(conn, s, competencia, hoje):
+    """Quanto do ciclo ainda falta, de 0 a 1.
+
+    Uma reserva é o gasto de um ciclo INTEIRO. Faltando dois dias para
+    fechar, prever o mês inteiro de mercado é prever uma compra que não vai
+    caber no tempo que sobra. Ciclo que ainda nem começou devolve 1.
+    """
+    janela = competencia
+    if s.get("noCartao"):
+        linha = conn.execute(
+            "SELECT inicio, fim FROM pluggy_ciclos WHERE conta_id=? AND competencia=?",
+            (s["contaId"], competencia)).fetchone()
+        if linha:
+            inicio, fim = str(linha["inicio"])[:10], str(linha["fim"])[:10]
+            janela = ""
+        else:
+            # Cartão sem ciclo conhecido (recém-conectado, nenhuma fatura
+            # fechada). A competência já assume, nesse caso, que a compra cai
+            # na fatura do mês SEGUINTE -- então o ciclo é o mês anterior à
+            # competência. Não é premissa nova: é a mesma que já está em uso
+            # em `_calendario` e no último degrau de `ciclos`.
+            janela = rec._recuar(competencia, 1)
+    if janela:
+        ano, mes = int(janela[:4]), int(janela[5:7])
+        inicio = f"{janela}-01"
+        fim = (date(ano, mes, monthrange(ano, mes)[1]) + timedelta(days=1)).isoformat()
+    try:
+        inicio, fim, agora = (date.fromisoformat(x) for x in (inicio, fim, hoje))
+    except ValueError:
+        return 1.0
+    dias = (fim - inicio).days
+    if dias <= 0:
+        return 1.0
+    restantes = (fim - max(agora, inicio)).days
+    return max(0.0, min(1.0, restantes / dias))
 
 
 def _projetados_habito(conn, s, ano, fechadas):
     reais = _reais(conn, s)
     totais = _totais_por_competencia(conn, s, reais)
-    base_real = next((real for real in reais if str(real["data"])[:10] <= datetime.now().date().isoformat()), None)
+    hoje = datetime.now().date().isoformat()
+    corrente = _competencia_corrente(conn, s)
+    base_real = next((real for real in reais if str(real["data"])[:10] <= hoje), None)
     resultado = []
     for competencia, data in _calendario(conn, s).items():
         if int(competencia[:4]) != ano:
@@ -599,9 +783,17 @@ def _projetados_habito(conn, s, ano, fechadas):
             continue
         if _fixas_cobrem(conn, s, competencia):
             continue
-        valor_base = _base_habito(s, totais, competencia)
+        # A base sai sempre dos ciclos já fechados, não dos anteriores ao mês
+        # projetado: o ciclo corrente está incompleto.
+        valor_base = _base_habito(s, totais, corrente)
         valor_lancado = totais.get(competencia, 0)
-        restante = round(max(0, valor_base - valor_lancado), 2)
+        fracao = (_fracao_restante(conn, s, competencia, hoje)
+                  if s.get("rateioProporcional", True) else 1.0)
+        # Dois limites honestos, e vale o menor: o que falta do orçamento, e o
+        # que ainda cabe no tempo que sobra do ciclo. No começo do ciclo a
+        # fração é ~1 e sobra o saldo inteiro, como antes; no fim, quase nada.
+        saldo = max(0.0, valor_base - valor_lancado)
+        restante = round(min(saldo, valor_base * fracao), 2)
         if restante <= 0:
             continue
         resultado.append({
@@ -610,10 +802,62 @@ def _projetados_habito(conn, s, ano, fechadas):
             "compraId": "recorrente:" + s["chave"],
             "descricao": s["descricao"], "valor": restante,
             "valorBase": valor_base, "valorLancado": valor_lancado,
+            "modoValor": s.get("modoValor", "ultimo"),
+            "fracaoRestante": round(fracao, 3),
             "tipoPrevisao": "habito", "parcelaAtual": None, "parcelaTotal": None,
             "recorrente": True, "noCartao": s["noCartao"],
         })
     return resultado
+
+
+def cobradas(conn, competencia, contas):
+    """Cobranças ativas já lançadas no ciclo, apenas para exibição."""
+    if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='recorrentes_previsoes'").fetchone():
+        return []
+    saida = []
+    for linha in conn.execute(
+            "SELECT chave,dados FROM recorrentes_previsoes WHERE ativo=1 ORDER BY chave"):
+        s = json.loads(linha["dados"])
+        s["chave"] = linha["chave"]
+        if s["contaId"] not in contas or comportamento_de(s) != "cobranca":
+            continue
+        s["noCartao"] = _e_cartao(conn, s["contaId"])
+        lancado = _totais_por_competencia(conn, s, _reais(conn, s)).get(competencia, 0)
+        if lancado > 0:
+            saida.append({"chave": s["chave"], "descricao": s["descricao"],
+                          "valorLancado": round(lancado, 2)})
+    return saida
+
+
+def consumidas(conn, competencia, contas):
+    """Reservas ATIVAS que já foram gastas por inteiro nesta competência.
+
+    Elas não entram na projeção -- não há nada a prever -- mas desaparecer da
+    tela faz parecer que o cadastro foi perdido. Aqui é informação de exibição
+    e soma zero: o gasto delas já está em "já lançado".
+    """
+    if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='recorrentes_previsoes'").fetchone():
+        return []
+    subtipos = {r[0]: r[1] for r in conn.execute("SELECT conta_id,subtipo FROM pluggy_contas")}
+    saida = []
+    for linha in conn.execute(
+            "SELECT chave,dados FROM recorrentes_previsoes WHERE ativo=1 ORDER BY chave"):
+        s = json.loads(linha["dados"])
+        s["chave"] = linha["chave"]
+        if s["contaId"] not in contas or comportamento_de(s) != "reserva":
+            continue
+        s["noCartao"] = subtipos.get(s["contaId"]) == "CREDIT_CARD"
+        reais = _reais(conn, s)
+        totais = _totais_por_competencia(conn, s, reais)
+        base = _base_habito(s, totais, _competencia_corrente(conn, s))
+        lancado = totais.get(competencia, 0)
+        if base <= 0 or lancado < base:
+            continue
+        saida.append({"chave": s["chave"], "descricao": s["descricao"],
+                      "valorBase": base, "valorLancado": round(lancado, 2)})
+    return saida
 
 
 def projetados(conn, ano):
@@ -651,6 +895,7 @@ def _projetar_cadastro(conn, s, ano, fechadas):
     # Cobrança única: a competência que já teve a cobrança real não recebe
     # previsão nenhuma -- o real substitui o previsto, não o consome.
     meses_reais = {r["competencia_fatura"] if s["noCartao"] else r["data"][:7] for r in reais}
+    totais = _totais_por_competencia(conn, s, reais) if s.get("modoValor") == "media" else None
     resultado = []
     for competencia, data in _calendario(conn, s).items():
         if int(competencia[:4]) != ano or competencia in meses_reais:
@@ -659,7 +904,7 @@ def _projetar_cadastro(conn, s, ano, fechadas):
             continue
         if _fixas_cobrem(conn, s, competencia):
             continue
-        valor, base = _valor(s, reais, data)
+        valor, base = _valor(s, reais, data, totais, _competencia_corrente(conn, s))
         resultado.append({
             "mes": int(competencia[5:]), "data": data, "contaId": s["contaId"],
             "transacaoBaseId": base["transacao_id"] if base else s.get("transacaoBaseId", ""),
@@ -703,11 +948,14 @@ def previsoes_payload(linhas):
             hoje = atual + datetime.now().strftime("-%d")
             s["comportamento"] = comportamento_de(s)
             s["termos"] = termos_de(s)
+            s["janelaMedia"] = janela_de(s)
+            s["rateioProporcional"] = bool(s.get("rateioProporcional", True))
             s["categoriaNome"] = (categorias_nomes.get(s.get("categoriaId")) or "") if s.get("categoriaId") else ""
             if s["comportamento"] == "reserva":
                 totais = _totais_por_competencia(conn, s, reais)
                 proxima = futuras.get(s["chave"])
-                valor = (proxima or {}).get("valorBase") or _base_habito(s, totais, atual)
+                valor = ((proxima or {}).get("valorBase")
+                         or _base_habito(s, totais, _competencia_corrente(conn, s)))
                 base = next((r for r in reais if str(r["data"])[:10] <= hoje), None)
             else:
                 valor, base = _valor(s, reais, hoje)

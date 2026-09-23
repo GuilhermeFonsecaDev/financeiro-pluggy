@@ -22,6 +22,7 @@ import re
 import sqlite3
 import threading
 import unicodedata
+from datetime import date
 from functools import lru_cache
 
 import banco as fin
@@ -413,16 +414,35 @@ _CASA = f"""
   ){_FAIXA_VALOR}
 """
 
-_ENTRADA_CASA = """
+def entrada_casa(descricao: str, data: str) -> str:
+    """Condicao SQL de uma regra de entrada casar com um lancamento.
+
+    Recebe as EXPRESSOES de descricao e data porque a mesma regra e avaliada em
+    dois contextos: sobre `pluggy_transacoes` com os ajustes ao lado (onde vale
+    o COALESCE com o valor manual) e sobre `extrato_efetivo_cache`, onde o
+    ajuste ja foi aplicado e a coluna e direta. Uma funcao so para nao existir
+    a mesma regra escrita de dois jeitos que possam divergir.
+    """
+    return f"""
   e.ativo = 1 AND (
     CASE e.operador
-      WHEN 'igual'      THEN norm(COALESCE(a.descricao_manual, t.descricao)) = norm(e.termo)
-      WHEN 'comeca_com' THEN norm(COALESCE(a.descricao_manual, t.descricao)) LIKE norm(e.termo) || '%'
-      ELSE                   norm(COALESCE(a.descricao_manual, t.descricao)) LIKE '%' || norm(e.termo) || '%'
+      WHEN 'igual'      THEN norm({descricao}) = norm(e.termo)
+      WHEN 'comeca_com' THEN norm({descricao}) LIKE norm(e.termo) || '%'
+      ELSE                   norm({descricao}) LIKE '%' || norm(e.termo) || '%'
     END
-  ) AND CAST(SUBSTR(COALESCE(a.data_manual, t.data), 9, 2) AS INTEGER)
+  ) AND CAST(SUBSTR({data}, 9, 2) AS INTEGER)
         BETWEEN e.dia_inicio AND e.dia_fim
 """
+
+
+_ENTRADA_CASA = entrada_casa(
+    "COALESCE(a.descricao_manual, t.descricao)", "COALESCE(a.data_manual, t.data)")
+
+# Desempate entre regras que casam com o mesmo credito: a primeira criada
+# ganha. Esta ordem decide a competencia da entrada, entao qualquer consulta
+# que atribua um credito a UMA regra tem de repeti-la -- senao o mesmo credito
+# aparece em duas e a soma por regra deixa de bater com o total da tela.
+ORDEM_REGRAS_ENTRADA = "e.criado_em, e.id"
 
 # Pagamento da fatura chega como CREDIT no extrato do cartao. Ele quita a
 # fatura, nao e gasto dela nem compra que pertenca a um ciclo -- por isso fica
@@ -464,7 +484,7 @@ _COMPETENCIA_ENTRADA = f"""
     ))
    FROM extrato_regras_entradas e
    WHERE {_ENTRADA_CASA}
-   ORDER BY e.criado_em, e.id LIMIT 1)
+   ORDER BY {ORDEM_REGRAS_ENTRADA} LIMIT 1)
 """
 
 # A view resolve categoria efetiva e participacao nos calculos para cada
@@ -1155,6 +1175,97 @@ def definir_valor_esperado_entradas(dados: dict) -> dict:
         )
         conn.commit()
     return {"ok": True, "valor": valor}
+
+
+def serie_entradas_por_regra(meses: int = 12, ate: str = "") -> dict:
+    """Quanto cada regra de entrada trouxe, mes a mes, nos ultimos `meses`.
+
+    Existe para o simulador poder partir da media de CADA fonte de receita, e
+    nao de um total agregado -- e assim dar para perguntar "e se uma delas
+    cair?".
+
+    Um credito pode casar com mais de uma regra. A camada atribui sempre a
+    PRIMEIRA por `criado_em, id` (ver `_COMPETENCIA_ENTRADA`), e e essa regra
+    que define a competencia. Aqui a mesma ordem e repetida: sem ela o mesmo
+    credito entraria em duas linhas e a soma por regra nao bateria com o total
+    da tela de Entradas.
+
+    O denominador da media e o numero de meses COBERTOS pelo extrato na
+    janela, igual para todas as regras -- nao o numero de meses em que aquela
+    regra apareceu. A diferenca importa: uma fonte que entrou em 4 dos 12
+    meses, dividida pelos proprios 4, daria a media "quando ela vem"; num mes
+    simulado isso afirmaria que ela vem sempre. Somando as regras assim, as
+    receitas do mes dobravam. Mes sem aquela entrada e um zero legitimo.
+
+    O que fica de fora do denominador e o mes que o extrato nem cobre (antes
+    da primeira importacao), que seria dado ausente e nao receita zero.
+    """
+    meses = max(1, min(36, int(meses or 12)))
+    with _abrir() as conn:
+        garantir_extrato_materializado(conn)
+        fim = str(ate or "")[:7]
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", fim):
+            fim = date.today().strftime("%Y-%m")
+        ano, mes_numero = int(fim[:4]), int(fim[5:7])
+        janela = []
+        for passo in range(meses - 1, -1, -1):
+            total_meses = ano * 12 + (mes_numero - 1) - passo
+            janela.append(f"{total_meses // 12:04d}-{total_meses % 12 + 1:02d}")
+        inicio = janela[0]
+
+        regras = [
+            {"id": l["id"], "nome": l["nome"], "valores": {}}
+            for l in conn.execute(
+                f"SELECT id, nome FROM extrato_regras_entradas "
+                f"WHERE ativo = 1 ORDER BY {ORDEM_REGRAS_ENTRADA.replace('e.', '')}")
+        ]
+        por_id = {r["id"]: r for r in regras}
+
+        # A regra vencedora vem da mesma subconsulta de _COMPETENCIA_ENTRADA,
+        # so que devolvendo o id em vez da competencia.
+        casa = entrada_casa("t.descricao", "t.data")
+        for linha in conn.execute(
+            f"""
+            SELECT (SELECT e.id FROM extrato_regras_entradas e
+                     WHERE {casa}
+                     ORDER BY {ORDEM_REGRAS_ENTRADA} LIMIT 1) AS regra_id,
+                   t.competencia_entrada AS competencia,
+                   SUM(ABS(t.valor)) AS total
+              FROM extrato_efetivo_cache t
+             WHERE t.tipo = 'CREDIT' AND t.entrada_considerada = 1
+               AND t.competencia_entrada BETWEEN ? AND ?
+               AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
+                                WHERE x.transacao_id = t.transacao_id)
+             GROUP BY regra_id, competencia
+            """,
+            (inicio, fim),
+        ):
+            regra = por_id.get(linha["regra_id"])
+            if regra is not None:
+                regra["valores"][linha["competencia"]] = round(float(linha["total"] or 0), 2)
+
+    total: dict[str, float] = {}
+    for regra in regras:
+        for competencia, valor in regra["valores"].items():
+            total[competencia] = round(total.get(competencia, 0.0) + valor, 2)
+
+    # Mes coberto = mes em que ALGUMA entrada apareceu. E a melhor evidencia
+    # disponivel de que o extrato alcanca aquele mes.
+    cobertos = [m for m in janela if total.get(m)]
+
+    def resumir(valores: dict) -> dict:
+        soma = sum(valores.get(m, 0.0) for m in cobertos)
+        return {
+            "valores": valores,
+            "mesesComDado": sum(1 for m in cobertos if valores.get(m)),
+            "media": round(soma / len(cobertos), 2) if cobertos else 0.0,
+        }
+
+    for regra in regras:
+        regra.update(resumir(regra["valores"]))
+
+    return {"meses": janela, "mesesCobertos": len(cobertos),
+            "regras": regras, "total": resumir(total)}
 
 
 def entradas_payload(mes: str) -> dict:

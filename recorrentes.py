@@ -852,6 +852,16 @@ def excluir_previsao(chave: str) -> dict[str, Any]:
     return excluir(chave)
 
 
+def cobradas(conn: sqlite3.Connection, competencia: str, contas) -> list[dict]:
+    from recorrencias_gestao import cobradas as calcular
+    return calcular(conn, competencia, contas)
+
+
+def consumidas(conn: sqlite3.Connection, competencia: str, contas) -> list[dict]:
+    from recorrencias_gestao import consumidas as calcular
+    return calcular(conn, competencia, contas)
+
+
 def projetados(conn: sqlite3.Connection, ano: int) -> list[dict]:
     from recorrencias_gestao import projetados as calcular
     return calcular(conn, ano)

@@ -220,13 +220,19 @@ def _mes_do_cartao(payload, cartao, indice, contas, conn, competencia):
             "valor": round(abs(float(item.get("valor") or 0)), 2),
             "tipo": "reserva" if item.get("tipoPrevisao") == "habito" else "recorrencia",
             "valorBase": item.get("valorBase"),
+            "modoValor": item.get("modoValor"),
             "valorLancado": item.get("valorLancado"),
+            "fracaoRestante": item.get("fracaoRestante"),
             "chave": str(item.get("compraId") or "").removeprefix("recorrente:"),
         }
         # Parcela fica de fora: ela já é certa e já está na tela de Cartões.
         for item in itens if _balde_do_item(item) in PREVISTOS
     ]
     gasto_novo = None if definitivo else _gasto_novo_tipico(conn, contas, dias)
+    # Reserva gasta por inteiro não projeta nada, mas sumir da tela faz
+    # parecer que o cadastro se perdeu. Soma zero: o gasto dela já está
+    # dentro de "já lançado".
+    esgotadas = [] if definitivo else rec.consumidas(conn, competencia, contas)
     return {
         "competencia": competencia,
         "total": total,
@@ -242,6 +248,8 @@ def _mes_do_cartao(payload, cartao, indice, contas, conn, competencia):
         "parcelas": baldes["parcelas"],
         "somaComponentes": round(sum(baldes[c] for c in px.COMPONENTES_SOMADOS), 2),
         "gastoNovo": gasto_novo,
+        "esgotadas": esgotadas,
+        "cobradas": rec.cobradas(conn, competencia, contas),
         "fechamento": fechamento,
         "diasParaFechar": dias,
         "quantidadePrevista": payload["quantidadesPrevistas"].get(

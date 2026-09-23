@@ -201,7 +201,7 @@ tbody tr { cursor:pointer; }
       <div class="painel-tit">
         <div>
           <h2>Mês a mês</h2>
-          <div class="sub">clique num mês para ver a composição · translúcido é projeção</div>
+          <div class="sub">clique num mês para ver a composição · translúcido indica parcelas a lançar</div>
         </div>
       </div>
       <div class="ano-empilhado" id="anoEmpilhado"></div>
@@ -264,19 +264,37 @@ function setStatus(text, kind = "") {
 }
 
 function cartoes() { return dados ? dados.cartoes : []; }
-function valorMes(cartaoId, indice) { return Number(dados?.valores?.[cartaoId]?.[indice] || 0); }
+function valorMes(cartaoId, indice) {
+  const total = Number(dados?.valores?.[cartaoId]?.[indice] || 0);
+  if (agrupamento !== "fatura") return total;
+  const origem = dados?.origens?.[cartaoId]?.[indice];
+  if (["oficial", "pagamento", "confirmada", "fechada"].includes(origem)) return total;
+  const c = dados?.componentes?.[cartaoId]?.[indice];
+  // Mantém lançamentos, parcelas e créditos, inclusive em tags com faturas
+  // mistas. Só retira estimativas de recorrências e reservas de hábitos.
+  return c ? Math.round((total - Number(c.recorrencias || 0)
+    - Number(c.reservaRestante || 0)) * 100) / 100 : total;
+}
 function totalCartao(cartaoId) {
   return Array.from({ length: 12 }, (_, i) => valorMes(cartaoId, i)).reduce((a, b) => a + b, 0);
 }
-function totalMes(indice) { return Number(dados?.totalMes?.[indice] || 0); }
-function origemMes(cartaoId, indice) { return String(dados?.origens?.[cartaoId]?.[indice] || "vazio"); }
+function totalMes(indice) { return cartoes().reduce((s, c) => s + valorMes(c.id, indice), 0); }
+function origemMes(cartaoId, indice) {
+  const origem = String(dados?.origens?.[cartaoId]?.[indice] || "vazio");
+  if (origem === "projecao" || origem === "aberta_projecao") {
+    if (!valorMes(cartaoId, indice)) return "vazio";
+    const parcelas = Number(dados?.componentes?.[cartaoId]?.[indice]?.parcelas || 0);
+    return parcelas > 0 ? origem : "aberta";
+  }
+  return origem;
+}
 
 // Rotulo curto da origem do valor. A origem e a informacao mais rica que a
 // grade tem e que nenhuma tela mostrava: diz se o numero e a fatura oficial,
-// o pagamento que a quitou, uma estimativa do ciclo aberto ou projecao.
+// o pagamento que a quitou, os lançamentos do ciclo aberto ou parcelas a lançar.
 const ROTULO_ORIGEM = {
   oficial: "Oficial", pagamento: "Paga", confirmada: "Confirmada",
-  aberta: "Aberta", aberta_projecao: "Aberta", projecao: "Projeção",
+  aberta: "Aberta", aberta_projecao: "Aberta", projecao: "Parcelas a lançar",
   fechada: "Fechada", movimento: "Movimento", mista: "Mista", vazio: "\u2014",
 };
 function rotuloOrigem(origem) { return ROTULO_ORIGEM[origem] || origem; }
@@ -487,7 +505,7 @@ function renderTable() {
     <tr class="total-row">
       <td>Total ano</td>
       ${lista.map(c => `<td>${fmtBRL(totalCartao(c.id))}</td>`).join("")}
-      <td>${fmtBRL(dados.totalAno)}</td>
+      <td>${fmtBRL(cartoes().reduce((s, c) => s + totalCartao(c.id), 0))}</td>
     </tr>
   `;
 

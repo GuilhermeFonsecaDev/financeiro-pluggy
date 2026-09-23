@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Simular mês</title>
+<link rel="stylesheet" href="tema.css" />
+<!-- A mesma folha de Contas Fixas: esta tela é aquela tela, com tudo
+     editável e nada salvo. Layout diferente aqui seria uma segunda verdade
+     visual sobre o mesmo mês. -->
+<link rel="stylesheet" href="contas_fixas.css" />
+<style>
+/* Só o que é exclusivo da simulação: os campos que lá são texto e aqui
+   precisam ser digitáveis, e a faixa que lembra que nada disto é salvo. */
+
+/* Valor da fatura: mesmo peso visual do número que ele substitui. */
+.fatura-valor input {
+  width: 100%; padding: 0; border: 0; border-bottom: 1px dashed var(--line-forte);
+  border-radius: 0; background: transparent; color: var(--text);
+  font-size: inherit; font-weight: inherit; font-variant-numeric: tabular-nums;
+}
+.fatura-valor input:focus { outline: none; border-bottom-color: var(--azul); }
+.fatura-valor { display: flex; align-items: baseline; gap: 6px; }
+.fatura-valor .moeda { color: var(--text-3); font-size: 13px; font-weight: 500; }
+
+/* Receita dentro da composição, no lugar do número fixo. */
+.composicao-resumo .sim-receita { display: flex; align-items: baseline; gap: 5px; }
+.composicao-resumo .sim-receita input {
+  width: 100%; min-width: 0; padding: 2px 0; border: 0;
+  border-bottom: 1px dashed var(--line-forte); border-radius: 0;
+  background: transparent; color: var(--text); font-size: 15px; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.composicao-resumo .sim-receita input:focus { outline: none; border-bottom-color: var(--azul); }
+.composicao-resumo .sim-receita span { color: var(--text-3); font-size: 12px; }
+
+/* Titulo da secao com o botao que age sobre ela, em vez de um botao solto no
+   alto da pagina sem dizer o que preenche. */
+.sim-secao { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sim-secao .faturas-titulo { margin-bottom: 12px; }
+
+/* Preencher com a média é uma ação de atalho, não um comando de peso: pílula
+   discreta em azul, para não competir com o número que ela preenche nem se
+   confundir com o selo laranja de "previsto" da tela de Contas Fixas. */
+.sim-media {
+  min-height: 0; padding: 4px 11px; border-radius: 999px;
+  border: 1px solid rgba(74, 149, 234, .38); background: rgba(74, 149, 234, .12);
+  color: var(--azul); font-size: 11px; font-weight: 650; cursor: pointer;
+}
+.sim-media:hover { border-color: var(--azul); background: rgba(74, 149, 234, .22); color: var(--azul); }
+.sim-media:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
+
+.sim-habitos { display: flex; align-items: center; gap: 8px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid var(--line); color: var(--text-2);
+  font-size: 12px; cursor: pointer; }
+.sim-habitos input { width: 15px; height: 15px; min-height: 0; accent-color: var(--azul); }
+.sim-nota { margin: 8px 0 0; color: var(--text-3); font-size: 11px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <header class="topo">
+    <div>
+      <h1>Simular mês</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="estado" id="estado">Carregando…</span>
+      <button id="simLimpar" class="sutil">Limpar tudo</button>
+      <a class="btn" href="contas_fixas.html">Voltar</a>
+      <button class="primario" id="simAdicionar">+ Nova conta</button>
+    </div>
+  </header>
+
+
+  <div class="sim-secao">
+    <h2 class="faturas-titulo" id="faturasTitulo">Faturas simuladas</h2>
+    <button class="sim-media" id="simMediaCartoes"
+            title="Preencher os cartões com a média das faturas já fechadas">Usar média</button>
+  </div>
+  <section class="faturas-grid" id="metricas" aria-labelledby="faturasTitulo"></section>
+
+  <section class="contas-composicao" aria-label="Contas simuladas e composição do mês">
+    <div class="contas-coluna">
+      <div class="painel" style="padding:14px 10px 6px">
+        <div class="cabec colunas">
+          <span></span>
+          <span>Item</span>
+          <span class="c col-tag">Tag</span>
+          <span class="c">Valor bruto</span>
+          <span class="c col-desc">Descontos</span>
+          <span class="c">Valor líquido</span>
+          <span class="c">Pago</span>
+          <span class="c col-forma">Pagamento</span>
+          <span></span>
+        </div>
+        <div id="lista"></div>
+        <div id="vazio"></div>
+      </div>
+    </div>
+
+    <aside class="painel composicao" aria-labelledby="composicaoTitulo">
+      <div class="composicao-cabecalho">
+        <h2 id="composicaoTitulo">Composição simulada</h2>
+        <button class="sim-media" id="simMediaReceitas"
+                title="Preencher as receitas com a média dos últimos 12 meses">Usar média</button>
+      </div>
+      <div class="composicao-saldo" id="compSaldoCard"><span>Saldo do mês</span><strong id="compSaldo">R$ 0,00</strong></div>
+      <div class="composicao-resumo">
+        <div><span>Receitas</span>
+          <label class="sim-receita"><span>R$</span>
+            <input id="compReceitasInput" type="text" inputmode="decimal" value="0,00"
+                   aria-label="Receitas simuladas do mês" /></label>
+        </div>
+        <div><span>Despesas</span><strong id="compDespesas">R$ 0,00</strong></div>
+      </div>
+      <div class="composicao-barra" id="compBarra" role="img"><div id="compBarraPreenchimento"></div></div>
+      <div class="composicao-percentuais"><span id="compComprometido"></span><span id="compPercentualSaldo"></span></div>
+      <div class="composicao-detalhes">
+        <h3>Dentro das despesas</h3>
+        <div class="composicao-linha"><span>Cartões</span><strong id="compCartoes">R$ 0,00</strong></div>
+        <div class="composicao-linha"><span>Contas pessoais</span><strong id="compPessoais">R$ 0,00</strong></div>
+        <div class="composicao-linha"><span>Empresa</span><strong id="compEmpresa">R$ 0,00</strong></div>
+      </div>
+      <label class="sim-habitos"><input id="simHabitos" type="checkbox" />
+        <span>Somar hábitos e recorrências</span></label>
+      <p class="sim-nota" id="simNotaHabitos"></p>
+    </aside>
+  </section>
+</main>
+
+<div class="pop" id="popClonar" hidden style="min-width:230px">
+  <div class="pop-lista" id="popClonarLista"></div>
+</div>
+
+<script src="app.js"></script>
+<script src="simulador_mes.js"></script>
+<script src="simulador_tela.js"></script>
+</body>
+</html>

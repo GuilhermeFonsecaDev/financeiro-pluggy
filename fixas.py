@@ -94,6 +94,11 @@ CREATE TABLE IF NOT EXISTS fixas_mes (
   transacao_id TEXT,
   observacao TEXT NOT NULL DEFAULT '',
   forma_pagamento TEXT NOT NULL DEFAULT '',
+  -- Conta apagada SO neste mes. Excluir o cadastro derruba a conta de todos
+  -- os meses, inclusive dos que ja fecharam; muitas vezes o que se quer e
+  -- dizer que ela nao existiu em um mes especifico -- e uma janela desde/ate
+  -- nao sabe falar de um buraco no meio.
+  removida INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (mes_ref, fixa_id)
 );
 
@@ -147,7 +152,8 @@ _COLUNAS_NOVAS = {
                      "ate": "TEXT NOT NULL DEFAULT ''",
                      "forma_pagamento": "TEXT NOT NULL DEFAULT ''",
                      "incluir_calculos": "INTEGER NOT NULL DEFAULT 1"},
-    "fixas_mes": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''"},
+    "fixas_mes": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''",
+                  "removida": "INTEGER NOT NULL DEFAULT 0"},
     # transacao_id: o subdesconto é uma cobrança própria, muitas vezes em
     # outro cartão que a conta-pai. Sem o vínculo dele, ele herdava o "já
     # lançado" do pai -- e um pai sem termo (que nunca casa) deixava todos os
@@ -578,6 +584,10 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             l["fixa_id"]: l
             for l in conn.execute("SELECT * FROM fixas_mes WHERE mes_ref = ?", (mes_ref,))
         }
+        # A exclusao de um mes so apaga a linha deste mes, nao o cadastro: a
+        # conta continua existindo nos outros meses, com o historico intacto.
+        fixas = [f for f in fixas
+                 if not (f["id"] in do_mes and do_mes[f["id"]]["removida"])]
 
         formas_por_conta = _formas_por_conta(conn)
         identidades = cartoes.identidades(conn)
@@ -1125,6 +1135,42 @@ def _meses_entre(de: str, ate: str) -> list[str]:
             for s in range(serial_de, serial_ate + 1)]
 
 
+# Recorte "existe neste mes": nao basta a janela desde/ate, porque a conta pode
+# ter sido apagada de um mes solto. Espera o mes como ultimo parametro.
+_SEM_REMOVIDAS = ("AND NOT EXISTS (SELECT 1 FROM fixas_mes m "
+                  "WHERE m.fixa_id = f.id AND m.mes_ref = ? AND m.removida = 1) ")
+
+
+def remover_do_mes(fixa_id: str, mes_ref: str) -> dict:
+    """Apaga a conta SO de um mes, preservando o cadastro e os outros meses.
+
+    Os subdescontos daquele mes vao junto -- eles sao daquele mes, e sem a
+    conta-pai na tela nao haveria como ve-los ou desfaze-los. O resto do
+    historico fica intacto.
+    """
+    if not re.fullmatch(r"\d{4}-\d{2}", mes_ref or ""):
+        raise ValueError("Mês inválido.")
+    with _abrir() as conn:
+        if not conn.execute("SELECT 1 FROM fixas_contas WHERE id = ?",
+                            (fixa_id,)).fetchone():
+            raise ValueError("Conta fixa não encontrada.")
+        conn.execute("DELETE FROM fixas_descontos WHERE fixa_id = ? AND mes_ref = ?",
+                     (fixa_id, mes_ref))
+        # Zera o ajuste do mes junto da marca: se a conta voltar, ela volta
+        # herdando o cadastro, sem um valor antigo escondido.
+        conn.execute(
+            "INSERT INTO fixas_mes (mes_ref, fixa_id, valor, pago_override, "
+            "  transacao_id, observacao, forma_pagamento, removida) "
+            "VALUES (?, ?, NULL, NULL, NULL, '', '', 1) "
+            "ON CONFLICT(mes_ref, fixa_id) DO UPDATE SET removida = 1, "
+            "  valor = NULL, pago_override = NULL, transacao_id = NULL, "
+            "  observacao = '', forma_pagamento = ''",
+            (mes_ref, fixa_id),
+        )
+        conn.commit()
+    return {"ok": True, "id": fixa_id, "mesRef": mes_ref, "escopo": "mes"}
+
+
 def remover(fixa_id: str) -> dict:
     """Remove o cadastro e o histórico dele (fixas_mes e descontos, via cascade).
 
@@ -1161,18 +1207,19 @@ def clonar_mes(origem: str, destino: str) -> dict:
 
     with _abrir() as conn:
         existentes = conn.execute(
-            "SELECT COUNT(*) FROM fixas_contas WHERE ativo = 1 "
-            "AND (desde = '' OR desde <= ?) AND (ate = '' OR ate >= ?)",
-            (destino, destino),
+            "SELECT COUNT(*) FROM fixas_contas f WHERE f.ativo = 1 "
+            "AND (f.desde = '' OR f.desde <= ?) AND (f.ate = '' OR f.ate >= ?) "
+            + _SEM_REMOVIDAS,
+            (destino, destino, destino),
         ).fetchone()[0]
         if existentes:
             raise ValueError("O mês de destino já possui contas fixas.")
 
         contas = conn.execute(
-            "SELECT * FROM fixas_contas WHERE ativo = 1 "
-            "AND (desde = '' OR desde <= ?) AND (ate = '' OR ate >= ?) "
-            "ORDER BY ordem, nome",
-            (origem, origem),
+            "SELECT f.* FROM fixas_contas f WHERE f.ativo = 1 "
+            "AND (f.desde = '' OR f.desde <= ?) AND (f.ate = '' OR f.ate >= ?) "
+            + _SEM_REMOVIDAS + " ORDER BY f.ordem, f.nome",
+            (origem, origem, origem),
         ).fetchall()
         if not contas:
             raise ValueError("O mês anterior também não possui contas fixas.")
@@ -1269,8 +1316,10 @@ def ajustar_mes(mes_ref: str, fixa_id: str, dados: dict) -> dict:
         vazio = (valor is None and pago is None and not transacao
                  and not forma and not observacao)
         if vazio:
-            conn.execute("DELETE FROM fixas_mes WHERE mes_ref = ? AND fixa_id = ?",
-                         (mes_ref, fixa_id))
+            # removida = 0 no WHERE: a linha "vazia" de um mes excluido nao e
+            # lixo, e a propria marca de exclusao.
+            conn.execute("DELETE FROM fixas_mes WHERE mes_ref = ? AND fixa_id = ? "
+                         "AND removida = 0", (mes_ref, fixa_id))
         else:
             conn.execute(
                 "INSERT INTO fixas_mes (mes_ref, fixa_id, valor, pago_override, "

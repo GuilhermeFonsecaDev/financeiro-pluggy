@@ -492,7 +492,7 @@ function linha(tx) {
       <td class="data" style="width:62px">${fmtData(tx.data)}</td>
       <td class="desc">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
       <td style="width:1%">${chipCategoria(tx)}</td>
-      <td class="conta-tag" style="width:1%" title="${esc([tx.nomeExibicao || tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.nomeExibicao || tx.contaNome)}</td>
+      <td class="conta-tag" style="width:1%" title="${esc([tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.rotuloInstrumento || tx.nomeExibicao || tx.contaNome)}</td>
       <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
       <td style="width:34px">${acoes}</td>
     </tr>`;

@@ -36,6 +36,156 @@ DESCRICAO_SUBTIPO = {
     "CREDIT_CARD": "Cartão",
 }
 
+# Código COMPE -> nome do banco. É o número que abre o transferNumber
+# ("208/0001/...") e o que o sistema bancário usa para identificar o banco --
+# um dado público, e mais confiável que qualquer palpite pelo nome da conta.
+BANCOS_POR_CODIGO = {
+    "001": "Banco do Brasil", "033": "Santander", "077": "Inter", "104": "Caixa",
+    "208": "BTG Pactual", "212": "Banco Original", "237": "Bradesco",
+    "260": "Nubank", "290": "PagBank", "323": "Mercado Pago", "336": "C6 Bank",
+    "341": "Itaú", "380": "PicPay", "422": "Safra", "655": "Neon",
+    "748": "Sicredi", "756": "Sicoob", "102": "XP",
+}
+
+# Nomes que o banco manda sem dizer quem é. Pelo Open Finance isso é comum:
+# o mesmo BTG que chamava a conta de "BTG Banking" num consentimento passou a
+# chamar de "Conta Corrente" no seguinte.
+_NOMES_GENERICOS = {"conta", "conta corrente", "conta poupanca", "poupanca",
+                    "conta de pagamento", "conta pagamento", "conta digital"}
+
+
+def nome_da_conta(linha) -> str:
+    """O nome de uma conta bancária como a tela deve mostrar.
+
+    Nome específico fica como veio: "BTG Investimentos" e "BTG Banking" dizem
+    o que são, e trocar os dois pelo nome do banco apagaria a diferença entre
+    eles. Só o genérico vira o nome do banco -- e só quando o código diz qual
+    é; sem isso, inventar um nome seria pior do que o genérico.
+    """
+    nome = str(linha["nome"] or "Conta")
+    generico = re.sub(r"[^a-z ]", " ", cam.normalizar(nome))
+    if " ".join(generico.split()) not in _NOMES_GENERICOS:
+        return nome
+    banco = BANCOS_POR_CODIGO.get(codigo_do_banco(linha["raw_json"]))
+    if not banco:
+        return nome
+    return f"{banco} Poupança" if linha["subtipo"] == "SAVINGS_ACCOUNT" else banco
+
+
+def codigo_do_banco(raw_json) -> str:
+    """O código COMPE ("208") de uma conta bancária, ou "" se não houver."""
+    try:
+        transferencia = str((json.loads(raw_json or "{}").get("bankData") or {})
+                            .get("transferNumber") or "")
+    except (ValueError, TypeError, AttributeError):
+        return ""
+    codigo = re.split(r"\D", transferencia.strip(), maxsplit=1)[0]
+    return codigo.zfill(3) if codigo else ""
+
+
+# Como o método aparece no rótulo. OTHER cobre débito automático, tarifa,
+# aplicação e resgate -- nada disso é PIX, e chamar de PIX seria mentir.
+_ROTULO_METODO = {"PIX": "PIX", "BOLETO": "Boleto", "TED": "TED", "DOC": "DOC",
+                  "TEF": "Transferência"}
+
+
+def tags_por_banco(conn, identidades: dict[str, dict]) -> dict[str, str]:
+    """Código do banco -> tag que o usuário deu aos cartões desse banco.
+
+    O rótulo "BTG - PIX" tem de usar o mesmo nome que "BTG - 0088", e esse
+    nome é a tag, escrita como o usuário escreveu. A conta bancária não sabe
+    a tag -- mas divide conexão com o cartão, e a conexão diz qual código de
+    banco corresponde a qual tag. Vale para toda conta com aquele código,
+    inclusive de uma conexão nova que ainda não trouxe cartão.
+
+    Código ligado a duas tags diferentes fica de fora: escolher uma seria
+    adivinhar.
+    """
+    tags_do_item: dict[str, set[str]] = {}
+    for ident in identidades.values():
+        if ident.get("tag"):
+            tags_do_item.setdefault(ident["itemId"], set()).add(ident["tag"])
+    candidatos: dict[str, set[str]] = {}
+    for linha in conn.execute(
+            "SELECT item_id, raw_json FROM pluggy_contas WHERE subtipo <> 'CREDIT_CARD'"):
+        codigo = codigo_do_banco(linha["raw_json"])
+        tags = tags_do_item.get(linha["item_id"], set())
+        if codigo and len(tags) == 1:
+            candidatos.setdefault(codigo, set()).update(tags)
+    return {codigo: next(iter(tags)) for codigo, tags in candidatos.items() if len(tags) == 1}
+
+
+def bancos_por_item(conn, identidades: dict[str, dict]) -> dict[str, dict[str, str]]:
+    """Conexão -> banco a que ela pertence: {"chave", "nome", "codigo"}.
+
+    Um banco pode ter várias conexões (o BTG chegou a ter três depois de uma
+    reconexão), e nada no app agrupava por banco. A chave é o código COMPE das
+    contas bancárias da conexão, que não depende do nome que o banco resolve
+    mandar. Conexão só com cartão não tem código -- cartão não traz número de
+    transferência --, então o código vem pela tag, no caminho inverso de
+    `tags_por_banco`.
+
+    Conexão sem conta nem cartão (uma que o banco esvaziou) fica num grupo
+    próprio, "Sem dados": some da vista dos bancos, mas continua podendo ser
+    arquivada.
+    """
+    tag_do_codigo = tags_por_banco(conn, identidades)
+    codigos_da_tag: dict[str, set[str]] = {}
+    for codigo, tag in tag_do_codigo.items():
+        codigos_da_tag.setdefault(tag, set()).add(codigo)
+
+    codigos: dict[str, set[str]] = {}
+    nomes: dict[str, list[str]] = {}
+    for linha in conn.execute(
+            "SELECT item_id, subtipo, nome, raw_json FROM pluggy_contas WHERE subtipo <> 'CREDIT_CARD'"):
+        codigo = codigo_do_banco(linha["raw_json"])
+        if codigo:
+            codigos.setdefault(linha["item_id"], set()).add(codigo)
+        nomes.setdefault(linha["item_id"], []).append(nome_da_conta(linha))
+    tags: dict[str, set[str]] = {}
+    for ident in identidades.values():
+        if ident.get("tag"):
+            tags.setdefault(ident["itemId"], set()).add(ident["tag"])
+    com_cartao = {ident["itemId"] for ident in identidades.values()}
+
+    bancos = {}
+    for (item_id,) in conn.execute("SELECT item_id FROM pluggy_itens"):
+        do_item = codigos.get(item_id, set())
+        tag = next(iter(tags[item_id])) if len(tags.get(item_id, ())) == 1 else ""
+        codigo = next(iter(do_item)) if len(do_item) == 1 else ""
+        if not codigo and tag and len(codigos_da_tag.get(tag, ())) == 1:
+            codigo = next(iter(codigos_da_tag[tag]))
+        if codigo:
+            nome = tag_do_codigo.get(codigo) or tag or BANCOS_POR_CODIGO.get(codigo)                 or (nomes.get(item_id) or [f"Banco {codigo}"])[0]
+            bancos[item_id] = {"chave": f"cod:{codigo}", "nome": nome, "codigo": codigo}
+        elif tag:
+            bancos[item_id] = {"chave": f"tag:{cam.normalizar(tag)}", "nome": tag, "codigo": ""}
+        elif item_id in nomes or item_id in com_cartao:
+            # Conta sem código conhecido: ainda é um banco, só não sabemos qual.
+            nome = (nomes.get(item_id) or ["Instituição"])[0]
+            bancos[item_id] = {"chave": f"item:{item_id}", "nome": nome, "codigo": ""}
+        else:
+            bancos[item_id] = {"chave": "vazio", "nome": "Sem dados", "codigo": ""}
+    return bancos
+
+
+def rotulo_instrumento(*, cartao: dict | None, conta_raw, metodo,
+                       conta_nome: str, tags: dict[str, str]) -> str:
+    """"BTG - 0088" para cartão, "BTG - PIX" para conta.
+
+    O banco vem da tag (a mesma nos dois), o final do número do cartão, e o
+    método de pagamento da própria transação -- `paymentData.paymentMethod`,
+    que a Pluggy preenche em quase toda transação de conta.
+    """
+    if cartao:
+        banco = cartao.get("tag") or cartao.get("nomeExibicao") or conta_nome
+        final = cartao.get("numero") or ""
+        return f"{banco} - {final}" if final else banco
+    codigo = codigo_do_banco(conta_raw)
+    banco = tags.get(codigo) or BANCOS_POR_CODIGO.get(codigo) or conta_nome
+    rotulo = _ROTULO_METODO.get(str(metodo or "").upper())
+    return f"{banco} - {rotulo}" if rotulo else banco
+
 # Negativo = saiu dinheiro, positivo = entrou. Ver docstring do modulo.
 VALOR_NORMALIZADO = (
     "CASE WHEN t.tipo = 'DEBIT' THEN -ABS(t.valor) ELSE ABS(t.valor) END"
@@ -804,17 +954,85 @@ def contas_ativas(conn: sqlite3.Connection) -> set[str]:
         for linha in conn.execute("SELECT item_id, conector FROM pluggy_itens")
     }
     melhor: dict[tuple[str, str, str, str, str], tuple[str, str, str]] = {}
+    linhas: dict[str, sqlite3.Row] = {}
     for linha in conn.execute("SELECT * FROM pluggy_contas"):
         if linha["subtipo"] == "CREDIT_CARD":
             continue
         conta_id = linha["conta_id"]
+        linhas[conta_id] = linha
         chave = _chave_conta(linha, instituicoes.get(linha["item_id"], ""))
         candidato = (ultima_por_conta.get(conta_id) or "",
                      str(linha["atualizado_em"] or linha["importado_em"] or ""), conta_id)
         if chave not in melhor or candidato > melhor[chave]:
             melhor[chave] = candidato
 
-    return {conta_id for _, _, conta_id in melhor.values()} | cartoes_id.fontes_ativas(conn)
+    escolhidas = {conta_id: candidato for candidato in melhor.values()
+                  for conta_id in [candidato[2]]}
+    bancarias = _sem_contas_repetidas(conn, escolhidas, linhas)
+    return bancarias | cartoes_id.fontes_ativas(conn)
+
+
+def _sem_contas_repetidas(conn: sqlite3.Connection,
+                          escolhidas: dict[str, tuple[str, str, str]],
+                          linhas: dict[str, sqlite3.Row]) -> set[str]:
+    """Uma só versão ativa de uma conta que voltou renomeada numa reconexão.
+
+    O nome faz parte da chave da conta (`_chave_conta`), porque uma conexão
+    pode expor duas contas de mesmo número -- "BTG Banking" e "BTG
+    Investimentos". Mas o banco também renomeia a conta entre consentimentos:
+    o BTG passou a mandar "Conta Corrente", e a versão antiga e a nova ficavam
+    ativas juntas, com cada transação em dobro.
+
+    Aqui, entre conexões DIFERENTES, mesmo subtipo e número com histórico
+    coincidente são a mesma conta, e só a mais recente fica. Número sozinho
+    não basta: a "BTG Investimentos" divide número com a corrente e vem de
+    outra conexão -- o histórico é o que as separa. Por isso o grupo não é
+    tudo-ou-nada: só se juntam as versões que coincidem entre si.
+
+    Titular vazio não é evidência contra (a versão nova do BTG veio sem), mas
+    dois titulares diferentes preenchidos impedem.
+    """
+    por_numero: dict[tuple[str, str], list[str]] = {}
+    for conta_id in escolhidas:
+        linha = linhas[conta_id]
+        numero = re.sub(r"\D", "", str(linha["numero"] or ""))
+        if numero:
+            por_numero.setdefault((str(linha["subtipo"]), numero), []).append(conta_id)
+
+    def compativeis(a: str, b: str) -> bool:
+        la, lb = linhas[a], linhas[b]
+        if la["item_id"] == lb["item_id"]:
+            return False    # Mesma conexão: são contas diferentes de verdade.
+        ta = cam.normalizar(str(la["titular"] or ""))
+        tb = cam.normalizar(str(lb["titular"] or ""))
+        if ta and tb and ta != tb:
+            return False
+        return cartoes_id._historico_coincide(conn, a, b)
+
+    ativas = set(escolhidas)
+    for contas in por_numero.values():
+        if len(contas) < 2:
+            continue
+        vizinhos = {c: {o for o in contas if o != c and compativeis(c, o)} for c in contas}
+        vistos: set[str] = set()
+        for inicio in contas:
+            if inicio in vistos:
+                continue
+            componente, pendentes = set(), [inicio]
+            while pendentes:
+                atual = pendentes.pop()
+                if atual not in componente:
+                    componente.add(atual)
+                    pendentes.extend(vizinhos[atual] - componente)
+            vistos |= componente
+            if len(componente) < 2:
+                continue
+            # Só um grupo em que todos coincidem com todos: um elo solto no
+            # meio uniria duas contas que nunca tiveram histórico em comum.
+            if any(vizinhos[c] | {c} != componente for c in componente):
+                continue
+            ativas -= componente - {max(componente, key=lambda c: escolhidas[c])}
+    return ativas
 
 
 def mapa_apelidos(conn: sqlite3.Connection,
@@ -837,7 +1055,7 @@ def mapa_apelidos(conn: sqlite3.Connection,
         linha["conta_id"]: (
             identidades[linha["conta_id"]]["nomeExibicao"]
             if linha["subtipo"] == "CREDIT_CARD"
-            else str(linha["nome"] or "Conta")
+            else nome_da_conta(linha)
         )
         for linha in linhas
     }
@@ -2034,6 +2252,11 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "contaNome": apelidos.get(item["contaId"], cartao["nome"]),
                     **_dados_instrumento(item["contaId"], identidades),
                     "contaSubtipo": "CREDIT_CARD" if item.get("noCartao", True) else "CHECKING_ACCOUNT",
+                    # Parcela projetada é sempre de cartão: o rótulo sai só da
+                    # identidade, sem método de pagamento nem conta bancária.
+                    "rotuloInstrumento": rotulo_instrumento(
+                        cartao=identidades.get(item["contaId"]), conta_raw=None, metodo=None,
+                        conta_nome=apelidos.get(item["contaId"], cartao["nome"]), tags={}),
                     "projetada": True,
                     "recorrente": item.get("recorrente", False),
                 })
@@ -2083,15 +2306,19 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                    cat.emoji AS categoria_emoji,
                    t.parcela_numero, t.parcela_total, t.fatura_id,
                    c.nome AS conta_nome, c.subtipo AS conta_subtipo,
-                   t.conta_id
+                   t.conta_id, c.raw_json AS conta_raw,
+                   json_extract(pt.raw_json, '$.paymentData.paymentMethod') AS metodo_pagamento
             FROM extrato_efetivo_cache t
             JOIN pluggy_contas c ON c.conta_id = t.conta_id
+            LEFT JOIN pluggy_transacoes pt ON pt.transacao_id = t.transacao_id
             LEFT JOIN extrato_categorias cat ON cat.id = t.categoria_id{onde}
             ORDER BY t.data DESC, t.ordem DESC, t.transacao_id
             LIMIT ? OFFSET ?
             """,
             [*params, limite_reais, offset_reais],
         ).fetchall()
+        # Uma vez por página, com a conexão ainda aberta.
+        tags_banco = tags_por_banco(conn, identidades)
 
 
     transacoes = [
@@ -2124,6 +2351,11 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             "contaNome": apelidos.get(linha["conta_id"], linha["conta_nome"]),
             **_dados_instrumento(linha["conta_id"], identidades),
             "contaSubtipo": linha["conta_subtipo"],
+            "rotuloInstrumento": rotulo_instrumento(
+                cartao=identidades.get(linha["conta_id"]),
+                conta_raw=linha["conta_raw"], metodo=linha["metodo_pagamento"],
+                conta_nome=apelidos.get(linha["conta_id"], linha["conta_nome"]),
+                tags=tags_banco),
         }
         for linha in linhas
     ]

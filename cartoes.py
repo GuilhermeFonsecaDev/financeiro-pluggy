@@ -130,12 +130,21 @@ def _mesma_fonte(conn, nova, antiga):
     instituicao = _instituicao(conn, nova)
     if not instituicao or instituicao != _instituicao(conn, antiga):
         return False
+    return _historico_coincide(conn, nova["conta_id"], antiga["conta_id"])
+
+
+def _historico_coincide(conn, uma: str, outra: str) -> bool:
+    """As duas fontes têm a mesma compra em pelo menos três dias distintos.
+
+    Três dias e não três compras: um cartão novo pode repetir num dia só a
+    mesma assinatura de outro, mas não um histórico inteiro.
+    """
     dias = conn.execute(
         "SELECT DISTINCT substr(a.data,1,10) dia FROM pluggy_transacoes a "
         "JOIN pluggy_transacoes b ON a.data=b.data AND a.valor=b.valor "
         "AND a.descricao=b.descricao AND a.tipo=b.tipo "
         "WHERE a.conta_id=? AND b.conta_id=? LIMIT 3",
-        (nova["conta_id"], antiga["conta_id"])).fetchall()
+        (uma, outra)).fetchall()
     return len(dias) >= 3
 
 
@@ -313,10 +322,49 @@ def identidades(conn) -> dict[str, dict[str, Any]]:
 def _ativas(conn, mapa):
     ultimas = {r[0]: r[1] for r in conn.execute("SELECT conta_id, MAX(data) FROM pluggy_transacoes GROUP BY conta_id")}
     importadas = {r[0]: r[1] for r in conn.execute("SELECT conta_id,importado_em FROM pluggy_contas")}
+    mais_atual = lambda f: (ultimas.get(f) or "", importadas.get(f) or "", f)
     grupos = defaultdict(list)
     for fonte, ident in mapa.items():
         grupos[ident["cartaoId"]].append(fonte)
-    return {max(fontes, key=lambda f: (ultimas.get(f) or "", importadas.get(f) or "", f)) for fontes in grupos.values()}
+    escolhidas = {max(fontes, key=mais_atual) for fontes in grupos.values()}
+    return _sem_versoes_repetidas(conn, mapa, escolhidas, mais_atual)
+
+
+def _sem_versoes_repetidas(conn, mapa, escolhidas, mais_atual):
+    """Deixa uma só versão ativa de um cartão reconectado pelo agregador.
+
+    Pelo Meu Pluggy a conta não informa o banco, e sem banco `_mesma_fonte`
+    se recusa a fundir identidades -- de propósito, porque o final do número
+    sozinho não distingue dois cartões físicos. Resultado: a versão antiga e
+    a nova do MESMO cartão ficavam ativas juntas, e cada compra aparecia duas
+    vezes em Transações.
+
+    Aqui a tag faz o papel do banco. Mesma tag, mesmo final e histórico
+    coincidente é o mesmo cartão, e só a versão mais atual fica ativa. As
+    identidades NÃO são fundidas: nenhuma referência ou preferência é
+    reescrita, e tirar uma das duas da tag desfaz o efeito.
+
+    Todas as versões de um grupo precisam coincidir entre si. Titular e
+    adicional podem dividir tag e final; o histórico é o que os separa, e um
+    grupo ambíguo fica como está em vez de escolher por ordem de leitura.
+    """
+    grupos = defaultdict(list)
+    for fonte in escolhidas:
+        ident = mapa[fonte]
+        if ident.get("tagId") and ident.get("numero"):
+            grupos[(ident["tagId"], ident["numero"])].append(fonte)
+
+    ativas = set(escolhidas)
+    for fontes in grupos.values():
+        if len(fontes) < 2:
+            continue
+        # Versões da mesma conexão coexistem de verdade: são cartões diferentes.
+        if len({mapa[f]["itemId"] for f in fontes}) != len(fontes):
+            continue
+        pares = [(a, b) for i, a in enumerate(fontes) for b in fontes[i + 1:]]
+        if all(_historico_coincide(conn, a, b) for a, b in pares):
+            ativas -= set(fontes) - {max(fontes, key=mais_atual)}
+    return ativas
 
 
 def fontes_ativas(conn) -> set[str]:

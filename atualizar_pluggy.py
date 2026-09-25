@@ -42,6 +42,7 @@ import banco as fin
 import importar_pluggy
 import investimentos
 import cartoes
+import pluggy_extrato as px
 
 # Download e importacao vivem no mesmo projeto: pluggy_sync.py fica aqui do lado
 # e grava em ./data. Caminho relativo ao arquivo, nao absoluto, para a pasta
@@ -57,6 +58,9 @@ _etapas: dict[str, str] = {}
 CHAVE_CONEXOES = "pluggy_conexoes_estado"
 CHAVE_HISTORICO = "pluggy_conexoes_historico"
 CHAVE_ARQUIVADAS = "pluggy_conexoes_arquivadas"
+# O que cada conexão tem AUTORIZADO no consentimento e os avisos que a Pluggy
+# deu por produto. É o que separa "o banco não mandou" de "você não autorizou".
+CHAVE_PRODUTOS = "pluggy_conexoes_produtos"
 
 
 def definir_arquivada(item_id: str, arquivada: bool) -> dict[str, Any]:
@@ -78,6 +82,82 @@ def definir_arquivada(item_id: str, arquivada: bool) -> dict[str, Any]:
         return {"ok": True, "arquivada": arquivada}
     finally:
         _trava.release()
+
+
+def _rotulo_produto(chave: str) -> str:
+    return {"creditCards": "cartões", "accounts": "contas", "transactions": "transações",
+            "investments": "investimentos", "investmentsTransactions": "movimentos de investimento",
+            "identity": "identidade", "loans": "empréstimos", "paymentData": "dados de pagamento",
+            "accountStatements": "extratos"}.get(chave, chave)
+
+
+def ler_produtos(item_json: dict, consentimentos: list[dict] | None) -> dict[str, Any]:
+    """O que uma conexão autorizou e o que a Pluggy avisou sobre cada produto.
+
+    `statusDetail` só vem quando há aviso -- é onde fica, por exemplo, o
+    "limite mensal do Open Finance atingido" que outros apps mostram. Pelo
+    conector MeuPluggy ele vem vazio; pelos conectores de Open Finance direto
+    do banco, vem preenchido. Ler sempre custa nada, e faz o aviso aparecer no
+    dia em que existir.
+
+    `consentimentos` None quer dizer "não consegui consultar" -- diferente de
+    uma lista vazia, que quer dizer "não há consentimento".
+    """
+    avisos = []
+    for produto, estado in (item_json.get("statusDetail") or {}).items():
+        if not isinstance(estado, dict):
+            continue
+        for aviso in estado.get("warnings") or []:
+            if not isinstance(aviso, dict):
+                continue
+            # providerMessage é o texto do banco, o mais útil; message é o da Pluggy.
+            texto = str(aviso.get("providerMessage") or aviso.get("message") or "").strip()
+            if texto:
+                avisos.append({"produto": _rotulo_produto(produto),
+                               "codigo": str(aviso.get("code") or ""), "texto": texto[:400]})
+        if estado.get("isUpdated") is False and not estado.get("warnings"):
+            avisos.append({"produto": _rotulo_produto(produto), "codigo": "nao_atualizado",
+                           "texto": f"A Pluggy informa que {_rotulo_produto(produto)} não foram "
+                                    "atualizados nesta sincronização."})
+    autorizados = None
+    if consentimentos is not None:
+        vivos = [c for c in consentimentos if not c.get("revokedAt")]
+        autorizados = sorted({p for c in vivos for p in (c.get("products") or [])})
+    return {
+        "executionStatus": item_json.get("executionStatus") or "",
+        "autorizados": autorizados,
+        "avisos": avisos,
+        "coletadoEm": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def coletar_produtos(item_id: str, api_key: str | None = None) -> dict[str, Any] | None:
+    """Consulta a Pluggy e guarda o estado de produtos da conexão.
+
+    Nunca derruba a sincronização: se a Pluggy não responder, o estado
+    anterior fica onde estava.
+    """
+    import requests
+    from pluggy_sync import API_URL, get_api_key
+    try:
+        chave = api_key or get_api_key()
+        cabecalho = {"X-API-KEY": chave}
+        item = requests.get(f"{API_URL}/items/{item_id}", headers=cabecalho, timeout=40)
+        item.raise_for_status()
+        try:
+            resposta = requests.get(f"{API_URL}/consents", headers=cabecalho,
+                                    params={"itemId": item_id}, timeout=40)
+            resposta.raise_for_status()
+            consentimentos = resposta.json().get("results") or []
+        except Exception:  # noqa: BLE001 - consentimento é opcional
+            consentimentos = None
+        estado = ler_produtos(item.json(), consentimentos)
+    except Exception:  # noqa: BLE001
+        return None
+    todos = _json_meta(_ler_meta(), CHAVE_PRODUTOS, {})
+    todos[item_id] = estado
+    _gravar_meta({CHAVE_PRODUTOS: json.dumps(todos)})
+    return estado
 
 
 def validar_item(item_id: str) -> str:
@@ -216,7 +296,7 @@ def conexoes_conhecidas() -> list[dict[str, Any]]:
         fontes = cartoes.fontes_ativas(conn)
         conexoes = []
         for linha in conn.execute("SELECT * FROM pluggy_itens ORDER BY conector,item_id"):
-            produtos = list(conn.execute("SELECT conta_id,nome,subtipo FROM pluggy_contas WHERE item_id=? ORDER BY nome", (linha["item_id"],)))
+            produtos = list(conn.execute("SELECT conta_id,nome,subtipo,raw_json FROM pluggy_contas WHERE item_id=? ORDER BY nome", (linha["item_id"],)))
             # Data do lancamento mais recente que esta conexao entregou. E
             # diferente de "importadoEm": a rodada pode terminar com sucesso e
             # nao trazer nada novo -- e foi assim que descobrimos que o cartao
@@ -230,7 +310,9 @@ def conexoes_conhecidas() -> list[dict[str, Any]]:
             conexoes.append({
                 "id": linha["item_id"], "idCurto": linha["item_id"][:8],
                 "conector": linha["conector"] or "",
-                "contas": [p["nome"] for p in produtos if p["conta_id"] not in identidades],
+                # O mesmo nome das outras telas: um banco que manda só "Conta
+                # Corrente" deixava a conexão sem nome de instituição aqui.
+                "contas": [px.nome_da_conta(p) for p in produtos if p["conta_id"] not in identidades],
                 "cartoes": [identidades[p["conta_id"]]["nomeExibicao"] for p in produtos if p["conta_id"] in fontes],
                 # Para o detalhe: a identidade do instrumento, nao o nome
                 # exibido. Dois cartoes com a mesma tag tem o mesmo
@@ -393,6 +475,9 @@ def atualizar(
             if verboso:
                 print(f"[pluggy] sincronizando item {item_id[:8]}...")
             ok, detalhe = _rodar_sync(item_id)
+            # Também quando falha: o consentimento é justamente o que explica
+            # uma conexão que volta sem contas ou sem cartão.
+            coletar_produtos(item_id)
             if not ok:
                 _registrar_conexao(item_id, "erro", detalhe)
                 falhas.append(f"{item_id[:8]}: {detalhe}")

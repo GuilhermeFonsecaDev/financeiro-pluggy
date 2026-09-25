@@ -149,5 +149,67 @@ class ReconexaoTardiaTest(unittest.TestCase):
         self.assertEqual({r[0] for r in fontes}, {antiga, nova})
 
 
+class ReconexaoPeloAgregadorTest(ReconexaoTardiaTest):
+    """Reconexão pelo Meu Pluggy, onde o banco do cartão não é informado.
+
+    Sem instituição a identidade não se funde -- é a trava que impede unir
+    dois cartões físicos diferentes com o mesmo final. Mas as duas versões do
+    MESMO cartão ficavam ativas juntas, e cada compra aparecia duas vezes em
+    Transações. A tag que o usuário deu às duas é o contexto que faltava: a
+    identidade continua separada, só uma das duas fica ativa.
+    """
+
+    def duas_versoes(self, historico_igual=True):
+        self.fonte("antiga", item="item-antigo", banco_nome="MeuPluggy")
+        self.historico("antiga")
+        antiga = self.identidade("antiga")
+        self.fonte("nova", item="item-novo", banco_nome="MeuPluggy")
+        nova = self.identidade("nova")
+        if historico_igual:
+            self.historico("nova")
+        else:
+            for dia in (10, 11, 12):
+                self.conn.execute(
+                    "INSERT INTO pluggy_transacoes (transacao_id,conta_id,data,mes_ref,ano,mes,"
+                    "descricao,valor,tipo,importado_em) VALUES (?,?,?,'2026-08',2026,8,"
+                    "'Outra compra',77,'DEBIT','2026-09-02')",
+                    (f"nova-{dia}", "nova", f"2026-08-{dia:02d}"))
+            self.conn.commit()
+        return antiga, nova
+
+    def test_mesma_tag_e_mesmo_historico_deixa_so_uma_ativa(self):
+        antiga, nova = self.duas_versoes()
+        self.tag(antiga, "BTG")
+        self.tag(nova, "BTG")
+        self.assertEqual(cartoes.fontes_ativas(self.conn), {"nova"})
+
+    def test_a_identidade_nao_e_fundida(self):
+        # Só a visibilidade muda: referências e preferências de cada
+        # identidade ficam onde estavam, e desfazer é tirar da tag.
+        antiga, nova = self.duas_versoes()
+        self.tag(antiga, "BTG")
+        self.tag(nova, "BTG")
+        cartoes.fontes_ativas(self.conn)
+        self.assertNotEqual(self.identidade("antiga"), self.identidade("nova"))
+
+    def test_sem_tag_as_duas_continuam(self):
+        self.duas_versoes()
+        self.assertEqual(cartoes.fontes_ativas(self.conn), {"antiga", "nova"})
+
+    def test_tags_diferentes_as_duas_continuam(self):
+        antiga, nova = self.duas_versoes()
+        self.tag(antiga, "BTG")
+        self.tag(nova, "Outro")
+        self.assertEqual(cartoes.fontes_ativas(self.conn), {"antiga", "nova"})
+
+    def test_mesma_tag_sem_historico_igual_as_duas_continuam(self):
+        # Dois cartões reais na mesma tag (titular e adicional, por exemplo)
+        # podem ter o mesmo final; o que os distingue é o histórico.
+        antiga, nova = self.duas_versoes(historico_igual=False)
+        self.tag(antiga, "BTG")
+        self.tag(nova, "BTG")
+        self.assertEqual(cartoes.fontes_ativas(self.conn), {"antiga", "nova"})
+
+
 if __name__ == "__main__":
     unittest.main()

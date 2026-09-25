@@ -532,3 +532,17 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
                               color: var(--text-2); }
 .pop-mes .pop-rodape button:hover { background: var(--surface-3); color: var(--text); }
 .pop-mes .pop-rodape button.acento { color: var(--azul); }
+
+/* ------------------------------------------- limite do cartão e origem */
+/* Saíram do <style> de Cartões porque a tela Contas mostra o mesmo cartão:
+   duas cópias da mesma barra seriam duas verdades sobre o mesmo limite. */
+.trilha { height:4px; border-radius:3px; background:var(--surface-3); overflow:hidden; margin-top:10px; }
+.trilha i { display:block; height:100%; border-radius:3px; background:var(--faixa,var(--azul)); }
+
+.selo-origem {
+  flex:0 0 auto; font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 6px; border-radius:5px; border:1px solid currentColor; white-space:nowrap;
+}
+.selo-origem.oficial, .selo-origem.pagamento { color:var(--verde); }
+.selo-origem.aberta, .selo-origem.aberta_projecao, .selo-origem.mista { color:var(--laranja); }
+.selo-origem.projecao, .selo-origem.vazio, .selo-origem.movimento, .selo-origem.fechada { color:var(--text-3); }

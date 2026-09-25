@@ -43,6 +43,7 @@ from extrato_camada import (
 )
 import carteira
 import emprestimos
+import contas_bancos
 import fixas
 import fundos
 import indices
@@ -268,6 +269,10 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(fixas.candidatas_payload(
                     self.query_mes(query), (query.get("q", [""])[0] or "").strip(),
                     como_regra=(query.get("regra", [""])[0] or "") == "1"))
+            elif path == "/api/contas":
+                # Fora do polling de /api/pluggy-status: o resumo por banco é
+                # pedido ao abrir a tela e ao fim de cada sincronização.
+                self.send_json(contas_bancos.payload())
             elif path == "/api/pluggy-status":
                 self.send_json(pluggy_status())
             elif path == "/api/investimentos":

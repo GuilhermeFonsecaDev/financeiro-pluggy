@@ -74,17 +74,8 @@
 .cartao-tile .corpo { margin-top:auto; }
 .cartao-tile .rot { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); }
 .cartao-tile .fatura { font-size:21px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin-top:2px; }
-.trilha { height:4px; border-radius:3px; background:var(--surface-3); overflow:hidden; margin-top:10px; }
-.trilha i { display:block; height:100%; border-radius:3px; background:var(--faixa,var(--azul)); }
 .cartao-tile .limite { font-size:11px; color:var(--text-3); margin-top:5px; }
 
-.selo-origem {
-  flex:0 0 auto; font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
-  padding:2px 6px; border-radius:5px; border:1px solid currentColor; white-space:nowrap;
-}
-.selo-origem.oficial, .selo-origem.pagamento { color:var(--verde); }
-.selo-origem.aberta, .selo-origem.aberta_projecao, .selo-origem.mista { color:var(--laranja); }
-.selo-origem.projecao, .selo-origem.vazio, .selo-origem.movimento, .selo-origem.fechada { color:var(--text-3); }
 
 /* --- ano empilhado + composicao ---------------------------------------- */
 .duo { display:grid; gap:14px; grid-template-columns:minmax(0,2fr) minmax(0,1fr); margin:14px 0; align-items:stretch; }
@@ -292,12 +283,6 @@ function origemMes(cartaoId, indice) {
 // Rotulo curto da origem do valor. A origem e a informacao mais rica que a
 // grade tem e que nenhuma tela mostrava: diz se o numero e a fatura oficial,
 // o pagamento que a quitou, os lançamentos do ciclo aberto ou parcelas a lançar.
-const ROTULO_ORIGEM = {
-  oficial: "Oficial", pagamento: "Paga", confirmada: "Confirmada",
-  aberta: "Aberta", aberta_projecao: "Aberta", projecao: "Parcelas a lançar",
-  fechada: "Fechada", movimento: "Movimento", mista: "Mista", vazio: "\u2014",
-};
-function rotuloOrigem(origem) { return ROTULO_ORIGEM[origem] || origem; }
 
 // Limite da coluna: quando ela consolida varios cartoes o payload nao traz
 // limite (nao existe limite "da tag"), mas a soma dos membros existe e e o

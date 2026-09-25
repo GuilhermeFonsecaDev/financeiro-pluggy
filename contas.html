@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Contas</title>
+<link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="conexoes.css" />
+<link rel="stylesheet" href="contas.css" />
+</head>
+<body class="cx">
+<nav class="nav"></nav>
+<main class="container">
+
+<header class="topo">
+  <div>
+    <h1>Contas</h1>
+    <p class="sub">O que existe em cada banco, e as conexões que trazem esses dados.</p>
+  </div>
+  <div class="cx-botoes">
+    <button id="btnSync" disabled>↻ Atualizar todas</button>
+    <button class="primario" id="btnConectar">+ Conectar instituição</button>
+  </div>
+</header>
+
+<div class="cx-aviso" id="aviso" hidden role="status"></div>
+
+<section class="cx-saude" aria-label="Situação das contas">
+  <span id="saudeResumo"></span>
+  <span id="saudeQuando"></span>
+  <span id="saudeIntervalo"></span>
+</section>
+
+<section id="pendencias" class="cx-pendencias" hidden aria-label="Atenção aos bancos"></section>
+
+<!-- Um banco por faixa, um embaixo do outro. O detalhe abre ao clicar. -->
+<section class="ct-bancos" id="bancos" aria-busy="true" aria-label="Bancos">
+  <div class="cx-carregando">Consultando bancos e produtos…</div>
+</section>
+
+</main>
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"></script>
+<script src="app.js"></script>
+<script src="contas.js"></script>
+</body>
+</html>

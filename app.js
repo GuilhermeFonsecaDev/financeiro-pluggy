@@ -37,6 +37,15 @@ const lerValor = texto => {
  *  título, tabela e resumo, onde o "de" só ocuparia espaço. Aqui, num campo
  *  que a pessoa lê como frase, a forma longa é a natural.
  */
+/* De onde veio o valor de uma fatura, como se lê num selo. Compartilhado por
+ * Cartões e Contas, que mostram a mesma fatura. */
+const ROTULO_ORIGEM = {
+  oficial: "Oficial", pagamento: "Paga", confirmada: "Confirmada",
+  aberta: "Aberta", aberta_projecao: "Aberta", projecao: "Parcelas a lançar",
+  fechada: "Fechada", movimento: "Movimento", mista: "Mista", vazio: "\u2014",
+};
+function rotuloOrigem(origem) { return ROTULO_ORIGEM[origem] || origem; }
+
 function labelMesLongo(mesRef) {
   const [ano, mes] = String(mesRef || "").split("-");
   if (!ano || !mes) return "—";
@@ -458,10 +467,51 @@ const PAGINAS = [
   { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
   { href: "entradas.html", ic: "↑", nome: "Entradas" },
   { href: "emprestimos.html", ic: "⇄", nome: "Emprestado" },
-  { href: "conexoes_pluggy.html", ic: "⇋", nome: "Conexões" },
+  { href: "contas.html", ic: "⇋", nome: "Contas" },
 ];
 
+/* Ícone da aba = o símbolo da página no menu, em PNG de fundo transparente.
+ * Desenhado num canvas e não um arquivo por tela: toda página já chama
+ * montarNav, então uma página nova ganha o ícone dela sem ninguém desenhar.
+ * 64px para ficar nítido em tela de alta densidade; o navegador reduz. */
+function iconeDaAba(simbolo) {
+  if (!simbolo) return;
+  const lado = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = lado;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  // Mede e desenha com a MESMA linha de base: medir com "middle" e desenhar
+  // com "alphabetic" deixava o símbolo no alto do quadrado.
+  const fonte = px => `600 ${px}px "Segoe UI Symbol", "Segoe UI", "Apple Symbols", sans-serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const medir = px => {
+    ctx.font = fonte(px);
+    const m = ctx.measureText(simbolo);
+    return { esq: m.actualBoundingBoxLeft || 0, dir: m.actualBoundingBoxRight || m.width,
+             topo: m.actualBoundingBoxAscent || px * .7, base: m.actualBoundingBoxDescent || 0 };
+  };
+  // Tamanho pelo desenho real, não pela fonte: "⇋" é largo e "☰" é baixo, e
+  // os dois têm de ocupar o mesmo tanto do quadrado. Alvo: 58 de 64px.
+  const referencia = 100;
+  const r = medir(referencia);
+  const escala = 58 / Math.max(r.esq + r.dir, r.topo + r.base, 1);
+  const m = medir(referencia * escala);
+  ctx.fillStyle = "#8cc0f5";
+  ctx.fillText(simbolo, (lado - (m.esq + m.dir)) / 2 + m.esq, (lado - (m.topo + m.base)) / 2 + m.topo);
+  let link = document.querySelector('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.type = "image/png";
+  link.href = canvas.toDataURL("image/png");
+}
+
 function montarNav(atual) {
+  iconeDaAba(PAGINAS.find(p => p.href === atual)?.ic);
   const el = document.querySelector(".nav");
   if (!el) return;
   el.innerHTML = `

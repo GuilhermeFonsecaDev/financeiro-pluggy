@@ -70,7 +70,7 @@ Regressões da carteira: `python -m unittest testes_investimentos -v`
 - `cartoes_pluggy.html`: grade de faturas por cartão e mês.
 - `emprestimos.html`: dinheiro emprestado, recebido de volta e empréstimos pegos.
 - `extrato_regras.html`: gerenciador das regras de categorização.
-- `conexoes_pluggy.html`: conectar bancos e acompanhar o estado das conexões.
+- `contas.html`: um card por banco (contas, cartões, faturas, investimentos) e as conexões que trazem esses dados. `conexoes_pluggy.html` redireciona para ela.
 
 O visual é compartilhado: `tema.css` tem os tokens e componentes, `app.js` tem o
 popover, a navegação e os helpers. Antes cada página repetia ~200 linhas de CSS

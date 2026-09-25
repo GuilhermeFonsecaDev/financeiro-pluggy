@@ -1,0 +1,130 @@
+/* Tela Contas: uma faixa por banco, detalhe ao clicar.
+ *
+ * O que é da conexão (linha de saúde, estado, avisos, arquivadas, histórico)
+ * continua em conexoes.css; aqui fica só o que é do banco.
+ */
+
+.ct-bancos { display: flex; flex-direction: column; gap: 10px; }
+
+.ct-banco {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--raio-g); overflow: hidden;
+}
+.ct-banco.cautela { border-left: 3px solid var(--laranja); }
+.ct-banco.sem-dados { opacity: .72; }
+
+/* A faixa: marca e nome à esquerda, os três números no meio, estado e seta à
+   direita. Grade e não flex, para os números de bancos diferentes caírem na
+   mesma coluna quando empilhados. */
+.ct-faixa {
+  display: grid; align-items: center; gap: 18px; padding: 14px 18px;
+  grid-template-columns: minmax(180px, 1.6fr) repeat(4, minmax(110px, 1fr)) minmax(96px, auto) 34px;
+  cursor: pointer;
+}
+.ct-faixa:hover { background: var(--surface-2); }
+.ct-faixa:focus-visible { outline: 2px solid var(--azul); outline-offset: -2px; }
+.ct-quem { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ct-quem b { display: block; font-size: 15px; font-weight: 650; }
+/* Uma caixa só para todas as logos: mesmo tamanho, mesma borda, sem fundo.
+   As proporções vão de 1:1 (Itaú) a quase 4:1 (Inter); `contain` encaixa
+   cada uma sem distorcer, e a caixa fixa é o que deixa a coluna reta. */
+.ct-logo {
+  flex: none; width: 56px; height: 40px; padding: 6px 7px; border-radius: 10px;
+  background: transparent; border: 1px solid var(--line-forte);
+  display: flex; align-items: center; justify-content: center;
+}
+.ct-logo.sem-logo { color: var(--text-2); font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+/* Logo cuja cor não tem contraste com o fundo escuro (BTG, C6, Nubank…) vira
+   branca. Quem decide é o backend, pela cor do próprio arquivo. */
+.ct-logo img.branca { filter: brightness(0) invert(1); opacity: .92; }
+.ct-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ct-quem small { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; }
+.ct-num { text-align: right; min-width: 0; }
+.ct-num span { display: block; color: var(--text-3); font-size: 10px; font-weight: 650;
+               letter-spacing: .06em; text-transform: uppercase; }
+.ct-num b { display: block; font-size: 15px; font-weight: 650; margin-top: 3px;
+            font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ct-num b.nada { color: var(--text-3); font-weight: 500; }
+.ct-num b.antigo { color: var(--laranja); }
+.ct-seta { text-align: center; color: var(--text-3); font-size: 12px; }
+
+/* Selo do banco: a mesma leitura do selo da conexão, em pílula. */
+.ct-selo { justify-self: end; font-size: 11px; font-weight: 650; padding: 3px 10px;
+           border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.ct-selo.ok { color: var(--verde); }
+.ct-selo.aviso, .ct-selo.erro { color: var(--laranja); }
+.ct-selo.ativo { color: var(--azul); }
+.ct-selo.sem-dados { color: var(--text-3); }
+
+/* --- o detalhe ----------------------------------------------------------- */
+.ct-detalhe { border-top: 1px solid var(--line); padding: 16px 18px 18px;
+              display: grid; gap: 18px; }
+.ct-avisos { display: grid; gap: 6px; }
+.ct-aviso-linha { font-size: 12.5px; color: var(--text-2); line-height: 1.55;
+                  padding: 8px 12px; border-radius: 8px; background: rgba(232, 149, 74, .08);
+                  border: 1px solid rgba(232, 149, 74, .28); }
+/* Duas forças opostas. Coluna de um terço da tela com o conteúdo esticado
+   deixava o valor a 600px do rótulo; coluna de 380px alinhada à esquerda
+   jogava todo o espaço num buraco à direita. Aqui as colunas dividem a
+   largura (o espaço sobra entre elas, em partes iguais) e o conteúdo de
+   cada uma para em 420px (o valor fica perto do rótulo). */
+/* Três colunas SEMPRE, cada seção na sua. Com auto-fit, um banco sem
+   investimentos ficava com duas colunas em metades, e os cartões do Inter
+   começavam no meio da tela enquanto os do BTG começavam a um terço: abrir
+   dois bancos seguidos mostrava a mesma seção em lugares diferentes. Seção
+   que falta deixa o lugar vazio, e as colunas se alinham entre os bancos. */
+.ct-secoes { display: grid; gap: 22px 40px; align-items: start;
+             grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ct-secao { max-width: 420px; }
+.ct-secao.contas { grid-column: 1; }
+.ct-secao.cartoes { grid-column: 2; }
+.ct-secao.investimentos { grid-column: 3; }
+@media (max-width: 1100px) {
+  .ct-secoes { grid-template-columns: minmax(0, 1fr); }
+  .ct-secao.contas, .ct-secao.cartoes, .ct-secao.investimentos { grid-column: 1; max-width: none; }
+}
+.ct-secao h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+               margin: 0 0 6px; color: var(--text-3); font-size: 10px; font-weight: 700;
+               letter-spacing: .07em; text-transform: uppercase; }
+/* A fatura mora no título dos cartões: é da tag, não de um cartão. */
+.ct-secao h4 .fatura { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none;
+                       color: var(--text-3); white-space: nowrap; }
+.ct-secao h4 .fatura b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+.ct-secao h4 .selo-origem { margin-left: 4px; vertical-align: 1px; }
+
+.ct-item { padding: 9px 0; border-top: 1px solid var(--line); }
+.ct-item:first-of-type { border-top: 0; padding-top: 2px; }
+.ct-item .linha { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+.ct-item .nome { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
+.ct-item .nome b { font-weight: 600; }
+.ct-item .val { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
+.ct-item .datas { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+.ct-item .meta { color: var(--text-3); font-size: 11.5px; margin-top: 3px; line-height: 1.45; }
+.ct-item .trilha { margin-top: 7px; }
+
+
+/* Parado: o dado existe e está na tela, mas não vai mais atualizar. */
+.ct-parado { display: inline-block; padding: 0 6px; border-radius: 5px;
+             font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+             color: var(--laranja); border: 1px solid currentColor; vertical-align: 1px; }
+
+/* Rodapé de conexões do banco: onde Atualizar e Arquivar moram agora. */
+.ct-conexoes { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+/* Grade e não flex: com flex cada coluna começava onde a anterior acabava, e
+   "Em dia" e "Arquivada" têm larguras diferentes -- as linhas saíam em
+   escada. Colunas fixas para estado e data fazem tudo cair no mesmo x. */
+.ct-conexao { display: grid; align-items: center; gap: 14px; font-size: 12.5px;
+              grid-template-columns: 96px 150px minmax(0, 1fr) auto; }
+.ct-conexao .cx-estado { white-space: nowrap; }
+.ct-conexao .quando { color: var(--text-2); white-space: nowrap; }
+.ct-conexao .entrega { color: var(--text-3); min-width: 0; }
+.ct-conexao .acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.ct-conexao .acoes button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.ct-conexao.arquivada { opacity: .6; }
+
+@media (max-width: 1100px) {
+  .ct-faixa { grid-template-columns: minmax(0, 1fr) auto 34px; }
+  .ct-faixa .ct-num { display: none; }
+  .ct-conexao { grid-template-columns: 96px minmax(0, 1fr) auto; }
+  .ct-conexao .entrega { grid-column: 2 / -1; grid-row: 2; }
+}

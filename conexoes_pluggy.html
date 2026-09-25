@@ -2,92 +2,11 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Conexões</title>
-<link rel="stylesheet" href="tema.css" />
-<link rel="stylesheet" href="conexoes.css" />
+<!-- A tela de Conexões virou Contas. Este endereço continua existindo para
+     favoritos e links antigos não caírem num 404. -->
+<meta http-equiv="refresh" content="0; url=contas.html" />
+<title>Contas</title>
+<script>location.replace("contas.html" + location.search + location.hash);</script>
 </head>
-<body class="cx">
-<nav class="nav"></nav>
-<main class="container">
-
-<header class="topo">
-  <div>
-    <h1>Conexões</h1>
-    <p class="sub">Acompanhe seus bancos e os dados que chegam ao seu financeiro.</p>
-  </div>
-  <div class="cx-botoes">
-    <button id="btnSync" disabled>↻ Atualizar todas</button>
-    <button class="primario" id="btnConectar">+ Conectar instituição</button>
-  </div>
-</header>
-
-<div class="cx-aviso" id="aviso" hidden role="status"></div>
-
-<!-- Uma linha de saúde no lugar de três painéis: os números desta tela são
-     curtos e só um deles merece destaque, e só quando não é zero. -->
-<section class="cx-saude" aria-label="Situação das conexões">
-  <span class="cx-estado" id="saudeEstado">Consultando…</span>
-  <span id="saudeResumo"></span>
-  <span id="saudeQuando"></span>
-  <span id="saudeIntervalo"></span>
-</section>
-
-<section id="pendencias" class="cx-pendencias" hidden aria-label="Atenção às conexões"></section>
-
-<section class="painel cx-quadro" aria-labelledby="tituloInstituicoes">
-  <div class="cx-titulo">
-    <div>
-      <h2 id="tituloInstituicoes">Suas instituições</h2>
-      <p id="estado" class="sub" role="status">Carregando…</p>
-    </div>
-  </div>
-  <div class="tabela-wrap">
-    <table id="tabela">
-      <thead>
-        <tr>
-          <th>Instituição</th>
-          <th class="num">Contas</th>
-          <th class="num">Cartões</th>
-          <th class="num">Dado mais recente</th>
-          <th class="num">Última importação</th>
-          <th>Estado</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="lista" aria-busy="true">
-        <tr><td colspan="7" class="cx-carregando">Consultando instituições e produtos…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<div class="cx-rodape">
-  <section class="painel cx-ajuda" id="secArquivadas" hidden>
-    <details><summary>Conexões arquivadas</summary>
-      <p class="cx-nota">Não recebem atualizações. Os dados já importados continuam no financeiro.</p>
-      <div id="arquivadas"></div>
-    </details>
-  </section>
-  <section class="painel cx-ajuda">
-    <details>
-      <summary>Rodadas de atualização e como as conexões funcionam</summary>
-      <div id="historico"><p class="sub">Carregando…</p></div>
-      <ol>
-        <li><strong>Conecte seu banco</strong><span>Conclua a autorização na janela da Pluggy, escolhendo quais produtos compartilhar — conta, cartão, investimentos. Produto que fica fora do consentimento não aparece aqui.</span></li>
-        <li><strong>Acompanhe a importação</strong><span>Contas e cartões aparecem depois que os produtos são identificados.</span></li>
-        <li><strong>Continue usando o financeiro</strong><span>A busca de dados acontece em segundo plano.</span></li>
-      </ol>
-      <p class="cx-nota" id="intervalo"></p>
-      <p class="cx-nota"><strong>Dado mais recente</strong> é a data do último lançamento que a instituição entregou. Ela é diferente da última importação: uma rodada pode terminar com sucesso e não trazer nada novo — é assim que se vê uma conexão que parou de alimentar o financeiro.</p>
-      <p class="cx-nota">Não há botão de renovar acesso por instituição: o conector em uso não aceita renovação pela janela da Pluggy, que responde que os itens só podem ser atualizados manualmente no aplicativo do banco. Para reconectar, use <strong>+ Conectar instituição</strong>.</p>
-    </details>
-  </section>
-</div>
-
-</main>
-<script src="https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"></script>
-<script src="app.js"></script>
-<script src="conexoes.js"></script>
-</body>
+<body><p><a href="contas.html">A tela de Conexões agora se chama Contas.</a></p></body>
 </html>

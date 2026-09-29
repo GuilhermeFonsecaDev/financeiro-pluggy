@@ -37,6 +37,8 @@ from extrato_camada import (
     entradas_payload,
     serie_entradas_por_regra,
     regras_payload,
+    previa_regra,
+    previa_regra_entrada,
     remover_categoria,
     remover_regra_entrada,
     remover_regra,
@@ -320,6 +322,13 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             ensure_database()
             payload = self.read_json_body()
 
+            # Antes do /regras/{id}: "previa" casaria como id de regra.
+            if parsed.path == "/api/extrato/regras/previa":
+                self.send_json(previa_regra(payload))
+                return
+            if parsed.path == "/api/extrato/entradas/regras/previa":
+                self.send_json(previa_regra_entrada(payload))
+                return
             regra = re.fullmatch(r"/api/extrato/regras/([\w-]+)", parsed.path)
             if regra:
                 self.send_json(atualizar_regra(regra.group(1), payload))

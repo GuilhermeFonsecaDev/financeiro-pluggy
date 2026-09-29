@@ -6,35 +6,103 @@
 <title>Entradas</title>
 <link rel="stylesheet" href="tema.css" />
 <style>
-.entrada-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
-.regra-entrada { display:grid; grid-template-columns:minmax(0,1fr) 150px 44px 34px; gap:12px; align-items:center; padding:14px 10px; border-bottom:1px solid var(--line); }
+/* Mesma linha da tela Regras: .metrica, .segmentado e chips do tema, com o
+   mínimo de peça própria. */
+.en-metricas { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+.en-metricas .valor { font-variant-numeric:tabular-nums; }
+.en-metricas .nota b { color:var(--text-2); font-weight:600; }
+.en-barra-pct { height:5px; border-radius:999px; background:var(--surface-3); overflow:hidden; margin-top:9px; }
+.en-barra-pct i { display:block; height:100%; background:var(--verde); }
+
+/* Doze meses em colunas; o mês escolhido em destaque e a referência
+   (esperado ou média) como linha tracejada. */
+.en-grafico-topo { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+                   color:var(--text-3); font-size:11px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; }
+.en-grafico-topo .mes-campo { text-transform:none; letter-spacing:0; }
+.pop-anos { display:grid; grid-template-columns:repeat(3, 1fr); }
+.en-grafico { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:6px; align-items:end;
+              height:118px; position:relative; padding:0 2px; }
+.en-grafico .col { display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; cursor:pointer; }
+.en-grafico .col i { display:block; width:100%; max-width:34px; border-radius:4px 4px 0 0; background:rgba(62,197,128,.28); min-height:2px; }
+.en-grafico .col:hover i { background:rgba(62,197,128,.45); }
+.en-grafico .col.atual i { background:var(--verde); }
+.en-grafico .col b { font-size:10.5px; font-weight:600; color:var(--text-2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.en-grafico .col.atual b { color:var(--text); }
+.en-grafico .col span { color:var(--text-3); font-size:10.5px; }
+.en-grafico .col.atual span { color:var(--text); font-weight:600; }
+.en-ref { position:absolute; left:0; right:0; border-top:1px dashed var(--text-3); pointer-events:none; }
+.en-ref small { position:absolute; right:0; top:-15px; font-size:10.5px; color:var(--text-3); }
+
+.en-avisos { display:grid; gap:6px; margin:12px 0 14px; }
+.en-aviso { font-size:12.5px; color:var(--text-2); line-height:1.5; padding:8px 12px; border-radius:8px;
+            background:var(--surface-2); border:1px solid var(--line); display:flex; gap:9px; align-items:baseline; }
+.en-aviso::before { content:""; flex:none; width:7px; height:7px; border-radius:50%; background:var(--azul); transform:translateY(-1px); }
+.en-aviso.alerta { background:rgba(232,149,74,.08); border-color:rgba(232,149,74,.28); }
+.en-aviso.alerta::before { background:var(--laranja); }
+.en-aviso button { margin-left:auto; min-height:26px; padding:2px 9px; font-size:11.5px; }
+
+.en-barra { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.en-barra .segmentado button small { margin-left:6px; opacity:.7; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.en-busca { flex:1; min-width:220px; position:relative; }
+.en-busca input { width:100%; padding-left:30px; }
+.en-busca svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-3); pointer-events:none; }
+.en-nada { padding:26px 8px; text-align:center; color:var(--text-3); font-size:13px; }
+mark { background:rgba(74,149,234,.24); color:inherit; border-radius:3px; padding:0 1px; }
+
+.regra-entrada { display:grid; grid-template-columns:minmax(0,1fr) 210px 150px 44px 34px; gap:12px; align-items:center; padding:14px 10px; border-bottom:1px solid var(--line); }
 .regra-entrada:last-child { border-bottom:0; }
 .regra-entrada:hover { background:var(--surface-2); }
 .regra-entrada.off { opacity:.45; }
-.regra-nome { font-size:14px; font-weight:650; }
+.regra-nome { font-size:14px; font-weight:650; text-transform:uppercase; letter-spacing:.02em; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .regra-cond { margin-top:3px; color:var(--text-3); font-size:12.5px; }
 .regra-cond b { color:var(--text-2); font-weight:600; }
 .termo { color:var(--text); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .regra-total { text-align:right; font-variant-numeric:tabular-nums; }
 .regra-total strong { display:block; color:var(--verde); font-size:14px; }
+.regra-total strong.nada { color:var(--text-3); font-weight:500; }
 .regra-total span { color:var(--text-3); font-size:11.5px; }
+.selo-reg { font-size:10px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; padding:1px 7px;
+            border-radius:999px; border:1px solid currentColor; }
+.selo-reg.regular { color:var(--verde); }
+.selo-reg.frequente { color:var(--azul); }
+.selo-reg.irregular, .selo-reg.eventual { color:var(--text-3); }
+/* Doze bolinhas: em quais meses a fonte apareceu. */
+.en-meses { display:flex; gap:3px; margin-top:6px; }
+.en-meses i { width:8px; height:8px; border-radius:2px; background:var(--surface-3); }
+.en-meses i.sim { background:var(--verde); }
+
 .switch { position:relative; width:34px; height:19px; }
 .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
 .switch span { position:absolute; inset:0; border-radius:999px; background:var(--surface-3); border:1px solid var(--line-forte); }
 .switch span::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--text-3); transition:transform .14s ease; }
 .switch input:checked + span { background:var(--azul); border-color:var(--azul); }
 .switch input:checked + span::after { transform:translateX(15px); background:#fff; }
-.lancamento { display:grid; grid-template-columns:76px minmax(0,1fr) 130px 92px; gap:12px; align-items:center; padding:13px 10px; border-bottom:1px solid var(--line); }
+
+.lancamento { display:grid; grid-template-columns:76px minmax(0,1fr) 130px 104px; gap:12px; align-items:center; padding:13px 10px; border-bottom:1px solid var(--line); }
 .lancamento:last-child { border-bottom:0; }
 .lancamento.inativo { opacity:.48; }
 .lancamento.inativo .lancamento-desc,.lancamento.inativo .lancamento-valor { text-decoration:line-through; }
 .lancamento-data,.lancamento-conta { color:var(--text-3); font-size:12.5px; }
 .lancamento-desc { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13.5px; font-weight:600; }
 .lancamento-valor { color:var(--verde); text-align:right; font-weight:650; font-variant-numeric:tabular-nums; }
+.lancamento-valor.neutro { color:var(--text); }
 .btn-entrada { min-height:29px; padding:4px 9px; font-size:11.5px; white-space:nowrap; }
+
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .form-grid .full { grid-column:1 / -1; }
-@media (max-width:820px) {
+.en-previa { margin-top:14px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.en-previa-topo { display:flex; justify-content:space-between; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line); font-size:12.5px; color:var(--text-2); }
+.en-previa-topo b { color:var(--text); font-variant-numeric:tabular-nums; }
+.en-previa-lista { max-height:220px; overflow:auto; }
+.en-previa-item { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:10px; align-items:center; padding:7px 12px; border-top:1px solid var(--line); font-size:12px; }
+.en-previa-item:first-child { border-top:0; }
+.en-previa-item .quando { color:var(--text-3); font-variant-numeric:tabular-nums; }
+.en-previa-item .desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.en-previa-item .val { font-variant-numeric:tabular-nums; color:var(--text-2); white-space:nowrap; }
+.en-previa-msg { padding:12px; color:var(--text-3); font-size:12.5px; }
+
+@media (max-width:980px) {
+  .en-metricas { grid-template-columns:repeat(2, minmax(0,1fr)); }
   .regra-entrada { grid-template-columns:minmax(0,1fr) 34px; }
   .regra-total,.switch { display:none; }
   .lancamento { grid-template-columns:60px minmax(0,1fr) auto; }
@@ -48,38 +116,42 @@
 
 <main class="container">
   <header class="topo">
-    <h1>Entradas</h1>
+    <div>
+      <h1>Entradas</h1>
+      <p class="sub">O que entrou no mês, de onde vem a renda e o que foge do costume.</p>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <input id="mes" type="month" aria-label="Mês" />
+      <!-- O mês se escolhe clicando na barra do gráfico; este campo só guarda o valor. -->
+      <input id="mes" type="hidden" />
+      <button type="button" class="mes-campo" id="ano" data-abre-pop aria-haspopup="dialog" aria-label="Ano"></button>
       <span class="estado" id="estado">Carregando…</span>
       <button class="primario" id="btnNova">+ Nova regra</button>
     </div>
   </header>
 
-  <section class="grid grid-4" style="margin-bottom:14px">
-    <article class="metrica"><span class="rotulo">Salário do mês</span><div class="valor positivo" id="mTotal">R$ 0,00</div></article>
-    <article class="metrica"><span class="rotulo">Lançamentos</span><div class="valor" id="mQuantidade">0</div></article>
-    <article class="metrica"><span class="rotulo">Regras ativas</span><div class="valor" id="mRegras">0</div></article>
-    <article class="metrica" style="position:relative">
-      <span class="rotulo">Valor esperado</span>
-      <div class="valor" id="mEsperado">Não definido</div>
-      <div class="nota">substitui a média em mês incompleto</div>
-      <button class="icone" id="btnEsperado" data-abre-pop aria-label="Editar valor esperado"
-              style="position:absolute;top:10px;right:10px">✎</button>
-    </article>
+  <section class="en-metricas" id="metricas" aria-label="Resumo do mês"></section>
+
+  <section class="painel" style="padding:12px 16px 10px" aria-label="Entradas por mês">
+    <div class="en-grafico-topo">
+      <span>Entradas por mês</span>
+      <span id="mesEscolhido" style="text-transform:none;letter-spacing:0;font-weight:500"></span>
+    </div>
+    <div class="en-grafico" id="grafico"></div>
   </section>
 
-  <section class="entrada-layout">
-    <article class="painel">
-      <div class="painel-tit"><h2 id="tituloLancamentos">Entradas reconhecidas</h2></div>
-      <div id="listaLancamentos"></div>
-      <div id="vazioLancamentos"></div>
-    </article>
-    <article class="painel">
-      <div class="painel-tit"><h2>Regras de salário</h2></div>
-      <div id="listaRegras"></div>
-      <div id="vazioRegras"></div>
-    </article>
+  <section class="en-avisos" id="avisos" aria-label="Insights" aria-live="polite"></section>
+
+  <div class="en-barra">
+    <span class="segmentado" id="abas" role="tablist" aria-label="Visão"></span>
+    <label class="en-busca">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="busca" type="search" placeholder="Buscar por descrição, fonte ou termo" autocomplete="off" aria-label="Buscar" />
+    </label>
+  </div>
+
+  <section class="painel" style="padding:6px 10px">
+    <div id="lista"></div>
+    <div id="nada"></div>
   </section>
 </main>
 
@@ -95,6 +167,11 @@
     <button class="sutil" id="btnEsperadoRemover">Remover</button>
     <button class="primario" id="btnEsperadoSalvar">Salvar</button>
   </div>
+</div>
+
+<!-- Mesmo popover do seletor de mês do projeto, com anos no lugar dos meses. -->
+<div class="pop pop-mes" id="popAno" hidden role="dialog" aria-label="Escolher ano">
+  <div class="pop-meses pop-anos" id="popAnoLista"></div>
 </div>
 
 <div class="modal-fundo" id="modal" hidden>
@@ -120,6 +197,12 @@
       </select></label>
       <label class="check full"><input id="fAtivo" type="checkbox" checked /> Regra ativa</label>
     </div>
+
+    <div class="en-previa" aria-live="polite">
+      <div class="en-previa-topo"><span>Prévia</span><span id="previaTotal"></span></div>
+      <div class="en-previa-lista" id="previaLista"></div>
+    </div>
+
     <p class="estado erro" id="modalErro" style="margin:10px 0 0"></p>
     <div class="modal-rodape">
       <button class="sutil" id="btnCancelar">Cancelar</button>
@@ -132,43 +215,215 @@
 <script>
 const OPERADORES = { contem:"contém", comeca_com:"começa com", igual:"é igual a" };
 const COMPETENCIAS = { "-1":"mês anterior", "0":"mesmo mês", "1":"mês seguinte" };
+const REGULARIDADE = { regular:"regular", frequente:"frequente", irregular:"irregular", eventual:"eventual" };
 const el = id => document.getElementById(id);
-let DADOS = { regras:[], transacoes:[], total:0, quantidade:0, regrasAtivas:0, valorEsperado:null };
-let editando = null, regraMenu = null;
+let DADOS = { regras:[], transacoes:[], naoReconhecidas:[], insights:null, total:0, quantidade:0, valorEsperado:null };
+let editando = null, regraMenu = null, aba = "reconhecidas", busca = "";
+
+const ABAS = [
+  { id:"reconhecidas",   rotulo:"Reconhecidas",     conta:() => DADOS.transacoes.length },
+  { id:"naoReconhecidas", rotulo:"Não reconhecidas", conta:() => DADOS.naoReconhecidas.length },
+  { id:"fontes",          rotulo:"Fontes",           conta:() => DADOS.regras.length },
+];
 
 function mesAtual() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function render() {
-  el("mTotal").textContent = fmtBRL(DADOS.total);
-  el("mQuantidade").textContent = DADOS.quantidade;
-  el("mRegras").textContent = DADOS.regrasAtivas;
-  el("mEsperado").textContent = DADOS.valorEsperado != null ? fmtBRL(DADOS.valorEsperado) : "Não definido";
-  el("tituloLancamentos").textContent = `Entradas reconhecidas · ${labelMes(el("mes").value)}`;
+const normal = t => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function marcar(texto) {
+  const bruto = String(texto ?? ""), q = normal(busca.trim()), n = normal(bruto);
+  const i = q ? n.indexOf(q) : -1;
+  if (i < 0 || n.length !== bruto.length) return esc(bruto);
+  return esc(bruto.slice(0, i)) + "<mark>" + esc(bruto.slice(i, i + q.length)) + "</mark>" + esc(bruto.slice(i + q.length));
+}
+const casaBusca = (...c) => { const q = normal(busca.trim()); return !q || c.flat().some(x => normal(x).includes(q)); };
+const fmtDia = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "—";
+const sinal = n => n == null ? "—" : `${n > 0 ? "+" : ""}${n}%`;
 
-  el("listaRegras").innerHTML = DADOS.regras.map(r => `
-    <div class="regra-entrada ${r.ativo ? "" : "off"}">
-      <div>
-        <div class="regra-nome">${esc(r.nome)}</div>
-        <div class="regra-cond">Descrição ${esc(OPERADORES[r.operador] || r.operador)} <span class="termo">“${esc(r.termo)}”</span></div>
-        <div class="regra-cond">Dias ${r.diaInicio}–${r.diaFim} · competência: <b>${esc(COMPETENCIAS[String(r.deslocamentoMeses)])}</b></div>
-      </div>
-      <div class="regra-total"><strong>${fmtBRL(r.totalMes)}</strong><span>${r.afetadasMes} no mês · ${r.afetadas} no histórico</span></div>
-      <label class="switch" title="${r.ativo ? "Desativar" : "Ativar"}"><input type="checkbox" data-alterna="${esc(r.id)}" ${r.ativo ? "checked" : ""}><span></span></label>
-      <button class="icone" data-abre-pop data-menu="${esc(r.id)}" aria-label="Ações">⋯</button>
-    </div>`).join("");
-  el("vazioRegras").innerHTML = DADOS.regras.length ? "" : `<div class="vazio">Nenhuma regra de salário cadastrada.</div>`;
+/* ------------------------------------------------------------ topo */
 
-  el("listaLancamentos").innerHTML = DADOS.transacoes.map(t => `
+function renderMetricas() {
+  const i = DADOS.insights || {};
+  const pct = i.pctDaReferencia;
+  const rotuloRef = i.referenciaOrigem === "esperado" ? "do esperado" : "da média";
+  // Depois de um aumento, comparar com a média de 12 meses só repete o
+  // aumento; a comparação útil é com os meses do patamar novo.
+  let comp = { rotulo:"Contra a média 12m", variacao:i.variacaoMedia, media:i.mediaMensal || 0, meses:i.mesesCobertos || 0 };
+  if (i.serie) {
+    const { meses, valores, patamar } = serieDoGrafico();
+    // Meses do patamar novo ANTES do escolhido: o próprio mês fica de fora
+    // da média com que ele é comparado.
+    const depois = patamar && DADOS.mes >= meses[patamar.indice]
+      ? valores.filter((v, k) => k >= patamar.indice && meses[k] < DADOS.mes && v) : [];
+    if (depois.length) {
+      const media = mediaDe(depois);
+      comp = { rotulo:"Contra o novo patamar", media, meses:depois.length,
+               desde: serieDoGrafico().meses[patamar.indice],
+               variacao: Math.round(100 * (DADOS.total - media) / media) };
+    }
+  }
+  const prox = i.proxima;
+  const faltam = prox ? Math.round((new Date(prox.data + "T12:00") - new Date()) / 864e5) : null;
+  el("metricas").innerHTML = `
+    <article class="metrica"><span class="rotulo">Recebido no mês</span>
+      <div class="valor positivo">${fmtBRL(DADOS.total)}</div>
+      <div class="nota">${DADOS.quantidade} lançamento${DADOS.quantidade === 1 ? "" : "s"}${DADOS.quantidadeExcluida ? ` · ${DADOS.quantidadeExcluida} desativado(s)` : ""}</div></article>
+    <article class="metrica" style="position:relative"><span class="rotulo">${i.referenciaOrigem === "esperado" ? "Do esperado" : "Da média"}</span>
+      <div class="valor">${pct == null ? "—" : `${pct}%`}</div>
+      <div class="en-barra-pct"><i style="width:${Math.min(100, pct || 0)}%"></i></div>
+      <div class="nota">${i.referencia ? `${rotuloRef}: <b>${fmtBRL(i.referencia)}</b>` : "defina um valor esperado"}</div>
+      <button class="icone" id="btnEsperado" data-abre-pop aria-label="Editar valor esperado"
+              title="Valor esperado: substitui a média em mês incompleto"
+              style="position:absolute;top:10px;right:10px">✎</button></article>
+    <article class="metrica"><span class="rotulo">${comp.rotulo}</span>
+      <div class="valor" style="${(comp.variacao ?? 0) < -10 ? "color:var(--laranja)" : ""}">${sinal(comp.variacao)}</div>
+      <div class="nota">média <b>${fmtBRL(comp.media)}</b> ${comp.desde ? `desde ${esc(labelMes(comp.desde).toLowerCase())}` : `em ${comp.meses} meses`}</div></article>
+    <article class="metrica"><span class="rotulo">Próxima entrada</span>
+      <div class="valor">${prox ? fmtDia(prox.data) : "—"}</div>
+      <div class="nota">${prox ? `${esc(prox.fonte)} · ${faltam <= 0 ? "hoje" : `em ${faltam} dia${faltam === 1 ? "" : "s"}`}` : "nada mais previsto neste mês"}</div></article>`;
+}
+
+const mediaDe = v => v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+const medianaDe = v => { const s = [...v].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+/* Mudança de patamar: o ponto que melhor separa "antes" e "depois", com pelo
+   menos 3 meses antes e 2 depois (contando o mês escolhido), e o depois pelo
+   menos 10% acima. Mês zerado (extrato ainda não cobria) não entra. */
+function acharPatamar(valores) {
+  let melhor = null;
+  for (let k = 3; k <= valores.length - 2; k++) {
+    const antes = valores.slice(0, k).filter(Boolean), depois = valores.slice(k).filter(Boolean);
+    if (antes.length < 3 || depois.length < 2) continue;
+    const razao = medianaDe(depois) / medianaDe(antes);
+    if (razao >= 1.1 && Math.min(...depois) >= medianaDe(antes) && (!melhor || razao > melhor.razao)) {
+      melhor = { indice: k, razao };
+    }
+  }
+  return melhor;
+}
+
+/* Série corrida (3 anos) para achar o patamar; o gráfico mostra um ano. */
+function serieDoGrafico() {
+  const i = DADOS.insights;
+  const meses = i.grafico.meses;
+  const valores = meses.map(m => m === DADOS.mes ? DADOS.total : (i.grafico.total[m] || 0));
+  return { meses, valores, patamar: acharPatamar(valores) };
+}
+
+let anoGrafico = null;
+
+function renderGrafico() {
+  const i = DADOS.insights;
+  if (!i) { el("grafico").innerHTML = ""; return; }
+  const serie = serieDoGrafico();
+  // Só anos com alguma entrada, mais o do mês escolhido.
+  const anos = [...new Set(serie.meses.filter((m, k) => serie.valores[k]).map(m => m.slice(0, 4)).concat(DADOS.mes.slice(0, 4)))].sort();
+  if (!anos.includes(anoGrafico)) anoGrafico = DADOS.mes.slice(0, 4);
+  el("ano").innerHTML = `<span>${esc(anoGrafico)}</span>${ICONE_CALENDARIO}`;
+  el("mesEscolhido").textContent = labelMesLongo(DADOS.mes);
+  const anoHoje = String(new Date().getFullYear());
+  el("popAnoLista").innerHTML = anos.map(a =>
+    `<button type="button" data-escolhe-ano="${a}" class="${a === anoGrafico ? "escolhido" : ""} ${a === anoHoje ? "hoje" : ""}"
+      ${a === anoGrafico ? 'aria-current="true"' : ""}>${a}</button>`).join("");
+  const inicio = serie.meses.indexOf(`${anoGrafico}-01`);
+  const meses = serie.meses.slice(inicio, inicio + 12);
+  const valores = serie.valores.slice(inicio, inicio + 12);
+  const patamar = serie.patamar && serie.patamar.indice >= inicio && serie.patamar.indice < inicio + 12
+    ? { ...serie.patamar, indice: serie.patamar.indice - inicio } : null;
+  const teto = Math.max(...valores, i.referencia || 0) || 1;
+  const ref = i.referencia ? `<div class="en-ref" style="bottom:calc(18px + ${(i.referencia / teto) * 70}px)"><small>${i.referenciaOrigem === "esperado" ? "esperado" : "média"}</small></div>` : "";
+  el("grafico").innerHTML = meses.map((m, k) => `
+    <div class="col ${m === DADOS.mes ? "atual" : ""}" data-ir-mes="${m}" title="${esc(labelMes(m))}: ${esc(fmtBRL(valores[k]))}${patamar?.indice === k ? ` · novo patamar (+${Math.round((patamar.razao - 1) * 100)}%)` : ""}">
+      <b>${valores[k] ? esc(fmtBRLCurto(valores[k])) : ""}</b>
+      <i style="height:${Math.max(2, (valores[k] / teto) * 70)}px"></i>
+      <span>${esc(MESES[Number(m.slice(5, 7)) - 1].slice(0, 3))}</span>
+    </div>`).join("") + ref;
+}
+
+function renderAvisos() {
+  const avisos = DADOS.insights?.avisos || [];
+  const alerta = new Set(["parada", "atrasada", "credito_grande", "concentracao", "fora_do_padrao"]);
+  el("avisos").innerHTML = avisos.map(a => `
+    <div class="en-aviso ${alerta.has(a.tipo) ? "alerta" : ""}"><span>${esc(a.texto)}</span>
+      ${a.tipo === "credito_grande" ? `<button class="sutil" data-criar-de="${esc(a.id)}">Criar regra</button>` : ""}</div>`).join("");
+  el("avisos").hidden = !avisos.length;
+}
+
+function renderAbas() {
+  el("abas").innerHTML = ABAS.map(a =>
+    `<button type="button" role="tab" data-aba="${a.id}" aria-selected="${a.id === aba}"
+       class="${a.id === aba ? "ativo" : ""}">${a.rotulo}<small>${a.conta()}</small></button>`).join("");
+}
+
+/* ------------------------------------------------------------ listas */
+
+function nada(texto) { el("lista").innerHTML = ""; el("nada").innerHTML = `<div class="en-nada">${texto}</div>`; }
+
+function renderReconhecidas() {
+  const lista = DADOS.transacoes.filter(t => casaBusca(t.descricao, t.conta));
+  if (!lista.length) return nada(busca ? "Nenhuma entrada com esse texto." : "Nenhuma entrada reconhecida neste mês.");
+  el("nada").innerHTML = "";
+  el("lista").innerHTML = lista.map(t => `
     <div class="lancamento ${t.ativa ? "" : "inativo"}">
       <span class="lancamento-data">${fmtData(t.data)}</span>
-      <div><div class="lancamento-desc" title="${esc(t.descricao)}">${esc(t.descricao)}</div><div class="lancamento-conta">${esc(t.conta)}</div></div>
+      <div><div class="lancamento-desc" title="${esc(t.descricao)}">${marcar(t.descricao)}</div><div class="lancamento-conta">${esc(t.conta)}</div></div>
       <strong class="lancamento-valor">${fmtBRL(t.valor)}</strong>
       <button class="sutil btn-entrada" data-alterna-entrada="${esc(t.id)}" data-ativa="${t.ativa ? "1" : "0"}">${t.ativa ? "Desativar" : "Reativar"}</button>
     </div>`).join("");
-  el("vazioLancamentos").innerHTML = DADOS.transacoes.length ? "" : `<div class="vazio">Nenhuma entrada reconhecida neste mês.</div>`;
+}
+
+function renderNaoReconhecidas() {
+  const lista = DADOS.naoReconhecidas.filter(t => casaBusca(t.descricao, t.conta));
+  if (!lista.length) return nada(busca ? "Nenhum crédito com esse texto." : "Todo crédito do mês tem regra.");
+  el("nada").innerHTML = "";
+  el("lista").innerHTML = lista.map(t => `
+    <div class="lancamento">
+      <span class="lancamento-data">${fmtData(t.data)}</span>
+      <div><div class="lancamento-desc" title="${esc(t.descricao)}">${marcar(t.descricao)}</div><div class="lancamento-conta">${esc(t.conta)}</div></div>
+      <strong class="lancamento-valor neutro">${fmtBRL(t.valor)}</strong>
+      <button class="sutil btn-entrada" data-criar-de="${esc(t.id)}">Criar regra</button>
+    </div>`).join("");
+}
+
+function renderFontes() {
+  const fontes = Object.fromEntries((DADOS.insights?.fontes || []).map(f => [f.id, f]));
+  const meses = DADOS.insights?.serie.meses || [];
+  // Participação de cada fonte na renda média: a concentração, fonte a fonte.
+  const mediaTotal = (DADOS.insights?.fontes || []).reduce((s, f) => s + (f.media || 0), 0);
+  const lista = DADOS.regras.filter(r => casaBusca(r.nome, r.termo));
+  if (!lista.length) return nada(busca ? "Nenhuma fonte com esse texto." : "Nenhuma regra de entrada. Crie a primeira em “Nova regra”.");
+  el("nada").innerHTML = "";
+  el("lista").innerHTML = lista.map(r => {
+    const f = fontes[r.id];
+    const presenca = f ? meses.map(m => `<i class="${(DADOS.insights.serieRegras?.[r.id] || {})[m] ? "sim" : ""}" title="${esc(labelMes(m))}"></i>`).join("") : "";
+    return `
+    <div class="regra-entrada ${r.ativo ? "" : "off"}">
+      <div>
+        <div class="regra-nome">${marcar(r.nome)}${f ? `<span class="selo-reg ${f.regularidade}">${REGULARIDADE[f.regularidade]}</span>` : ""}</div>
+        <div class="regra-cond">Descrição ${esc(OPERADORES[r.operador] || r.operador)} <span class="termo">“${marcar(r.termo)}”</span>
+          · dias ${r.diaInicio}–${r.diaFim} · competência: <b>${esc(COMPETENCIAS[String(r.deslocamentoMeses)])}</b></div>
+        ${presenca ? `<div class="en-meses" aria-label="Meses com entrada">${presenca}</div>` : ""}
+      </div>
+      <div class="regra-total">${f
+        ? `<strong class="${f.media ? "" : "nada"}">${fmtBRL(f.media)}</strong><span>média${mediaTotal ? ` · ${Math.round(100 * f.media / mediaTotal)}% da renda` : ""} · ${f.mesesComDado}/${f.mesesCobertos} meses${f.diaTipico ? ` · dia ${f.diaTipico}` : ""}</span>`
+        : `<strong class="nada">—</strong><span>regra desativada</span>`}</div>
+      <div class="regra-total"><strong class="${r.totalMes ? "" : "nada"}">${fmtBRL(r.totalMes)}</strong><span>${r.afetadasMes} no mês · última ${f?.ultima ? fmtDia(f.ultima) : "—"}</span></div>
+      <label class="switch" title="${r.ativo ? "Desativar" : "Ativar"}"><input type="checkbox" data-alterna="${esc(r.id)}" ${r.ativo ? "checked" : ""}><span></span></label>
+      <button class="icone" data-abre-pop data-menu="${esc(r.id)}" aria-label="Ações">⋯</button>
+    </div>`;
+  }).join("");
+}
+
+function render() {
+  renderMetricas();
+  renderGrafico();
+  renderAvisos();
+  renderAbas();
+  if (aba === "naoReconhecidas") renderNaoReconhecidas();
+  else if (aba === "fontes") renderFontes();
+  else renderReconhecidas();
 }
 
 async function recarregar() {
@@ -177,31 +432,63 @@ async function recarregar() {
   setEstado("estado", `${DADOS.regras.length} regra(s)`, "ok");
 }
 
-function abrirModal(regra = null) {
-  editando = regra?.id || null;
-  el("modalTitulo").textContent = regra ? "Editar regra de entrada" : "Nova regra de entrada";
-  el("btnSalvar").textContent = regra ? "Salvar" : "Criar regra";
-  el("fNome").value = regra?.nome || "";
-  el("fOperador").value = regra?.operador || "contem";
-  el("fTermo").value = regra?.termo || "";
-  el("fDiaInicio").value = regra?.diaInicio ?? 1;
-  el("fDiaFim").value = regra?.diaFim ?? 31;
-  el("fCompetencia").value = String(regra?.deslocamentoMeses ?? 0);
-  el("fAtivo").checked = regra ? regra.ativo : true;
-  el("modalErro").textContent = "";
-  el("modal").hidden = false;
-  el("fNome").focus();
-}
+/* ------------------------------------------------------------ modal */
 
-function fecharModal() { el("modal").hidden = true; editando = null; }
+let previaTimer = null, previaSeq = 0;
 
-async function salvar() {
-  const dados = {
+function dadosDoModal() {
+  return {
     nome:el("fNome").value.trim(), operador:el("fOperador").value,
     termo:el("fTermo").value.trim(), ativo:el("fAtivo").checked,
     diaInicio:Number(el("fDiaInicio").value), diaFim:Number(el("fDiaFim").value),
     deslocamentoMeses:Number(el("fCompetencia").value),
   };
+}
+
+async function atualizarPrevia() {
+  const dados = dadosDoModal(), seq = ++previaSeq;
+  if (!dados.termo) {
+    el("previaTotal").textContent = "";
+    el("previaLista").innerHTML = `<div class="en-previa-msg">Digite um termo para ver quais créditos a regra pega.</div>`;
+    return;
+  }
+  el("previaTotal").textContent = "calculando…";
+  try {
+    const r = await pedir("/extrato/entradas/regras/previa", "POST", dados);
+    if (seq !== previaSeq) return;
+    el("previaTotal").innerHTML = r.total
+      ? `<b>${r.total}</b> crédito${r.total === 1 ? "" : "s"} · <b>${esc(fmtBRL(r.valor))}</b> no histórico` : "nenhum crédito";
+    el("previaLista").innerHTML = r.amostra.length ? r.amostra.map(t => `
+      <div class="en-previa-item">
+        <span class="quando">${esc(fmtDia(t.data))}</span>
+        <div style="min-width:0"><div class="desc" title="${esc(t.descricao)}">${esc(t.descricao)}</div>
+          <div class="muted" style="font-size:11.5px;margin-top:2px">conta em ${esc(labelMes(t.competencia))}${t.jaReconhecida ? " · já reconhecida por outra regra" : ""}</div></div>
+        <span class="val">${esc(fmtBRL(t.valor))}</span>
+      </div>`).join("") : `<div class="en-previa-msg">Nenhum crédito casa com esse termo e esses dias.</div>`;
+  } catch (e) { if (seq === previaSeq) el("previaTotal").textContent = e.message; }
+}
+
+function abrirModal(regra = null, pre = {}) {
+  editando = regra?.id || null;
+  el("modalTitulo").textContent = regra ? "Editar regra de entrada" : "Nova regra de entrada";
+  el("btnSalvar").textContent = regra ? "Salvar" : "Criar regra";
+  el("fNome").value = regra?.nome || pre.nome || "";
+  el("fOperador").value = regra?.operador || "contem";
+  el("fTermo").value = regra?.termo || pre.termo || "";
+  el("fDiaInicio").value = regra?.diaInicio ?? pre.diaInicio ?? 1;
+  el("fDiaFim").value = regra?.diaFim ?? pre.diaFim ?? 31;
+  el("fCompetencia").value = String(regra?.deslocamentoMeses ?? 0);
+  el("fAtivo").checked = regra ? regra.ativo : true;
+  el("modalErro").textContent = "";
+  el("modal").hidden = false;
+  el("fNome").focus();
+  atualizarPrevia();
+}
+
+function fecharModal() { el("modal").hidden = true; editando = null; }
+
+async function salvar() {
+  const dados = dadosDoModal();
   if (!dados.termo) { el("modalErro").textContent = "Informe o termo a procurar."; return; }
   if (!dados.nome) dados.nome = dados.termo;
   el("btnSalvar").disabled = true;
@@ -214,20 +501,40 @@ async function salvar() {
   finally { el("btnSalvar").disabled = false; }
 }
 
+/* Criar regra a partir de um crédito: termo é a descrição, e a janela de
+   dias fica em torno do dia em que ele caiu, para não pegar o mês inteiro. */
+function criarRegraDe(id) {
+  const t = DADOS.naoReconhecidas.find(x => x.id === id);
+  if (!t) return;
+  const dia = Number(t.data.slice(8, 10));
+  abrirModal(null, { termo:t.descricao, nome:t.descricao,
+    diaInicio:Math.max(1, dia - 3), diaFim:Math.min(31, dia + 3) });
+}
+
+/* ------------------------------------------------------------ eventos */
+
+function guardarUrl() {
+  const url = new URL(location.href);
+  if (aba === "reconhecidas") url.searchParams.delete("aba"); else url.searchParams.set("aba", aba);
+  if (busca.trim()) url.searchParams.set("q", busca.trim()); else url.searchParams.delete("q");
+  history.replaceState(null, "", url);
+}
+
 function ligar() {
   el("btnNova").addEventListener("click", () => abrirModal());
 
-  el("btnEsperado").addEventListener("click", e => {
+  el("metricas").addEventListener("click", e => {
+    const botao = e.target.closest("#btnEsperado");
+    if (!botao) return;
     el("fEsperado").value = DADOS.valorEsperado ?? "";
     el("esperadoErro").textContent = "";
-    abrirPop(el("popEsperado"), e.currentTarget, { alinhar: "direita" });
+    abrirPop(el("popEsperado"), botao, { alinhar: "direita" });
     el("fEsperado").focus();
   });
   el("btnEsperadoSalvar").addEventListener("click", async () => {
     const texto = el("fEsperado").value.trim();
     try {
-      await pedir("/extrato/entradas/valor-esperado", "PUT",
-                  { valor: texto === "" ? null : Number(texto) });
+      await pedir("/extrato/entradas/valor-esperado", "PUT", { valor: texto === "" ? null : Number(texto) });
       fecharPop();
       await recarregar();
     } catch (e) { el("esperadoErro").textContent = e.message; }
@@ -239,13 +546,56 @@ function ligar() {
       await recarregar();
     } catch (e) { el("esperadoErro").textContent = e.message; }
   });
+
+  el("ano").addEventListener("click", () => abrirPop(el("popAno"), el("ano"), { alinhar: "direita" }));
+  el("popAnoLista").addEventListener("click", e => {
+    const b = e.target.closest("[data-escolhe-ano]");
+    if (!b) return;
+    anoGrafico = b.dataset.escolheAno;
+    fecharPop();
+    renderGrafico();
+  });
+  // Trocar o mês pelo seletor leva o gráfico para o ano dele.
+  el("mes").addEventListener("change", () => { anoGrafico = el("mes").value.slice(0, 4); });
+  el("grafico").addEventListener("click", e => {
+    const col = e.target.closest("[data-ir-mes]");
+    if (!col) return;
+    // Clicar de novo no mês selecionado desmarca: volta para o mês atual.
+    const destino = col.dataset.irMes === el("mes").value ? mesAtual() : col.dataset.irMes;
+    if (destino === el("mes").value) return;
+    el("mes").value = destino;
+    el("mes").dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-criar-de]");
+    if (b) criarRegraDe(b.dataset.criarDe);
+  });
+
+  el("abas").addEventListener("click", e => {
+    const b = e.target.closest("[data-aba]");
+    if (!b) return;
+    aba = b.dataset.aba; guardarUrl(); render();
+  });
+  el("busca").addEventListener("input", () => { busca = el("busca").value; guardarUrl(); render(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "/" && el("modal").hidden && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+      e.preventDefault(); el("busca").focus();
+    }
+    if (e.key === "Escape" && !el("modal").hidden) fecharModal();
+  });
+
+  const caixa = el("modal").querySelector(".modal");
+  const agendar = () => { clearTimeout(previaTimer); previaTimer = setTimeout(atualizarPrevia, 250); };
+  caixa.addEventListener("input", agendar);
+  caixa.addEventListener("change", agendar);
+
   el("btnFechar").addEventListener("click", fecharModal);
   el("btnCancelar").addEventListener("click", fecharModal);
   el("btnSalvar").addEventListener("click", salvar);
   el("mes").addEventListener("change", recarregar);
   el("modal").addEventListener("click", e => { if (e.target === el("modal")) fecharModal(); });
 
-  el("listaRegras").addEventListener("change", async e => {
+  el("lista").addEventListener("change", async e => {
     const alvo = e.target.closest("[data-alterna]");
     if (!alvo) return;
     const r = DADOS.regras.find(x => x.id === alvo.dataset.alterna);
@@ -258,23 +608,22 @@ function ligar() {
     } catch (erro) { setEstado("estado", erro.message, "erro"); }
   });
 
-  el("listaLancamentos").addEventListener("click", async e => {
+  el("lista").addEventListener("click", async e => {
     const botao = e.target.closest("[data-alterna-entrada]");
-    if (!botao) return;
-    botao.disabled = true;
-    try {
-      await pedir(`/extrato/entradas/transacoes/${encodeURIComponent(botao.dataset.alternaEntrada)}`,
-        "PUT", {ativa:botao.dataset.ativa !== "1"});
-      await recarregar();
-    } catch (erro) { setEstado("estado", erro.message, "erro"); botao.disabled = false; }
-  });
-
-  el("listaRegras").addEventListener("click", e => {
-    const botao = e.target.closest("[data-menu]");
-    if (!botao) return;
-    regraMenu = DADOS.regras.find(r => r.id === botao.dataset.menu);
+    if (botao) {
+      botao.disabled = true;
+      try {
+        await pedir(`/extrato/entradas/transacoes/${encodeURIComponent(botao.dataset.alternaEntrada)}`,
+          "PUT", { ativa: botao.dataset.ativa !== "1" });
+        await recarregar();
+      } catch (erro) { setEstado("estado", erro.message, "erro"); botao.disabled = false; }
+      return;
+    }
+    const menu = e.target.closest("[data-menu]");
+    if (!menu) return;
+    regraMenu = DADOS.regras.find(r => r.id === menu.dataset.menu);
     el("popAcoesLista").innerHTML = `<button class="pop-item" data-acao="editar">✎ Editar</button><div class="pop-sep"></div><button class="pop-item" data-acao="excluir" style="color:var(--vermelho)">Excluir</button>`;
-    abrirPop(el("popAcoes"), botao, { alinhar:"direita" });
+    abrirPop(el("popAcoes"), menu, { alinhar: "direita" });
   });
 
   el("popAcoesLista").addEventListener("click", async e => {
@@ -290,11 +639,14 @@ function ligar() {
 
 (async function iniciar() {
   montarNav("entradas.html");
-  campoMesTodos();   // troca o calendário nativo pelo do projeto
-  ligar();
+  const inicial = new URLSearchParams(location.search);
+  if (ABAS.some(a => a.id === inicial.get("aba"))) aba = inicial.get("aba");
+  busca = inicial.get("q") || "";
+  el("busca").value = busca;
   el("mes").value = mesAtual();
+  ligar();
   try { await recarregar(); }
-  catch (e) { setEstado("estado", e.message, "erro"); el("vazioRegras").innerHTML = `<div class="vazio">Não foi possível carregar as entradas.</div>`; }
+  catch (e) { setEstado("estado", e.message, "erro"); nada("Não foi possível carregar as entradas."); }
 })();
 </script>
 </body>

@@ -943,7 +943,116 @@ def regras_payload() -> dict:
                 if not l["sistema"]
             ],
             "sistema": sum(1 for l in linhas if l["sistema"]),
+            # Somente leitura, para a aba Sistema explicar o que roda sempre.
+            "regrasSistema": [
+                {"id": l["id"], "nome": l["nome"], "campo": l["campo"],
+                 "operador": l["operador"],
+                 "termos": termos_por_regra.get(l["id"], [l["termo"]]),
+                 "categoriaNome": l["categoria_nome"],
+                 "categoriaCor": l["categoria_cor"],
+                 "ignorarCalculos": bool(l["ignorar_calculos"]),
+                 "afetadas": l["afetadas"]}
+                for l in linhas if l["sistema"]
+            ],
+            "entradas": [
+                {"id": e["id"], "nome": e["nome"], "operador": e["operador"],
+                 "termo": e["termo"], "diaInicio": e["dia_inicio"],
+                 "diaFim": e["dia_fim"], "deslocamentoMeses": e["deslocamento_meses"],
+                 "ativo": bool(e["ativo"])}
+                for e in conn.execute(
+                    "SELECT * FROM extrato_regras_entradas ORDER BY nome, id")
+            ],
+            # De onde veio a categoria de cada transacao: e o que diz quanto
+            # do extrato as regras ja cobrem.
+            "cobertura": {
+                c["origem_categorizacao"]: c["n"]
+                for c in conn.execute(
+                    "SELECT origem_categorizacao, COUNT(*) AS n "
+                    "FROM extrato_efetivo GROUP BY origem_categorizacao")
+            },
         }
+
+
+def previa_regra(dados: dict, limite: int = 8) -> dict:
+    """O que uma regra ainda nao salva faria: total e amostra, sem gravar.
+
+    Casa como a view casa a renomeacao (descricao manual ou original), e mostra
+    o antes (como a transacao esta hoje) e o depois (o que a regra poria).
+    """
+    recebidos = dados.get("termos")
+    if not isinstance(recebidos, list):
+        recebidos = [dados.get("termo")]
+    termos = [normalizar(t) for t in recebidos if str(t or "").strip()]
+    if not termos:
+        return {"total": 0, "amostra": []}
+    campo = dados.get("campo") if dados.get("campo") in CAMPOS_VALIDOS else "descricao"
+    operador = dados.get("operador") if dados.get("operador") in OPERADORES_VALIDOS else "contem"
+
+    def numero(chave: str) -> float | None:
+        bruto = str(dados.get(chave) if dados.get(chave) is not None else "").strip()
+        if not bruto:
+            return None
+        bruto = bruto.replace("R$", "").replace(" ", "")
+        if "," in bruto:
+            bruto = bruto.replace(".", "").replace(",", ".")
+        try:
+            return abs(float(bruto))
+        except ValueError:
+            return None
+
+    minimo, maximo = numero("valorMin"), numero("valorMax")
+
+    def casa(texto: str) -> bool:
+        alvo = normalizar(texto)
+        if operador == "igual":
+            return any(alvo == t for t in termos)
+        if operador == "comeca_com":
+            return any(alvo.startswith(t) for t in termos)
+        return any(t in alvo for t in termos)
+
+    with _abrir() as conn:
+        categorias = {c["id"]: c for c in conn.execute(
+            "SELECT id, nome, cor FROM extrato_categorias")}
+        linhas = conn.execute(
+            "SELECT e.transacao_id, e.data, e.descricao, e.valor, e.categoria_id, "
+            "       e.incluida, COALESCE(a.descricao_manual, t.descricao) AS original, "
+            "       t.categoria AS categoria_pluggy "
+            "  FROM extrato_efetivo e "
+            "  JOIN pluggy_transacoes t ON t.transacao_id = e.transacao_id "
+            "  LEFT JOIN extrato_ajustes a ON a.transacao_id = e.transacao_id "
+            " ORDER BY e.data DESC, e.transacao_id"
+        ).fetchall()
+
+    nova_cat = dados.get("categoriaId") or None
+    nova_desc = str(dados.get("descricaoNova") or "").strip() or None
+    ignorar = bool(dados.get("ignorarCalculos"))
+    total, amostra, mudam = 0, [], 0
+    for l in linhas:
+        if not casa(l["categoria_pluggy"] if campo == "categoria_original" else l["original"]):
+            continue
+        valor = abs(l["valor"] or 0)
+        if (minimo is not None and valor < minimo) or (maximo is not None and valor > maximo):
+            continue
+        total += 1
+        cat_antes = categorias.get(l["categoria_id"])
+        cat_depois = categorias.get(nova_cat) if nova_cat else cat_antes
+        depois_desc = nova_desc or l["descricao"]
+        muda = (depois_desc != l["descricao"] or (nova_cat and nova_cat != l["categoria_id"])
+                or (ignorar and l["incluida"]))
+        mudam += bool(muda)
+        if len(amostra) < limite:
+            amostra.append({
+                "data": l["data"], "valor": l["valor"],
+                "antes": {"descricao": l["descricao"],
+                          "categoria": cat_antes["nome"] if cat_antes else None,
+                          "cor": cat_antes["cor"] if cat_antes else None,
+                          "incluida": bool(l["incluida"])},
+                "depois": {"descricao": depois_desc,
+                           "categoria": cat_depois["nome"] if cat_depois else None,
+                           "cor": cat_depois["cor"] if cat_depois else None,
+                           "incluida": bool(l["incluida"]) and not ignorar},
+            })
+    return {"total": total, "mudam": mudam, "amostra": amostra}
 
 
 def _validar_regra(dados: dict) -> dict:
@@ -1375,7 +1484,249 @@ def entradas_payload(mes: str) -> dict:
         "regras": regras,
         "transacoes": transacoes,
         "valorEsperado": valor_esperado,
+        "naoReconhecidas": _creditos_nao_reconhecidos(mes),
+        "insights": entradas_insights(mes, valor_esperado,
+                                      sum(t["valor"] for t in transacoes if t["ativa"])),
     }
+
+
+def _creditos_nao_reconhecidos(mes: str, limite: int = 40) -> list[dict]:
+    """Creditos do mes que nenhuma regra de entrada pegou.
+
+    Fica so o que conta nos calculos (incluida = 1): transferencia entre contas
+    proprias e resgate de cofrinho ja saem pelas regras de sistema, e nao sao
+    renda que faltou reconhecer.
+    """
+    with _abrir() as conn:
+        garantir_extrato_materializado(conn)
+        return [
+            {"id": l["transacao_id"], "data": l["data"][:10], "descricao": l["descricao"],
+             "valor": float(abs(l["valor"])), "conta": l["conta_nome"]}
+            for l in conn.execute(
+                """
+                SELECT t.transacao_id, t.data, t.descricao, t.valor,
+                       COALESCE(c.nome, 'Conta') AS conta_nome
+                  FROM extrato_efetivo_cache t
+                  LEFT JOIN pluggy_contas c ON c.conta_id = t.conta_id
+                 WHERE t.tipo = 'CREDIT' AND t.incluida = 1
+                   AND t.entrada_considerada = 0
+                   AND SUBSTR(t.data, 1, 7) = ?
+                 ORDER BY ABS(t.valor) DESC, t.data DESC
+                 LIMIT ?
+                """,
+                (mes, limite),
+            )
+        ]
+
+
+def _mediana(valores: list[float]) -> float | None:
+    ordenados = sorted(valores)
+    if not ordenados:
+        return None
+    meio = len(ordenados) // 2
+    return ordenados[meio] if len(ordenados) % 2 else (ordenados[meio - 1] + ordenados[meio]) / 2
+
+
+def _mes_mais(mes: str, passos: int) -> str:
+    total = int(mes[:4]) * 12 + int(mes[5:7]) - 1 + passos
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
+
+
+def entradas_insights(mes: str, valor_esperado: float | None, recebido: float) -> dict:
+    """Leituras sobre a renda do mes, todas derivadas dos 12 meses anteriores.
+
+    A janela de comparacao termina no mes ANTERIOR ao escolhido: comparar o
+    mes com uma media que o inclui puxaria a media para ele e esconderia
+    justamente o desvio que se quer mostrar.
+    """
+    from datetime import date as _date
+
+    anterior = _mes_mais(mes, -1)
+    serie = serie_entradas_por_regra(12, anterior)
+    janela = serie["meses"]
+    media_total = serie["total"]["media"]
+
+    # Dia de chegada e valor de cada credito por regra: a serie so traz somas.
+    casa = entrada_casa("t.descricao", "t.data")
+    chegadas: dict[str, list[dict]] = {}
+    with _abrir() as conn:
+        garantir_extrato_materializado(conn)
+        deslocamentos = {l["id"]: l["deslocamento_meses"] for l in conn.execute(
+            "SELECT id, deslocamento_meses FROM extrato_regras_entradas")}
+        for l in conn.execute(
+            f"""
+            SELECT (SELECT e.id FROM extrato_regras_entradas e WHERE {casa}
+                     ORDER BY {ORDEM_REGRAS_ENTRADA} LIMIT 1) AS regra_id,
+                   t.competencia_entrada AS competencia, t.data, ABS(t.valor) AS valor
+              FROM extrato_efetivo_cache t
+             WHERE t.tipo = 'CREDIT' AND t.entrada_considerada = 1
+               AND t.competencia_entrada BETWEEN ? AND ?
+               AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
+                                WHERE x.transacao_id = t.transacao_id)
+            """,
+            (janela[0], mes),
+        ):
+            if l["regra_id"]:
+                chegadas.setdefault(l["regra_id"], []).append(
+                    {"competencia": l["competencia"], "data": l["data"][:10],
+                     "valor": float(l["valor"] or 0)})
+
+    hoje = _date.today()
+    mes_corrente = hoje.strftime("%Y-%m")
+    fontes, avisos = [], []
+    for regra in serie["regras"]:
+        historico = [c for c in chegadas.get(regra["id"], []) if c["competencia"] != mes]
+        do_mes = [c for c in chegadas.get(regra["id"], []) if c["competencia"] == mes]
+        meses_com = regra["mesesComDado"]
+        cobertos = max(1, serie["mesesCobertos"])
+        proporcao = meses_com / cobertos
+        regularidade = ("regular" if proporcao >= .8 else "frequente" if proporcao >= .5
+                        else "irregular" if proporcao >= .2 else "eventual")
+        dia_tipico = _mediana([int(c["data"][8:10]) for c in historico])
+        valor_tipico = _mediana([c["valor"] for c in historico])
+        ultima = max((c["data"] for c in chegadas.get(regra["id"], [])), default=None)
+        fonte = {
+            "id": regra["id"], "nome": regra["nome"], "media": regra["media"],
+            "mesesComDado": meses_com, "mesesCobertos": serie["mesesCobertos"],
+            "regularidade": regularidade,
+            "diaTipico": round(dia_tipico) if dia_tipico else None,
+            "ultima": ultima, "recebidoMes": round(sum(c["valor"] for c in do_mes), 2),
+            "chegouNoMes": bool(do_mes), "proxima": None, "atrasoDias": None,
+        }
+
+        # Pontualidade: dia em que caiu neste mes contra o dia de costume.
+        if do_mes and dia_tipico and meses_com >= 3:
+            dia = min(int(c["data"][8:10]) for c in do_mes)
+            fonte["atrasoDias"] = round(dia - dia_tipico)
+            if abs(fonte["atrasoDias"]) >= 2:
+                quando = "depois" if fonte["atrasoDias"] > 0 else "antes"
+                avisos.append({"tipo": "pontualidade", "fonte": regra["nome"],
+                               "texto": f"{regra['nome']} caiu {abs(fonte['atrasoDias'])} dias "
+                                        f"{quando} do costume (dia {round(dia_tipico)})."})
+
+        # Proxima entrada: so para quem costuma vir e ainda nao veio no mes
+        # corrente. Mes passado sem a entrada e fonte parada, nao previsao.
+        if (mes == mes_corrente and not do_mes and dia_tipico
+                and regularidade in ("regular", "frequente")):
+            import calendar
+            # Competência não é mês de pagamento: salário do fim do mês que
+            # conta no seguinte cai no mês ANTERIOR à competência.
+            pagamento = _mes_mais(mes, -deslocamentos.get(regra["id"], 0))
+            ultimo_dia = calendar.monthrange(int(pagamento[:4]), int(pagamento[5:7]))[1]
+            prevista = f"{pagamento}-{min(round(dia_tipico), ultimo_dia):02d}"
+            # Data já passada não é "próxima": é entrada que não veio.
+            if prevista >= hoje.isoformat():
+                fonte["proxima"] = prevista
+            # Só cobra atraso de fonte regular. Fonte "frequente" costuma ser
+            # alternativa de outra (o mesmo pagador por dois caminhos), e
+            # avisar a ausência dela no mês em que a outra veio é ruído.
+            elif regularidade == "regular":
+                avisos.append({"tipo": "atrasada", "fonte": regra["nome"],
+                               "texto": f"{regra['nome']} costuma cair por volta de "
+                                        f"{prevista[8:10]}/{prevista[5:7]} e ainda não chegou."})
+
+        # Fonte parada: vinha com frequencia e sumiu nos dois ultimos meses.
+        ultimos = janela[-2:]
+        if meses_com >= 3 and not any(regra["valores"].get(m) for m in ultimos):
+            sem = 0
+            for m in reversed(janela):
+                if regra["valores"].get(m):
+                    break
+                sem += 1
+            avisos.append({"tipo": "parada", "fonte": regra["nome"],
+                           "texto": f"{regra['nome']} não aparece há {sem} meses; "
+                                    f"vinha em {meses_com} dos {serie['mesesCobertos']}."})
+
+        # Valor fora do padrao dentro de uma fonte conhecida.
+        if valor_tipico and meses_com >= 3:
+            for c in do_mes:
+                if c["valor"] >= 1.5 * valor_tipico:
+                    avisos.append({"tipo": "fora_do_padrao", "fonte": regra["nome"],
+                                   "texto": f"{regra['nome']} veio {c['valor'] / valor_tipico:.1f}× "
+                                            f"o valor de costume em {c['data'][8:10]}/{c['data'][5:7]}."})
+        fontes.append(fonte)
+
+    # Credito grande sem regra: provavelmente nao e renda recorrente, mas
+    # merece olhar (ou virar regra).
+    for c in _creditos_nao_reconhecidos(mes, 5):
+        if media_total and c["valor"] >= .3 * media_total:
+            avisos.append({"tipo": "credito_grande", "fonte": None, "id": c["id"],
+                           "texto": f"Crédito sem regra de {c['data'][8:10]}/{c['data'][5:7]} "
+                                    f"equivale a {round(100 * c['valor'] / media_total)}% da renda média."})
+
+    total_12m = sum(f["media"] for f in fontes) or 0
+    maior = max(fontes, key=lambda f: f["media"], default=None)
+    concentracao = (round(100 * maior["media"] / total_12m) if maior and total_12m else None)
+    if concentracao and concentracao >= 80 and len([f for f in fontes if f["media"]]) > 1:
+        avisos.append({"tipo": "concentracao", "fonte": maior["nome"],
+                       "texto": f"{concentracao}% da renda média vem de {maior['nome']}."})
+
+    referencia = valor_esperado if valor_esperado else media_total
+    proximas = sorted((f for f in fontes if f["proxima"]), key=lambda f: f["proxima"])
+    return {
+        "mediaMensal": media_total,
+        "mesesCobertos": serie["mesesCobertos"],
+        "referencia": referencia,
+        "referenciaOrigem": "esperado" if valor_esperado else "media",
+        "pctDaReferencia": round(100 * recebido / referencia) if referencia else None,
+        "variacaoMedia": round(100 * (recebido - media_total) / media_total) if media_total else None,
+        "proxima": {"fonte": proximas[0]["nome"], "data": proximas[0]["proxima"]} if proximas else None,
+        "concentracao": {"fonte": maior["nome"], "pct": concentracao} if concentracao else None,
+        "serie": {"meses": janela, "total": serie["total"]["valores"]},
+        "serieRegras": {r["id"]: r["valores"] for r in serie["regras"]},
+        # Janela do gráfico: fixa nos 13 meses até hoje (ou até o mês
+        # escolhido, se ele estiver à frente). Presa ao mês escolhido, ela
+        # andava a cada troca de mês e as barras mudavam de lugar.
+        # O mês seguinte entra sempre: salário do fim do mês já é do próximo.
+        "grafico": _janela_do_grafico(max(mes, _mes_mais(mes_corrente, 1))),
+        "fontes": fontes,
+        "avisos": avisos,
+    }
+
+
+def _janela_do_grafico(fim: str) -> dict:
+    # Três anos-calendário inteiros (jan a dez), para o filtro de ano da tela.
+    serie = serie_entradas_por_regra(36, f"{fim[:4]}-12")
+    return {"meses": serie["meses"], "total": serie["total"]["valores"]}
+
+
+def previa_regra_entrada(dados: dict, limite: int = 8) -> dict:
+    """Quais creditos uma regra de entrada ainda nao salva pegaria, sem gravar."""
+    termo = normalizar(str(dados.get("termo") or "").strip())
+    if not termo:
+        return {"total": 0, "valor": 0, "amostra": []}
+    operador = dados.get("operador") if dados.get("operador") in OPERADORES_VALIDOS else "contem"
+    try:
+        inicio = max(1, min(31, int(dados.get("diaInicio") or 1)))
+        fim = max(inicio, min(31, int(dados.get("diaFim") or 31)))
+        desloc = int(dados.get("deslocamentoMeses") or 0)
+    except (TypeError, ValueError):
+        inicio, fim, desloc = 1, 31, 0
+    desloc = desloc if desloc in (-1, 0, 1) else 0
+    with _abrir() as conn:
+        garantir_extrato_materializado(conn)
+        linhas = conn.execute(
+            "SELECT t.transacao_id, t.data, t.descricao, t.valor, t.entrada_considerada, "
+            "       COALESCE(c.nome, 'Conta') AS conta_nome "
+            "  FROM extrato_efetivo_cache t "
+            "  LEFT JOIN pluggy_contas c ON c.conta_id = t.conta_id "
+            " WHERE t.tipo = 'CREDIT' AND t.incluida = 1 "
+            " ORDER BY t.data DESC, t.transacao_id").fetchall()
+    total, soma, amostra = 0, 0.0, []
+    for l in linhas:
+        alvo = normalizar(l["descricao"])
+        casou = (alvo == termo if operador == "igual"
+                 else alvo.startswith(termo) if operador == "comeca_com" else termo in alvo)
+        if not casou or not (inicio <= int(l["data"][8:10]) <= fim):
+            continue
+        total += 1
+        soma += abs(l["valor"])
+        if len(amostra) < limite:
+            amostra.append({"data": l["data"][:10], "descricao": l["descricao"],
+                            "valor": float(abs(l["valor"])), "conta": l["conta_nome"],
+                            "competencia": _mes_mais(l["data"][:7], desloc),
+                            "jaReconhecida": bool(l["entrada_considerada"])})
+    return {"total": total, "valor": round(soma, 2), "amostra": amostra}
 
 
 def definir_entrada_ativa(transacao_id: str, ativa: bool) -> dict:

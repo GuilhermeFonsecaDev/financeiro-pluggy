@@ -11,7 +11,7 @@
 .regra:hover { background: var(--surface-2); }
 .regra.off { opacity: .45; }
 .ordem { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
-.regra-nome { font-size: 14px; font-weight: 600; }
+.regra-nome { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
 .regra-cond { margin-top: 2px; color: var(--text-3); font-size: 12.5px; }
 .regra-cond b { color: var(--text-2); font-weight: 600; }
 .termo { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
@@ -43,7 +43,41 @@
 .termo-linha input { width:100%; padding-right:34px; }
 .termo-remover { position:absolute; right:5px; top:50%; transform:translateY(-50%); width:24px; height:24px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--text-3); font-size:16px; line-height:1; cursor:pointer; }
 .termo-remover:hover { background:var(--surface-3); color:var(--vermelho); }
+/* Indicadores, abas e busca: a mesma .metrica e o mesmo .segmentado das
+   outras telas, para Regras não parecer um produto à parte. */
+.rg-metricas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.rg-metricas .valor { font-variant-numeric: tabular-nums; }
+.rg-metricas .nota b { color: var(--text-2); font-weight: 600; }
+.rg-cobertura { display: flex; height: 5px; border-radius: 999px; overflow: hidden; margin-top: 9px; background: var(--surface-3); }
+.rg-cobertura i { display: block; height: 100%; }
+.rg-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rg-barra .segmentado button small { margin-left: 6px; opacity: .7; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.rg-busca { flex: 1; min-width: 220px; position: relative; }
+.rg-busca input { width: 100%; padding-left: 30px; }
+.rg-busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.rg-nada { padding: 26px 8px; text-align: center; color: var(--text-3); font-size: 13px; }
+.regra mark { background: rgba(74, 149, 234, .24); color: inherit; border-radius: 3px; padding: 0 1px; }
+.regra.leitura { grid-template-columns: 30px 1fr 120px 78px; }
+.selo-sis { justify-self: end; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+            color: var(--text-3); border: 1px solid var(--line-forte); border-radius: 999px; padding: 2px 8px; }
+
+/* Prévia no modal: o que a regra faria, antes de salvar. */
+.rg-previa { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2); }
+.rg-previa-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px;
+                  border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--text-2); }
+.rg-previa-topo b { color: var(--text); font-variant-numeric: tabular-nums; }
+.rg-previa-lista { max-height: 230px; overflow: auto; }
+.rg-previa-item { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+                  padding: 7px 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.rg-previa-item:first-child { border-top: 0; }
+.rg-previa-item .quando { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.rg-previa-item .de { color: var(--text-3); text-decoration: line-through; }
+.rg-previa-item .desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rg-previa-item .val { font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.rg-previa-msg { padding: 12px; color: var(--text-3); font-size: 12.5px; }
+
 @media (max-width: 900px) {
+  .rg-metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .regra { grid-template-columns: 30px 1fr 34px; }
   .afeta, .switch { display: none; }
   .form-grid { grid-template-columns: 1fr; }
@@ -64,6 +98,16 @@
       <button class="primario" id="btnNova">+ Nova regra</button>
     </div>
   </header>
+
+  <section class="rg-metricas" id="metricas" aria-label="Resumo das regras"></section>
+
+  <div class="rg-barra">
+    <span class="segmentado" id="abas" role="tablist" aria-label="Tipo de regra"></span>
+    <label class="rg-busca">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="busca" type="search" placeholder="Buscar por nome, termo, categoria ou nova descrição" autocomplete="off" aria-label="Buscar regras" />
+    </label>
+  </div>
 
   <section class="painel" style="padding:6px 10px">
     <div id="lista"></div>
@@ -126,6 +170,11 @@
       </div>
     </div>
 
+    <div class="rg-previa" aria-live="polite">
+      <div class="rg-previa-topo"><span>Prévia</span><span id="previaTotal"></span></div>
+      <div class="rg-previa-lista" id="previaLista"></div>
+    </div>
+
     <p class="muted" style="margin:14px 0 0;font-size:12.5px">
       A comparação ignora maiúsculas, minúsculas e acentos. A faixa inclui os limites e usa o valor absoluto da transação. Prioridade menor é aplicada primeiro.
     </p>
@@ -143,7 +192,20 @@
 const OPERADORES = { contem: "contém", comeca_com: "começa com", igual: "é igual a" };
 const CAMPOS = { descricao: "a descrição", categoria_original: "a categoria da Pluggy" };
 
-let CATEGORIAS = [], REGRAS = [];
+let CATEGORIAS = [], REGRAS = [], SISTEMA = [], ENTRADAS = [], COBERTURA = {};
+let aba = "todas", busca = "";
+
+/* Uma regra entra em toda aba cuja ação ela faz: a que renomeia e
+   categoriza aparece nas duas. */
+const ABAS = [
+  { id: "todas",     rotulo: "Todas",      filtro: () => true },
+  { id: "renomear",  rotulo: "Renomeação", filtro: r => !!r.descricaoNova },
+  { id: "categoria", rotulo: "Categoria",  filtro: r => !!r.categoriaId },
+  { id: "ignorar",   rotulo: "Ignorar",    filtro: r => r.ignorarCalculos },
+  { id: "entradas",  rotulo: "Entradas" },
+  { id: "sistema",   rotulo: "Sistema" },
+];
+const DESLOCAMENTO = { "-1": "mês anterior", "0": "mesmo mês", "1": "mês seguinte" };
 let editando = null, regraDoMenu = null;
 
 const el = id => document.getElementById(id);
@@ -197,29 +259,132 @@ function termosAtuais() {
     .map(input => input.value.trim()).filter(Boolean);
 }
 
-function render() {
-  const alvo = el("lista");
-  if (!REGRAS.length) {
-    alvo.innerHTML = "";
-    el("vazio").innerHTML = `<div class="vazio">Nenhuma regra ainda. Crie a primeira em “Nova regra”.</div>`;
-    return;
+const normal = t => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/* Destaca o trecho buscado. A posição sai do texto normalizado, que tem o
+   mesmo tamanho do original quando não há caractere composto; se tiver,
+   só não destaca. */
+function marcar(texto) {
+  const bruto = String(texto ?? "");
+  const q = normal(busca.trim());
+  const n = normal(bruto);
+  const i = q ? n.indexOf(q) : -1;
+  if (i < 0 || n.length !== bruto.length) return esc(bruto);
+  return esc(bruto.slice(0, i)) + "<mark>" + esc(bruto.slice(i, i + q.length)) + "</mark>"
+    + esc(bruto.slice(i + q.length));
+}
+
+function casaBusca(...campos) {
+  const q = normal(busca.trim());
+  return !q || campos.flat().some(c => normal(c).includes(q));
+}
+
+function renderMetricas() {
+  const ativas = REGRAS.filter(r => r.ativo).length;
+  const semEfeito = REGRAS.filter(r => r.ativo && !r.afetadas).length;
+  const total = Object.values(COBERTURA).reduce((a, b) => a + b, 0) || 1;
+  const pct = k => Math.round(100 * (COBERTURA[k] || 0) / total);
+  const faixas = [["regra", "var(--azul)"], ["manual", "var(--verde)"],
+                  ["pluggy", "var(--text-3)"], ["padrao", "var(--laranja)"]];
+  el("metricas").innerHTML = `
+    <div class="metrica"><div class="rotulo">Regras ativas</div>
+      <div class="valor">${ativas}</div>
+      <div class="nota">de ${REGRAS.length} · mais ${SISTEMA.length} de sistema</div></div>
+    <div class="metrica"><div class="rotulo">Categorizadas por regra</div>
+      <div class="valor">${pct("regra")}%</div>
+      <div class="rg-cobertura" title="Regra · manual · Pluggy · sem categoria">${faixas.map(([k, cor]) =>
+        `<i style="width:${100 * (COBERTURA[k] || 0) / total}%;background:${cor}"></i>`).join("")}</div>
+      <div class="nota" title="Sem categoria: ${pct("padrao")}%">manual <b>${pct("manual")}%</b> · Pluggy <b>${pct("pluggy")}%</b></div></div>
+    <div class="metrica"><div class="rotulo">Sem efeito</div>
+      <div class="valor" style="${semEfeito ? "color:var(--laranja)" : ""}">${semEfeito}</div>
+      <div class="nota">ativas que não pegam nenhuma transação</div></div>
+    <div class="metrica"><div class="rotulo">Regras de entrada</div>
+      <div class="valor">${ENTRADAS.filter(e => e.ativo).length}</div>
+      <div class="nota">reconhecem o que compõe a renda</div></div>`;
+}
+
+function renderAbas() {
+  const conta = a => a.id === "entradas" ? ENTRADAS.length
+    : a.id === "sistema" ? SISTEMA.length : REGRAS.filter(a.filtro).length;
+  el("abas").innerHTML = ABAS.map(a =>
+    `<button type="button" role="tab" data-aba="${a.id}" aria-selected="${a.id === aba}"
+       class="${a.id === aba ? "ativo" : ""}">${a.rotulo}<small>${conta(a)}</small></button>`).join("");
+}
+
+function semResultado(texto) {
+  el("lista").innerHTML = "";
+  el("vazio").innerHTML = `<div class="rg-nada">${texto}</div>`;
+}
+
+function renderEntradas() {
+  const lista = ENTRADAS.filter(e => casaBusca(e.nome, e.termo));
+  if (!lista.length) {
+    return semResultado(busca ? "Nenhuma regra de entrada com esse texto." : "Nenhuma regra de entrada. Crie em Entradas.");
   }
   el("vazio").innerHTML = "";
-  alvo.innerHTML = REGRAS.map((r, i) => {
+  el("lista").innerHTML = lista.map((e, i) => `
+    <div class="regra leitura ${e.ativo ? "" : "off"}">
+      <span class="ordem">${i + 1}</span>
+      <div>
+        <div class="regra-nome">${marcar(e.nome)}</div>
+        <div class="regra-cond">Quando <b>a descrição</b> ${esc(OPERADORES[e.operador] || e.operador)}
+          <span class="termo">“${marcar(e.termo)}”</span> · entre os dias ${e.diaInicio} e ${e.diaFim}
+          · conta no ${esc(DESLOCAMENTO[String(e.deslocamentoMeses)] || "mesmo mês")}</div>
+      </div>
+      <span class="afeta">${e.ativo ? "ativa" : "desativada"}</span>
+      <a class="btn sutil" href="entradas.html" style="justify-self:end">Editar</a>
+    </div>`).join("");
+}
+
+function renderSistema() {
+  const lista = SISTEMA.filter(r => casaBusca(r.nome, r.termos, r.categoriaNome));
+  if (!lista.length) return semResultado("Nenhuma regra de sistema com esse texto.");
+  el("vazio").innerHTML = "";
+  el("lista").innerHTML = lista.map((r, i) => `
+    <div class="regra leitura">
+      <span class="ordem">${i + 1}</span>
+      <div>
+        <div class="regra-nome">${marcar(r.nome)}</div>
+        <div class="regra-cond">Quando <b>${esc(CAMPOS[r.campo] || r.campo)}</b> ${esc(OPERADORES[r.operador] || r.operador)}
+          <span class="termo">${r.termos.map(t => `“${marcar(t)}”`).join(" ou ")}</span></div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          ${r.categoriaNome ? `<span class="chip"><span class="ponto" style="background:${esc(r.categoriaCor || "#9ba1ab")}"></span>${esc(r.categoriaNome)}</span>` : ""}
+          ${r.ignorarCalculos ? `<span class="chip aviso">fora dos cálculos</span>` : ""}</div>
+      </div>
+      <span class="afeta">${r.afetadas} transaç${r.afetadas === 1 ? "ão" : "ões"}</span>
+      <span class="selo-sis" title="Sustenta os cálculos; não é editável">sistema</span>
+    </div>`).join("");
+}
+
+function render() {
+  renderMetricas();
+  renderAbas();
+  if (aba === "entradas") return renderEntradas();
+  if (aba === "sistema") return renderSistema();
+  const alvo = el("lista");
+  if (!REGRAS.length) return semResultado("Nenhuma regra ainda. Crie a primeira em “Nova regra”.");
+  const filtro = ABAS.find(a => a.id === aba)?.filtro || (() => true);
+  const lista = REGRAS.filter(filtro).filter(r =>
+    casaBusca(r.nome, r.termos, r.categoriaNome, r.descricaoNova));
+  if (!lista.length) {
+    return semResultado(busca ? `Nenhuma regra com “${esc(busca)}”.` : "Nenhuma regra deste tipo.");
+  }
+  el("vazio").innerHTML = "";
+  alvo.innerHTML = lista.map(r => {
     const cat = r.categoriaId
       ? `<span class="chip"><span class="ponto" style="background:${esc(r.categoriaCor || "#9ba1ab")}"></span>${esc(r.categoriaNome || r.categoriaId)}</span>`
       : `<span class="muted" style="font-size:12.5px">mantém a categoria</span>`;
     const fora = r.ignorarCalculos ? `<span class="chip aviso">fora dos cálculos</span>` : "";
     const renomeia = r.descricaoNova
-      ? `<span class="chip">renomeia para “${esc(r.descricaoNova)}”</span>` : "";
+      ? `<span class="chip">renomeia para “${marcar(r.descricaoNova)}”</span>` : "";
     const faixa = textoFaixa(r);
     const termos = (r.termos?.length ? r.termos : [r.termo])
-      .map(termo => `“${esc(termo)}”`).join(" ou ");
+      .map(termo => `“${marcar(termo)}”`).join(" ou ");
     return `
       <div class="regra ${r.ativo ? "" : "off"}">
-        <span class="ordem">${i + 1}</span>
+        <span class="ordem" title="Prioridade ${r.prioridade}">${REGRAS.indexOf(r) + 1}</span>
         <div>
-          <div class="regra-nome">${esc(r.nome)}</div>
+          <div class="regra-nome">${marcar(r.nome)}</div>
           <div class="regra-cond">Quando <b>${esc(CAMPOS[r.campo] || r.campo)}</b>
             ${esc(OPERADORES[r.operador] || r.operador)}
             <span class="termo">${termos}</span>${faixa ? ` · valor ${esc(faixa)}` : ""}</div>
@@ -256,28 +421,89 @@ function abrirModal(regra = null, pre = {}) {
 
   el("modal").hidden = false;
   el("fTermos").querySelector("input")?.focus();
+  atualizarPrevia();
 }
 
-function fecharModal() { el("modal").hidden = true; editando = null; }
+let previaTimer = null, previaSeq = 0;
 
-async function salvar() {
-  const valorMin = lerValorRegra(el("fValorMin").value);
-  const valorMax = lerValorRegra(el("fValorMax").value);
+function dadosDoModal() {
   const termos = termosAtuais();
-  const dados = {
+  return {
     nome: el("fNome").value.trim() || termos[0] || "",
     campo: el("fCampo").value,
     operador: el("fOperador").value,
     termo: termos[0] || "",
     termos,
-    valorMin,
-    valorMax,
+    valorMin: lerValorRegra(el("fValorMin").value),
+    valorMax: lerValorRegra(el("fValorMax").value),
     descricaoNova: el("fDescricaoNova").value.trim() || null,
     categoriaId: el("fCategoria").value || null,
     ignorarCalculos: el("fIgnorar").checked,
     prioridade: Number(el("fPrioridade").value) || 100,
     ativo: el("fAtivo").checked,
   };
+}
+
+function agendarPrevia() {
+  clearTimeout(previaTimer);
+  previaTimer = setTimeout(atualizarPrevia, 250);
+}
+
+const MSG_PREVIA = `<div class="rg-previa-msg">Digite um termo para ver quais transações a regra pega.</div>`;
+
+async function atualizarPrevia() {
+  const dados = dadosDoModal();
+  const seq = ++previaSeq;
+  if (!dados.termos.length) {
+    el("previaTotal").textContent = "";
+    el("previaLista").innerHTML = MSG_PREVIA;
+    return;
+  }
+  el("previaTotal").textContent = "calculando…";
+  try {
+    const r = await pedir("/extrato/regras/previa", "POST", {
+      ...dados,
+      valorMin: Number.isNaN(dados.valorMin) ? null : dados.valorMin,
+      valorMax: Number.isNaN(dados.valorMax) ? null : dados.valorMax,
+    });
+    if (seq !== previaSeq) return;   // resposta velha chegando depois da nova
+    el("previaTotal").innerHTML = r.total
+      ? `<b>${r.total}</b> transaç${r.total === 1 ? "ão" : "ões"} · <b>${r.mudam}</b> mudam`
+      : "nenhuma transação";
+    if (!r.amostra.length) {
+      el("previaLista").innerHTML = `<div class="rg-previa-msg">Nenhuma transação casa com esses termos.</div>`;
+      return;
+    }
+    const cat = c => c.categoria
+      ? `<span class="chip"><span class="ponto" style="background:${esc(c.cor || "#9ba1ab")}"></span>${esc(c.categoria)}</span>`
+      : `<span class="muted">sem categoria</span>`;
+    el("previaLista").innerHTML = r.amostra.map(t => {
+      const renomeia = t.depois.descricao !== t.antes.descricao;
+      const recategoriza = t.depois.categoria !== t.antes.categoria;
+      const sai = t.antes.incluida && !t.depois.incluida;
+      return `<div class="rg-previa-item">
+        <span class="quando">${esc(fmtData(t.data))}</span>
+        <div style="min-width:0">
+          <div class="desc">${renomeia
+            ? `<span class="de">${esc(t.antes.descricao)}</span> → ${esc(t.depois.descricao)}`
+            : esc(t.antes.descricao)}</div>
+          <div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            ${recategoriza ? `${cat(t.antes)} → ${cat(t.depois)}` : cat(t.antes)}
+            ${sai ? `<span class="chip aviso">sai dos cálculos</span>` : ""}</div>
+        </div>
+        <span class="val">${esc(fmtBRL(t.valor))}</span>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    if (seq === previaSeq) el("previaTotal").textContent = e.message;
+  }
+}
+
+function fecharModal() { el("modal").hidden = true; editando = null; }
+
+async function salvar() {
+  const dados = dadosDoModal();
+  const { valorMin, valorMax } = dados;
   if (!dados.termos.length) { el("modalErro").textContent = "Informe pelo menos um termo a procurar."; return; }
   if (Number.isNaN(valorMin) || Number.isNaN(valorMax)) { el("modalErro").textContent = "Informe valores mínimo e máximo válidos."; return; }
   if (valorMin != null && valorMax != null && valorMin > valorMax) { el("modalErro").textContent = "O valor mínimo não pode ser maior que o valor máximo."; return; }
@@ -298,12 +524,12 @@ async function salvar() {
 async function recarregar() {
   const resposta = await pedir("/extrato/regras");
   REGRAS = resposta.regras || [];
+  SISTEMA = resposta.regrasSistema || [];
+  ENTRADAS = resposta.entradas || [];
+  COBERTURA = resposta.cobertura || {};
   const sistema = resposta.sistema || 0;
-  el("notaSistema").textContent = sistema
-    ? `Além destas, ${sistema} regras de sistema rodam sempre — transferência `
-      + `entre contas próprias, resgate de cofrinho e pagamento de fatura. `
-      + `Elas sustentam os cálculos, então não são editáveis.`
-    : "";
+  el("notaSistema").textContent = "Renomeiam, categorizam e tiram transações dos cálculos."
+    + (sistema ? ` ${sistema} regras de sistema rodam sempre e ficam na aba Sistema.` : "");
   render();
   setEstado("estado", `${REGRAS.length} regra(s)`, "ok");
 }
@@ -311,7 +537,33 @@ async function recarregar() {
 /* --------------------------------------------------------------- eventos */
 
 function ligar() {
-  el("btnNova").addEventListener("click", () => abrirModal());
+  // Nova regra aberta da aba Ignorar já vem com "tirar dos cálculos".
+  el("btnNova").addEventListener("click", () => abrirModal(null, { ignorar: aba === "ignorar" }));
+  el("abas").addEventListener("click", e => {
+    const b = e.target.closest("[data-aba]");
+    if (!b) return;
+    aba = b.dataset.aba;
+    guardarUrl();
+    render();
+  });
+  el("busca").addEventListener("input", () => {
+    busca = el("busca").value;
+    guardarUrl();
+    render();
+  });
+  // "/" leva para a busca, como nos buscadores de sempre.
+  document.addEventListener("keydown", e => {
+    if (e.key === "/" && el("modal").hidden && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+      e.preventDefault();
+      el("busca").focus();
+    }
+  });
+  const caixa = el("modal").querySelector(".modal");
+  caixa.addEventListener("input", agendarPrevia);
+  caixa.addEventListener("change", agendarPrevia);
+  caixa.addEventListener("click", e => {
+    if (e.target.closest("[data-remove-termo]")) setTimeout(agendarPrevia);
+  });
   el("btnAddTermo").addEventListener("click", () => criarLinhaTermo("", true).focus());
   el("fTermos").addEventListener("click", e => {
     const remover = e.target.closest("[data-remove-termo]");
@@ -380,7 +632,19 @@ function ligar() {
   });
 }
 
+/* Aba e busca na URL: recarregar ou mandar o link abre no mesmo lugar. */
+function guardarUrl() {
+  const url = new URL(location.href);
+  if (aba === "todas") url.searchParams.delete("aba"); else url.searchParams.set("aba", aba);
+  if (busca.trim()) url.searchParams.set("q", busca.trim()); else url.searchParams.delete("q");
+  history.replaceState(null, "", url);
+}
+
 (async function iniciar() {
+  const inicial = new URLSearchParams(location.search);
+  if (ABAS.some(a => a.id === inicial.get("aba"))) aba = inicial.get("aba");
+  busca = inicial.get("q") || "";
+  el("busca").value = busca;
   montarNav("extrato_regras.html");
   ligar();
   try {
@@ -398,7 +662,7 @@ function ligar() {
   } catch (e) {
     setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");
     el("vazio").innerHTML =
-      `<div class="vazio">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
+      `<div class="rg-nada">Suba o backend com <code>iniciar_pluggy.bat</code> e recarregue.</div>`;
   }
 })();
 </script>

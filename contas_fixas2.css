@@ -1,0 +1,20 @@
+/* Contas Fixas 2.0: só o que a tela original não tem. O resto é contas_fixas.css. */
+.f2-teste { font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; vertical-align: 4px;
+            color: var(--laranja); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; }
+
+/* Tabela de reembolsos: as colunas dos "Itens vinculados", com 4 campos. */
+.vinculos-cabec.f2-reemb, .vinculos-linha.f2-reemb { grid-template-columns: minmax(0, 1fr) 150px 150px 120px 96px; }
+.vinculos-linha.f2-sem { grid-template-columns: 1fr; color: var(--text-3); }
+.f2-novo { align-items: center; }
+.f2-novo input, .f2-novo select { width: 100%; min-width: 0; }
+@media (max-width: 900px) {
+  .vinculos-cabec.f2-reemb, .vinculos-linha.f2-reemb { grid-template-columns: 1fr 1fr; }
+}
+
+/* Aviso de contas no cartão sem vínculo, ao lado de "N conta(s)". */
+.f2-aviso { color: var(--laranja); cursor: help; }
+
+/* Partes da linha Cartões na composição. */
+.composicao-linha.f2-sub { padding-left: 12px; font-size: 12px; color: var(--text-3); }
+.composicao-linha.f2-sub strong { font-weight: 500; color: var(--text-2); }
+.f2-nao-desconta { color: var(--text-3); text-decoration: line-through; }

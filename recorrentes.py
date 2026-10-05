@@ -857,9 +857,10 @@ def cobradas(conn: sqlite3.Connection, competencia: str, contas) -> list[dict]:
     return calcular(conn, competencia, contas)
 
 
-def consumidas(conn: sqlite3.Connection, competencia: str, contas) -> list[dict]:
+def consumidas(conn: sqlite3.Connection, competencia: str, contas,
+                encerrado: bool = False) -> list[dict]:
     from recorrencias_gestao import consumidas as calcular
-    return calcular(conn, competencia, contas)
+    return calcular(conn, competencia, contas, encerrado)
 
 
 def projetados(conn: sqlite3.Connection, ano: int) -> list[dict]:

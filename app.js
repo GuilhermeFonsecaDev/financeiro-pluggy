@@ -460,6 +460,7 @@ function campoMesTodos(raiz = document) {
 const PAGINAS = [
   { href: "visao_geral.html", ic: "◎", nome: "Visão Geral" },
   { href: "contas_fixas.html", ic: "◫", nome: "Contas Fixas" },
+  { href: "contas_fixas2.html", ic: "◧", nome: "Contas Fixas 2.0" },
   { href: "transacoes.html", ic: "☰", nome: "Transações" },
   { href: "categorias.html", ic: "◑", nome: "Categorias" },
   { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões" },

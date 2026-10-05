@@ -9,6 +9,8 @@ processo próprio. Os dois podem rodar ao mesmo tempo sem se enxergar.
 from __future__ import annotations
 
 import cartoes as cartoes_id
+import contas_tags
+import fixas2
 import argparse
 import json
 import re
@@ -89,12 +91,34 @@ class PluggyHandler(SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
 
+    # Contas Fixas 2.0 (teste): /api/f2/... é a mesma API, mas lendo e
+    # gravando as tabelas próprias da 2.0 (ver fixas.usar_copia_2). Assim a
+    # tela de teste nunca altera os dados da tela original.
+    def _na_copia_2(self, metodo) -> None:
+        if self.path.startswith("/api/f2/"):
+            self.path = "/api/" + self.path[len("/api/f2/"):]
+            with fixas.usar_copia_2():
+                return metodo()
+        return metodo()
+
     def do_GET(self) -> None:
+        self._na_copia_2(self._do_GET)
+
+    def do_POST(self) -> None:
+        self._na_copia_2(self._do_POST)
+
+    def do_PUT(self) -> None:
+        self._na_copia_2(self._do_PUT)
+
+    def do_DELETE(self) -> None:
+        self._na_copia_2(self._do_DELETE)
+
+    def _do_GET(self) -> None:
         self.inicio_requisicao = time.perf_counter()
         parsed = urlsplit(self.path)
         if parsed.path == "/":
             self.send_response(HTTPStatus.FOUND)
-            self.send_header("Location", "/transacoes.html")
+            self.send_header("Location", "/visao_geral.html")
             self.end_headers()
             return
         if parsed.path.startswith("/api/"):
@@ -102,17 +126,21 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
-    def do_POST(self) -> None:
+    def _do_POST(self) -> None:
         self.handle_api_write()
 
-    def do_PUT(self) -> None:
+    def _do_PUT(self) -> None:
         self.handle_api_write()
 
-    def do_DELETE(self) -> None:
+    def _do_DELETE(self) -> None:
         self.inicio_requisicao = time.perf_counter()
         parsed = urlsplit(self.path)
         try:
             ensure_database()
+            reembolso2 = re.fullmatch(r"/api/fixas2/reembolsos/([\w-]+)", parsed.path)
+            if reembolso2:
+                self.send_json(fixas2.remover_reembolso(reembolso2.group(1)))
+                return
             regra = re.fullmatch(r"/api/extrato/regras/([\w-]+)", parsed.path)
             if regra:
                 self.send_json(remover_regra(regra.group(1)))
@@ -208,6 +236,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             "status": texto("status").upper(),
             "busca": texto("q"),
             "modo": modo if modo in ("fatura", "mes") else "fatura",
+            "ordem": texto("sort").lower(),
             "limite": inteiro("limit", 200),
             "offset": inteiro("offset", 0),
         }
@@ -255,6 +284,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(extrato_payload(self.query_extrato(query)))
             elif path == "/api/cartoes-identidade":
                 self.send_json(cartoes_id.payload())
+            elif path == "/api/contas-identidade":
+                self.send_json(contas_tags.payload())
             elif path == "/api/visao-geral":
                 self.send_json(visao_geral.payload(
                     (query.get("periodo", ["mes"])[0] or "mes").strip(),
@@ -265,6 +296,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(recorrentes.sugestoes_payload())
             elif re.fullmatch(r"/api/fixas/[\w-]+/historico", path):
                 self.send_json(fixas.historico_payload(path.split("/")[3]))
+            elif path == "/api/fixas2":
+                self.send_json(fixas2.payload(self.query_mes(query)))
             elif path == "/api/fixas":
                 self.send_json(fixas.mes_payload(self.query_mes(query)))
             elif path == "/api/fixas/candidatas":
@@ -344,6 +377,16 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/cartoes-identidade":
                 self.send_json(cartoes_id.salvar(payload))
+                return
+            if parsed.path == "/api/contas-identidade":
+                self.send_json(contas_tags.salvar(payload))
+                return
+            if parsed.path == "/api/fixas2/reembolsos" and self.command == "POST":
+                self.send_json(fixas2.criar_reembolso(payload))
+                return
+            reembolso2 = re.fullmatch(r"/api/fixas2/reembolsos/([\w-]+)", parsed.path)
+            if reembolso2 and self.command == "PUT":
+                self.send_json(fixas2.editar_reembolso(reembolso2.group(1), payload))
                 return
             tag = re.fullmatch(r"/api/cartoes-tags/([^/]+)", parsed.path)
             if tag:
@@ -541,12 +584,12 @@ def run_server(host: str = HOST, port: int = PORT, open_browser: bool = False,
         server = ServidorUnico((host, port), handler)
     except OSError:
         print(f"Já existe um backend Pluggy rodando em http://{host}:{port}")
-        print(f"Abra: http://{host}:{port}/transacoes.html")
+        print(f"Abra: http://{host}:{port}/visao_geral.html")
         if open_browser:
-            webbrowser.open(f"http://{host}:{port}/transacoes.html")
+            webbrowser.open(f"http://{host}:{port}/visao_geral.html")
         return
 
-    url = f"http://{host}:{port}/transacoes.html"
+    url = f"http://{host}:{port}/visao_geral.html"
     print(f"Backend Pluggy em http://{host}:{port}")
     print(f"Banco SQLite: {DATABASE_PATH}")
     print(f"Abra: {url}")

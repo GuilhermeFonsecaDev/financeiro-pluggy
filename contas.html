@@ -18,6 +18,7 @@
     <p class="sub">O que existe em cada banco, e as conexões que trazem esses dados.</p>
   </div>
   <div class="cx-botoes">
+    <button id="btnTagsContas">Tags das contas</button>
     <button id="btnSync" disabled>↻ Atualizar todas</button>
     <button class="primario" id="btnConectar">+ Conectar instituição</button>
   </div>
@@ -39,6 +40,28 @@
 </section>
 
 </main>
+
+<!-- Mesmo modal de "Tags dos cartões": as tags são as mesmas. -->
+<div class="modal-fundo" id="modalTagsContas" hidden>
+  <div class="modal ct-tags-modal" role="dialog" aria-labelledby="tagsContasTitulo">
+    <div class="modal-tit">
+      <h2 id="tagsContasTitulo">Tags das contas</h2>
+      <button class="icone" id="btnFecharTags" aria-label="Fechar">×</button>
+    </div>
+    <p class="sub" style="margin:0 0 10px">
+      Contas com a mesma tag aparecem como um lugar só nos filtros e seletores
+      do app, somando o que cada uma tem. Deixe vazia para mostrar a conta sozinha.
+      As tags são as mesmas dos cartões.
+    </p>
+    <div class="ct-tags-lista" id="tagsContasLista"></div>
+    <p class="estado erro" id="tagsContasErro" style="margin:8px 0 0"></p>
+    <div class="modal-rodape">
+      <button class="sutil" id="btnCancelarTags">Cancelar</button>
+      <button class="primario" id="btnSalvarTags">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"></script>
 <script src="app.js"></script>
 <script src="contas.js"></script>

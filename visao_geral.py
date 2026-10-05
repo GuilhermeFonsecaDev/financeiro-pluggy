@@ -287,13 +287,14 @@ def payload(periodo: str = "mes", referencia: str = "") -> dict[str, Any]:
     ant_por_nome = {c["nome"]: c for c in cats_ant["categorias"]}
     categorias = [
         {
+            "id": c["id"],
             "nome": c["nome"], "cor": c["cor"], "emoji": c["emoji"],
             "total": round(c["total"], 2),
             "share": round(c["total"] / gasto * 100, 1) if gasto else 0.0,
             "anterior": round(
                 float((ant_por_nome.get(c["nome"]) or {}).get("total") or 0), 2),
             "filhos": [
-                {"nome": f["nome"], "cor": f["cor"], "emoji": f["emoji"],
+                {"id": f["id"], "nome": f["nome"], "cor": f["cor"], "emoji": f["emoji"],
                  "total": round(f["total"], 2)}
                 for f in c.get("filhos", []) if f["total"] > 0
             ],

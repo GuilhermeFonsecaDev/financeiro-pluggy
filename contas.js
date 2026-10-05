@@ -431,3 +431,78 @@
   carregar();
   carregarBancos();
 })();
+
+/* ------------------------------------------------------- tags das contas
+ *
+ * O agrupamento de contas não é deduzido do banco: é a tag que a pessoa
+ * escolhe aqui, como nos cartões. Contas com a mesma tag viram um item só
+ * nos filtros e seletores do app.
+ */
+let TAGS_CONTAS = null;
+const $t = id => document.getElementById(id);
+
+function renderTagsContas() {
+  const cores = Object.fromEntries((TAGS_CONTAS.tags || []).map(t => [t.nome.toLowerCase(), t.cor]));
+  $t('tagsContasLista').innerHTML = TAGS_CONTAS.contas.map(c => `
+    <div class="ct-tag-linha" data-conta="${esc(c.contaId)}">
+      <span class="ct-tag-selo" style="${c.cor ? `background:${esc(c.cor)}` : ''}">${esc((c.tag || c.nome || '?').trim().charAt(0).toUpperCase())}</span>
+      <span><strong class="ct-tag-nome">${esc(c.nome)}</strong><span class="ct-tag-origem">${esc(c.tipo)}</span></span>
+      <label class="ct-tag-campo"><span class="ct-tag-rot">Tag opcional</span>
+        <input type="text" class="i-tag" maxlength="60" value="${esc(c.tag || '')}"
+               placeholder="Sem tag" autocomplete="off" aria-label="Tag de ${esc(c.nome)}" /></label>
+      <button class="ct-tag-limpar" type="button" data-limpar-tag aria-label="Remover tag" title="Remover tag">×</button>
+    </div>`).join('');
+  // O selo pega a cor da tag escolhida enquanto digita.
+  $t('tagsContasLista').oninput = e => {
+    const linha = e.target.closest('.ct-tag-linha');
+    if (!linha) return;
+    const valor = e.target.value.trim();
+    const selo = linha.querySelector('.ct-tag-selo');
+    selo.style.background = cores[valor.toLowerCase()] || '';
+    selo.textContent = (valor || linha.querySelector('.ct-tag-nome').textContent || '?').charAt(0).toUpperCase();
+  };
+}
+
+async function abrirTagsContas() {
+  $t('tagsContasErro').textContent = '';
+  $t('btnSalvarTags').disabled = true;
+  $t('modalTagsContas').hidden = false;
+  try {
+    TAGS_CONTAS = await pedir('/contas-identidade');
+    renderTagsContas();
+    $t('btnSalvarTags').disabled = false;
+    $t('tagsContasLista').querySelector('.i-tag')?.focus();
+  } catch (e) { $t('tagsContasErro').textContent = e.message; }
+}
+
+const fecharTagsContas = () => { $t('modalTagsContas').hidden = true; };
+
+async function salvarTagsContas() {
+  $t('btnSalvarTags').disabled = true;
+  try {
+    const contas = [...document.querySelectorAll('.ct-tag-linha')].map(l => ({
+      contaId: l.dataset.conta, tag: l.querySelector('.i-tag').value.trim() }));
+    TAGS_CONTAS = await pedir('/contas-identidade', 'PUT', { contas });
+    // Os seletores das outras telas leem /extrato/filtros do cache da aba.
+    try { limparCache(); } catch { /* sem cache */ }
+    fecharTagsContas();
+    await Promise.all([carregar(), carregarBancos()]);
+  } catch (e) { $t('tagsContasErro').textContent = e.message; }
+  finally { $t('btnSalvarTags').disabled = false; }
+}
+
+$t('btnTagsContas').addEventListener('click', abrirTagsContas);
+$t('btnFecharTags').addEventListener('click', fecharTagsContas);
+$t('btnCancelarTags').addEventListener('click', fecharTagsContas);
+$t('btnSalvarTags').addEventListener('click', salvarTagsContas);
+$t('modalTagsContas').addEventListener('click', e => {
+  if (e.target.id === 'modalTagsContas') return fecharTagsContas();
+  const limpar = e.target.closest('[data-limpar-tag]');
+  if (!limpar) return;
+  const input = limpar.closest('.ct-tag-linha').querySelector('.i-tag');
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$t('modalTagsContas').hidden) fecharTagsContas();
+});

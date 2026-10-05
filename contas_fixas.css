@@ -88,6 +88,9 @@ select.forma.herdada { color: var(--text-2); }
   background: rgba(63,191,127,.12); color: var(--verde); }
 .sub-vinc.perdido { border-style: solid; border-color: rgba(240,106,106,.45);
   background: rgba(240,106,106,.1); color: var(--vermelho); }
+/* Associada à parcela prevista: mesmo ✓, tracejado em azul -- conta, mas
+   a transação real ainda não chegou. */
+.sub-vinc.prevista { border-style: dashed; border-color: rgba(74,149,234,.6); color: var(--azul); }
 .sub-vinc-na { text-align: center; color: var(--text-3); font-size: 12px; }
 
 /* Seletor de transação dentro do modal */
@@ -105,6 +108,10 @@ select.forma.herdada { color: var(--text-2); }
 .vinc-item.projetada { background: transparent; border: 1px dashed var(--line);
   color: var(--text-3); cursor: default; }
 .vinc-item.projetada:hover { background: transparent; border-color: var(--line); }
+/* Parcela prevista que um subdesconto pode escolher: mesmo tracejado, mas
+   reage como as transações clicáveis. */
+.vinc-item.projetada.clicavel { cursor: pointer; color: var(--text); }
+.vinc-item.projetada.clicavel:hover { background: var(--surface-3); border-color: var(--azul); }
 .vinc-secao { margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--line);
   color: var(--text-2); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .vinc-secao small { display: block; margin-top: 4px; color: var(--text-3);

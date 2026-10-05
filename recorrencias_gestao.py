@@ -96,25 +96,154 @@ def _aplicar_comportamento(s, comportamento):
     return s
 
 
+_MEMO: dict = {}
+
+
+def _memo(conn, nome, calcular):
+    """Mesmo valor durante uma requisição, sem refazer a consulta.
+
+    Ler um cadastro resolve a tag, e a tela lê dezenas de cadastros; sem isso
+    identidades() e contas_ativas() rodavam centenas de vezes por abertura.
+    A chave é a conexão (uma por requisição) e o valor vive 3 segundos.
+    """
+    import time
+    chave = (id(conn), nome)
+    guardado = _MEMO.get(chave)
+    agora = time.monotonic()
+    if guardado and agora - guardado[0] < 3:
+        return guardado[1]
+    if len(_MEMO) > 64:
+        _MEMO.clear()
+    valor = calcular()
+    _MEMO[chave] = (agora, valor)
+    return valor
+
+
+def _identidades(conn):
+    import cartoes
+    return _memo(conn, "identidades", lambda: cartoes.identidades(conn))
+
+
+def _ativas(conn):
+    return _memo(conn, "ativas", lambda: px.contas_ativas(conn))
+
+
+def _resolver_contas(conn, referencia):
+    """Contas de uma referência: tag/cartão, ou banco ("contas:<tag>")."""
+    referencia = str(referencia or "")
+    if referencia.startswith("contas:"):
+        bancos = _memo(conn, "bancos", lambda: {b["id"]: set(b["contas"]) for b in px.bancos_das_contas(conn, None)})
+        return set(bancos.get(referencia, set()))
+    return {fonte for fonte, ident in _identidades(conn).items()
+            if referencia in {fonte, ident["cartaoId"], ident["tagId"]}}
+
+
+def _referencia_do_cartao(identidade: dict) -> str:
+    """A referência estável de um cartão: a tag, senão a identidade do cartão.
+
+    O conta_id da Pluggy muda quando o banco é reconectado; a tag (e o
+    cartaoId, que vem do final do número) sobrevive. Hábito que guardava só
+    o conta_id ficava "pagamento anterior indisponível" depois de reconectar.
+    """
+    return identidade.get("tagId") or identidade.get("cartaoId") or ""
+
+
+def _conta_mais_recente(conn, contas):
+    """Entre várias contas ativas da mesma tag, a que tem movimento mais novo."""
+    contas = sorted(contas)
+    if len(contas) <= 1:
+        return contas[0] if contas else ""
+    marcadores = ",".join("?" for _ in contas)
+    linha = conn.execute(
+        f"SELECT conta_id FROM pluggy_transacoes WHERE conta_id IN ({marcadores}) "
+        "ORDER BY data DESC LIMIT 1", contas).fetchone()
+    return linha["conta_id"] if linha else contas[0]
+
+
+def _resolver_pagamento(conn, referencia):
+    """(conta_id ativo, referência estável) para o que a tela mandou.
+
+    A tela manda a tag do cartão (ou o cartaoId); cadastros antigos mandam
+    o conta_id. Os dois caminhos chegam no mesmo par.
+    """
+    import cartoes
+    referencia = str(referencia or "")
+    ativas = _ativas(conn)
+    identidades = _identidades(conn)
+    if referencia in ativas:
+        return referencia, _referencia_do_cartao(identidades.get(referencia, {}))
+    contas = _resolver_contas(conn, referencia) & set(ativas)
+    return _conta_mais_recente(conn, contas), (referencia if contas else "")
+
+
+def _contas_da_tag(conn, s):
+    """Todas as contas (ativas ou não) do pagamento do cadastro.
+
+    Com tag: todos os cartões dela, inclusive os de conexões antigas, que é
+    onde está o histórico de antes da reconexão. Sem tag: a conta do cadastro.
+    """
+    import cartoes
+    ref = s.get("cartaoRef")
+    contas = _resolver_contas(conn, ref) if ref else set()
+    return contas | {s["contaId"]} if s.get("contaId") else contas
+
+
+def _ler(conn, dados):
+    """Cadastro salvo, com o pagamento apontando para a conta ATIVA da tag.
+
+    Reconectar o banco cria um conta_id novo para o mesmo cartão. O cadastro
+    guarda a tag (cartaoRef); aqui ela é resolvida de novo, então todo o
+    resto do código -- que compara conta_id -- segue funcionando.
+    """
+    s = json.loads(dados)
+    if s.get("contaId") in _ativas(conn):
+        return s
+    # Cadastro de antes da tag (só o conta_id antigo): a tag vem da própria
+    # conta antiga, que continua nas identidades mesmo arquivada.
+    ref = s.get("cartaoRef")
+    if not ref:
+        import cartoes
+        ref = _referencia_do_cartao(_identidades(conn).get(s.get("contaId"), {}))
+    if not ref:
+        # Conta bancária: o banco a que a conta antiga pertencia.
+        bancos = _memo(conn, "bancos", lambda: {b["id"]: set(b["contas"]) for b in px.bancos_das_contas(conn, None)})
+        ref = next((chave for chave, contas in bancos.items() if s.get("contaId") in contas), "")
+    if ref:
+        conta, _ = _resolver_pagamento(conn, ref)
+        if conta:
+            s["contaId"], s["cartaoRef"] = conta, ref
+    return s
+
+
 def contas_pagamento(conn):
+    """Opções de pagamento: um item por TAG de cartão e um por conta.
+
+    Cartão sai pela tag (a mesma usada em Cartões e Contas Fixas), e não pelo
+    conta_id da Pluggy, que muda a cada reconexão.
+    """
     ativas = px.contas_ativas(conn)
     nomes = px.mapa_apelidos(conn, ativas)
     import cartoes
-    identidades = cartoes.identidades(conn)
-    resultado = []
-    for conta in conn.execute("SELECT conta_id,subtipo,numero FROM pluggy_contas"):
-        cid = conta["conta_id"]
-        if cid not in ativas:
+    resultado, vistos = [], set()
+    for coluna in cartoes.colunas(conn):
+        membros = [m for m in coluna["membros"] if m["contaId"] in ativas]
+        if not membros:
             continue
-        cartao = conta["subtipo"] == "CREDIT_CARD"
-        nome = nomes.get(cid, "Conta")
-        if cartao:
-            identidade = identidades.get(cid, {})
-            nome = identidade.get("nomeOriginal") or nome
-            tag = identidade.get("tag")
-            if tag and tag != nome:
-                nome = f"{tag} · {nome}"
-        resultado.append({"id": cid, "nome": nome, "noCartao": cartao})
+        ref = coluna.get("tagId") or (membros[0]["cartaoId"] if len(membros) == 1 else coluna["id"])
+        # Com tag, o nome é só a tag ("BTG"): consolida todos os cartões
+        # dela, inclusive o de antes de reconectar. Sem tag, o cartão.
+        nome = coluna.get("tag") or coluna.get("nomeExibicao") or coluna.get("nome") or "Cartão"
+        if not coluna.get("tag") and len(membros) == 1 and membros[0].get("nomeOriginal") and membros[0]["nomeOriginal"] != nome:
+            nome = f"{nome} · {membros[0]['nomeOriginal']}"
+        resultado.append({"id": ref, "nome": nome, "noCartao": True,
+                          "contas": [m["contaId"] for m in coluna["membros"]]})
+        vistos.update(m["contaId"] for m in coluna["membros"])
+    # Contas: uma opção por banco, como no filtro de Transações -- Inter
+    # Corrente e Inter Poupança são o mesmo lugar.
+    for banco in px.bancos_das_contas(conn, set(ativas)):
+        contas = [cid for cid in banco["contas"] if cid not in vistos]
+        if contas:
+            resultado.append({"id": banco["id"], "nome": banco["nome"], "noCartao": False, "contas": contas})
     return sorted(resultado, key=lambda c: (not c["noCartao"], c["nome"].casefold(), c["id"]))
 
 
@@ -145,11 +274,21 @@ def _normalizar(conn, dados, anterior=None):
             "Informe a identificação no extrato, um termo ou uma categoria.")
     if s["lojista"] and not 3 <= len(s["lojista"]) <= 240:
         raise ValueError("Informe a identificação do estabelecimento no extrato (3 a 240 caracteres).")
-    cid = str(s.get("contaId") or "")
+    # "contaId" vindo da tela pode ser a tag do cartão; guarda as duas coisas:
+    # o conta_id ativo (o que o resto do código compara) e a referência
+    # estável, que sobrevive a reconectar o banco.
+    pedido = str(dados.get("contaId") or s.get("cartaoRef") or s.get("contaId") or "")
+    cid, ref = _resolver_pagamento(conn, pedido)
     conta = conn.execute("SELECT subtipo FROM pluggy_contas WHERE conta_id=?", (cid,)).fetchone()
-    if not conta or cid not in px.contas_ativas(conn):
+    if not conta:
         raise ValueError("Escolha uma conta ou cartão ativo para o pagamento.")
     s["contaId"], s["noCartao"] = cid, conta["subtipo"] == "CREDIT_CARD"
+    # Vale para cartão (tag) e para conta (banco): os dois sobrevivem a
+    # reconectar e a ter mais de uma conta no mesmo lugar.
+    if ref:
+        s["cartaoRef"] = ref
+    else:
+        s.pop("cartaoRef", None)
     modo = s.get("modoValor", "ultimo")
     if modo not in ("ultimo", "fixo", "media"):
         raise ValueError("Escolha último valor cobrado, valor definido ou média dos ciclos.")
@@ -238,7 +377,7 @@ def _valor_do_historico(conn, s, modo):
 
 def _verificar_duplicata(conn, s):
     for linha in conn.execute("SELECT chave,dados FROM recorrentes_previsoes"):
-        outro = json.loads(linha["dados"])
+        outro = _ler(conn, linha["dados"])
         if linha["chave"] == s.get("chave"):
             continue
         if outro.get("contaId") != s["contaId"]:
@@ -267,7 +406,7 @@ def salvar(chave, ativa=True):
         linha = conn.execute("SELECT * FROM recorrentes_previsoes WHERE chave=?", (chave,)).fetchone()
         if linha:
             if ativa:
-                s = json.loads(linha["dados"])
+                s = _ler(conn, linha["dados"])
                 _verificar_duplicata(conn, s)
             conn.execute("UPDATE recorrentes_previsoes SET ativo=?,atualizado_em=? WHERE chave=?",
                          (int(ativa), datetime.now().isoformat(), chave))
@@ -339,7 +478,7 @@ def converter(chave, comportamento):
         linha = conn.execute("SELECT * FROM recorrentes_previsoes WHERE chave=?", (chave,)).fetchone()
         if not linha:
             raise ValueError("Recorrência não encontrada. Atualize a lista.")
-        s = json.loads(linha["dados"])
+        s = _ler(conn, linha["dados"])
         s["chave"] = chave
         _aplicar_comportamento(s, comportamento)
         _gravar(conn, s, bool(linha["ativo"]))
@@ -371,7 +510,7 @@ def previa_conversao(chave, comportamento):
                 i["valor"] for i in _projetar_cadastro(conn, s, ano, fechadas)
                 if f"{ano}-{i['mes']:02d}" == atual), 2)
 
-        original = json.loads(linha["dados"])
+        original = _ler(conn, linha["dados"])
         antes = total(original)
         depois = total(_aplicar_comportamento(dict(original), comportamento))
     return {"mes": atual, "antes": antes, "depois": depois,
@@ -404,7 +543,8 @@ def testar(dados):
     with rec._abrir() as conn:
         s = {
             "chave": str(dados.get("chave") or ""),
-            "contaId": str(dados.get("contaId") or ""),
+            # A tela manda a tag do cartão; a prévia procura na conta ativa dela.
+            "contaId": _resolver_pagamento(conn, dados.get("contaId"))[0],
             "lojista": rec._chave(str(dados.get("lojista") or "")),
             "termos": dados.get("termos") or [],
             "categoriaId": str(dados.get("categoriaId") or "") or None,
@@ -466,7 +606,7 @@ def editar(chave, dados):
         linha = conn.execute("SELECT * FROM recorrentes_previsoes WHERE chave=?", (chave,)).fetchone()
         if not linha:
             raise ValueError("Recorrência não encontrada. Atualize a lista.")
-        anterior = json.loads(linha["dados"])
+        anterior = _ler(conn, linha["dados"])
         s = _normalizar(conn, dados, anterior)
         if (s["contaId"] != anterior.get("contaId") and s["lojista"] == anterior.get("lojista")
                 and s["modoValor"] == "ultimo"
@@ -486,7 +626,7 @@ def excluir(chave):
         linha = conn.execute("SELECT dados FROM recorrentes_previsoes WHERE chave=?", (chave,)).fetchone()
         if not linha:
             raise ValueError("Recorrência não encontrada. Atualize a lista.")
-        s = json.loads(linha["dados"])
+        s = _ler(conn, linha["dados"])
         chaves = {chave}
         if not s.get("faixaValor"):
             chaves.add(s["contaId"] + "|" + s["lojista"])
@@ -538,19 +678,20 @@ def _reservados_por_outros(conn, s):
             "SELECT chave, dados FROM recorrentes_previsoes WHERE ativo=1"):
         if linha["chave"] == s.get("chave"):
             continue
-        outro = json.loads(linha["dados"])
+        outro = _ler(conn, linha["dados"])
         # Escopo amplo enxerga todos os pagamentos, então um cadastro
         # específico de qualquer cartão pode reivindicar a linha; escopo de um
         # cartão só disputa com os cadastros daquele cartão.
-        if not amplo and outro.get("contaId") != s["contaId"]:
+        if not amplo and not (_contas_da_tag(conn, outro) & _contas_da_tag(conn, s)):
             continue
+        outro["_contas"] = _contas_da_tag(conn, outro)
         termos = termos_de(outro)
         if outro.get("lojista") or termos:
             outros.append((outro, termos))
     if not outros:
         return set()
 
-    contas = sorted(px.contas_ativas(conn)) if amplo else [s["contaId"]]
+    contas = sorted(px.contas_ativas(conn)) if amplo else sorted(_contas_da_tag(conn, s))
     marcadores = ", ".join("?" for _ in contas) or "NULL"
     reservados = set()
     for linha in conn.execute(
@@ -558,7 +699,7 @@ def _reservados_por_outros(conn, s):
         f"WHERE conta_id IN ({marcadores}) AND tipo='DEBIT' AND incluida=1", contas
     ):
         for outro, termos in outros:
-            if outro["contaId"] != linha["conta_id"]:
+            if linha["conta_id"] not in outro["_contas"]:
                 continue
             if _casa(outro, linha, termos, set()):
                 reservados.add(linha["transacao_id"])
@@ -591,7 +732,10 @@ def _reais(conn, s, criterios=False):
             ", ".join("?" for _ in px.contas_ativas(conn)) or "NULL"
         ), tuple(sorted(px.contas_ativas(conn)))
     else:
-        onde, parametros = "conta_id=?", (s["contaId"],)
+        # Todos os cartões da tag, inclusive o de antes de reconectar o banco:
+        # o histórico do hábito é do cartão "BTG", não de um conta_id.
+        contas = sorted(_contas_da_tag(conn, s))
+        onde, parametros = "conta_id IN ({})".format(", ".join("?" for _ in contas) or "NULL"), tuple(contas)
 
     saida = []
     for linha in conn.execute(
@@ -818,7 +962,7 @@ def cobradas(conn, competencia, contas):
     saida = []
     for linha in conn.execute(
             "SELECT chave,dados FROM recorrentes_previsoes WHERE ativo=1 ORDER BY chave"):
-        s = json.loads(linha["dados"])
+        s = _ler(conn, linha["dados"])
         s["chave"] = linha["chave"]
         if s["contaId"] not in contas or comportamento_de(s) != "cobranca":
             continue
@@ -830,7 +974,7 @@ def cobradas(conn, competencia, contas):
     return saida
 
 
-def consumidas(conn, competencia, contas):
+def consumidas(conn, competencia, contas, encerrado=False):
     """Reservas ATIVAS que já foram gastas por inteiro nesta competência.
 
     Elas não entram na projeção -- não há nada a prever -- mas desaparecer da
@@ -844,19 +988,29 @@ def consumidas(conn, competencia, contas):
     saida = []
     for linha in conn.execute(
             "SELECT chave,dados FROM recorrentes_previsoes WHERE ativo=1 ORDER BY chave"):
-        s = json.loads(linha["dados"])
+        s = _ler(conn, linha["dados"])
         s["chave"] = linha["chave"]
         if s["contaId"] not in contas or comportamento_de(s) != "reserva":
             continue
         s["noCartao"] = subtipos.get(s["contaId"]) == "CREDIT_CARD"
         reais = _reais(conn, s)
         totais = _totais_por_competencia(conn, s, reais)
-        base = _base_habito(s, totais, _competencia_corrente(conn, s))
+        corrente = _competencia_corrente(conn, s)
+        base = _base_habito(s, totais, corrente)
         lancado = totais.get(competencia, 0)
-        if base <= 0 or lancado < base:
+        # O ciclo do cartão já virou (a competência corrente é posterior) vale
+        # como encerrado, mesmo antes de a fatura chegar como fechada.
+        fechou = encerrado or competencia < corrente
+        # Ciclo encerrado entra com qualquer gasto (ou meta): é o fechamento
+        # da reserva. Ciclo aberto só lista a que já estourou a meta.
+        if fechou:
+            if base <= 0 and lancado <= 0:
+                continue
+        elif base <= 0 or lancado < base:
             continue
         saida.append({"chave": s["chave"], "descricao": s["descricao"],
-                      "valorBase": base, "valorLancado": round(lancado, 2)})
+                      "valorBase": base, "valorLancado": round(lancado, 2),
+                      "encerrado": bool(fechou)})
     return saida
 
 
@@ -874,7 +1028,7 @@ def projetados(conn, ano):
     fechadas = {(r[0], r[1]) for r in conn.execute("SELECT conta_id,competencia FROM pluggy_faturas")}
     resultado = []
     for linha in linhas:
-        s = json.loads(linha["dados"])
+        s = _ler(conn, linha["dados"])
         s["chave"] = linha["chave"]
         if s["contaId"] not in ativas:
             continue
@@ -919,7 +1073,13 @@ def previsoes_payload(linhas):
     if not linhas:
         return []
     with rec._abrir() as conn:
-        contas = {c["id"]: c for c in contas_pagamento(conn)}
+        # A opção de cartão é a TAG, mas o cadastro aponta para um conta_id:
+        # indexa cada opção também pelas contas que ela reúne.
+        contas = {}
+        for c in contas_pagamento(conn):
+            contas[c["id"]] = c
+            for cid in c.get("contas", []):
+                contas.setdefault(cid, c)
         categorias_nomes = {l["id"]: l["nome"] for l in conn.execute(
             "SELECT id, nome FROM extrato_categorias")}
         atual = rec._mes_atual()
@@ -935,7 +1095,7 @@ def previsoes_payload(linhas):
                 })
         resultado = []
         for linha in linhas:
-            s = json.loads(linha["dados"])
+            s = _ler(conn, linha["dados"])
             s["chave"] = linha["chave"]
             s["ativa"] = bool(linha["ativo"])
             conta = contas.get(s["contaId"])

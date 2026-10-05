@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Contas fixas</title>
+<title>Contas Fixas 2.0</title>
 <link rel="stylesheet" href="tema.css" />
 <link rel="stylesheet" href="contas_fixas.css" />
+<link rel="stylesheet" href="contas_fixas2.css" />
 </head>
 <body>
 <nav class="nav"></nav>
@@ -13,7 +14,7 @@
 <main class="container">
   <header class="topo">
     <div>
-      <h1>Contas fixas</h1>
+      <h1>Contas fixas 2.0 <span class="f2-teste">teste</span></h1>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
@@ -67,6 +68,27 @@
           <div id="vinculosLista"></div>
         </div>
       </section>
+      <section class="painel vinculos-painel" aria-labelledby="reembolsosTitulo">
+        <div class="vinculos-topo">
+          <div><h2 id="reembolsosTitulo">Reembolsos</h2><p>PIX ou dinheiro devolvido diminui as despesas. Estorno no cartão só fica listado: a fatura já desconta.</p></div>
+          <div class="vinculos-total"><span>Total de reembolsos</span><strong id="reembolsosTotal">R$ 0,00</strong></div>
+        </div>
+        <div class="vinculos-tabela">
+          <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
+          <div id="reembolsosLista"></div>
+          <form class="vinculos-linha f2-reemb f2-novo" id="formReembolso" autocomplete="off">
+            <input id="rDescricao" type="text" maxlength="160" placeholder="ex.: INGRESSO DO SHOW" aria-label="Descrição do reembolso" />
+            <select id="rForma" aria-label="Cartão ou conta da compra"></select>
+            <select id="rComo" aria-label="Como o dinheiro voltou">
+              <option value="dinheiro">PIX / dinheiro</option>
+              <option value="estorno">Estorno no cartão</option>
+            </select>
+            <span class="dinheiro-input"><span>R$</span><input id="rValor" type="text" inputmode="decimal" placeholder="0,00" aria-label="Valor do reembolso" /></span>
+            <button class="primario" type="submit">Adicionar</button>
+          </form>
+          <p class="estado erro" id="reembolsoErro" style="margin:6px 12px 0"></p>
+        </div>
+      </section>
     </div>
     <aside class="painel composicao" aria-labelledby="composicaoTitulo">
       <div class="composicao-cabecalho">
@@ -83,8 +105,13 @@
       <div class="composicao-detalhes">
         <h3>Dentro das despesas</h3>
         <div class="composicao-linha"><span>Cartões</span><strong id="compCartoes">R$ 0,00</strong></div>
+        <div class="composicao-linha f2-sub"><span>já cobrado nas faturas</span><strong id="compCobrado">R$ 0,00</strong></div>
+        <div class="composicao-linha f2-sub"><span>parcelas projetadas</span><strong id="compParcelas">R$ 0,00</strong></div>
+        <div class="composicao-linha f2-sub"><span>hábitos estimados</span><strong id="compHabitos">R$ 0,00</strong></div>
+        <div class="composicao-linha f2-sub"><span>contas no cartão a cobrar</span><strong id="compPrevistos">R$ 0,00</strong></div>
         <div class="composicao-linha"><span>Contas pessoais</span><strong id="compPessoais">R$ 0,00</strong></div>
         <div class="composicao-linha"><span>Empresa</span><strong id="compEmpresa">R$ 0,00</strong></div>
+        <div class="composicao-linha"><span>Reembolsos</span><strong id="compReembolsos">R$ 0,00</strong></div>
       </div>
     </aside>
   </section>
@@ -340,6 +367,16 @@
 </div>
 
 <script src="app.js"></script>
+<script>
+/* Contas Fixas 2.0 é independente da tela original: toda chamada de contas
+   fixas daqui vai para /f2/..., que lê e grava as tabelas próprias da 2.0.
+   Sem isto, excluir um item na 2.0 excluía também na original. */
+(() => {
+  const original = pedir;
+  const daCopia = caminho => /^\/fixas(\/|\?|$)/.test(caminho) ? "/f2" + caminho : caminho;
+  pedir = (caminho, ...resto) => original(daCopia(caminho), ...resto);
+})();
+</script>
 <script>
 const el = id => document.getElementById(id);
 
@@ -2346,7 +2383,7 @@ function ligar() {
 }
 
 (async function iniciar() {
-  montarNav("contas_fixas.html");
+  montarNav("contas_fixas2.html");
   campoMesTodos();   // ano e mês num controle só, no lugar dos dois popovers
   observarIdentidadeCartoes(async () => {
     const f = await pedir("/extrato/filtros");
@@ -2375,5 +2412,6 @@ function ligar() {
   }
 })();
 </script>
+<script src="contas_fixas2.js"></script>
 </body>
 </html>

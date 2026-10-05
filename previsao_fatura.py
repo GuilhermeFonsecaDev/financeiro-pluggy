@@ -113,7 +113,10 @@ def _gasto_novo_tipico(conn, contas: set[str], dias: int) -> float | None:
     if _tem_tabela(conn, "recorrentes_previsoes"):
         for linha in conn.execute(
                 "SELECT dados FROM recorrentes_previsoes WHERE ativo=1"):
-            cadastro = json.loads(linha["dados"])
+            # Mesmo leitor da gestão: resolve a tag do cartão para a conta
+            # ativa, para o hábito continuar valendo depois de reconectar.
+            import recorrencias_gestao
+            cadastro = recorrencias_gestao._ler(conn, linha["dados"])
             lojistas.add((cadastro.get("contaId"), cadastro.get("lojista")))
 
     ciclos_fechados = list(conn.execute(
@@ -232,7 +235,9 @@ def _mes_do_cartao(payload, cartao, indice, contas, conn, competencia):
     # Reserva gasta por inteiro não projeta nada, mas sumir da tela faz
     # parecer que o cadastro se perdeu. Soma zero: o gasto dela já está
     # dentro de "já lançado".
-    esgotadas = [] if definitivo else rec.consumidas(conn, competencia, contas)
+    # Fatura fechada: todas as reservas do ciclo, gastas ou não, para mostrar
+    # quanto foi gasto e onde cada uma parou em relação à meta.
+    esgotadas = rec.consumidas(conn, competencia, contas, encerrado=definitivo)
     return {
         "competencia": competencia,
         "total": total,

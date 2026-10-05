@@ -249,6 +249,36 @@ REGRAS_SISTEMA: list[dict] = [
         "ignorar_calculos": 1,
         "prioridade": 12,
     },
+    # O pagamento da fatura aparece como crédito no extrato do próprio cartão,
+    # e cada banco escreve de um jeito -- nenhum deles com "FATURA". Sem estas
+    # regras, o Itaú caía em Transferências (a Pluggy manda "Transfers") ou em
+    # Compras ("Shopping") e entrava nos cálculos como dinheiro entrando. O
+    # total da fatura já os ignorava (EH_PAGAMENTO_FATURA); aqui é a categoria.
+    # Os textos só aparecem em crédito de cartão, nunca em conta corrente.
+    {
+        "id": "sys_pagamento_cartao_saldo",
+        "nome": "Pagamento de cartão (Itaú, com saldo)",
+        "campo": "descricao", "operador": "contem", "termo": "PAGAMENTO COM SALDO",
+        "categoria_id": "fatura", "ignorar_calculos": 1, "prioridade": 13,
+    },
+    {
+        "id": "sys_pagamento_cartao_online",
+        "nome": "Pagamento de cartão (Itaú, on-line)",
+        "campo": "descricao", "operador": "contem", "termo": "PAGAMENTO ON LINE",
+        "categoria_id": "fatura", "ignorar_calculos": 1, "prioridade": 13,
+    },
+    {
+        "id": "sys_pagamento_cartao_recebido",
+        "nome": "Pagamento de cartão (Nubank)",
+        "campo": "descricao", "operador": "igual", "termo": "Pagamento recebido",
+        "categoria_id": "fatura", "ignorar_calculos": 1, "prioridade": 13,
+    },
+    {
+        "id": "sys_pagamento_cartao_btg",
+        "nome": "Pagamento de cartão (BTG)",
+        "campo": "descricao", "operador": "igual", "termo": "Pagamento",
+        "categoria_id": "fatura", "ignorar_calculos": 1, "prioridade": 13,
+    },
 ]
 
 
@@ -477,6 +507,23 @@ _COMPETENCIA_FATURA = f"""
   END
 """
 
+# Mês do GASTO (modo "Mês" das telas): parcela n de uma compra é gasto de
+# "mês da compra + (n - 1)", não do dia em que o banco a registrou. O BTG manda
+# todas as parcelas com a data da compra (12/09), e sem isto as seis parcelas
+# de uma compra caíam no mesmo mês. Inter e Nubank já deslocam a data mês a
+# mês; a conta pela data da compra (creditCardMetadata.purchaseDate) dá o mesmo
+# resultado para eles. Data editada à mão continua mandando.
+_DATA_DA_COMPRA = "SUBSTR(JSON_EXTRACT(t.raw_json, '$.creditCardMetadata.purchaseDate'), 1, 7)"
+_MES_DO_GASTO = f"""
+  (CASE
+    WHEN a.data_manual IS NULL AND t.parcela_total > 1 AND t.parcela_numero >= 1
+         AND {_DATA_DA_COMPRA} IS NOT NULL
+    THEN STRFTIME('%Y-%m', DATE({_DATA_DA_COMPRA} || '-01',
+                               PRINTF('+%d months', t.parcela_numero - 1)))
+    ELSE SUBSTR(COALESCE(a.data_manual, t.data), 1, 7)
+  END)
+"""
+
 _COMPETENCIA_ENTRADA = f"""
   (SELECT STRFTIME('%Y-%m', DATE(
       SUBSTR(COALESCE(a.data_manual, t.data), 1, 7) || '-01',
@@ -506,9 +553,9 @@ SELECT
   t.transacao_id,
   COALESCE(a.conta_id_manual, t.conta_id) AS conta_id,
   COALESCE(a.data_manual, t.data) AS data,
-  SUBSTR(COALESCE(a.data_manual, t.data), 1, 7) AS mes_ref,
-  CAST(SUBSTR(COALESCE(a.data_manual, t.data), 1, 4) AS INTEGER) AS ano,
-  CAST(SUBSTR(COALESCE(a.data_manual, t.data), 6, 2) AS INTEGER) AS mes,
+  {_MES_DO_GASTO} AS mes_ref,
+  CAST(SUBSTR({_MES_DO_GASTO}, 1, 4) AS INTEGER) AS ano,
+  CAST(SUBSTR({_MES_DO_GASTO}, 6, 2) AS INTEGER) AS mes,
   de.valor AS descricao,
   COALESCE(a.valor_manual, t.valor) AS valor,
   t.moeda,
@@ -1286,6 +1333,20 @@ def definir_valor_esperado_entradas(dados: dict) -> dict:
     return {"ok": True, "valor": valor}
 
 
+def _so_contas_ativas(conn: sqlite3.Connection) -> None:
+    """Registra conta_ativa(conta_id) na conexão, para as consultas de Entradas.
+
+    Uma reconexão deixa a conexão antiga com uma cópia de cada transação (o
+    mesmo crédito aparecia duas vezes: conexão atual e conexão antiga). O
+    resto do app já filtra por contas ativas (pluggy_extrato.contas_ativas);
+    Entradas consultava a cópia materializada sem esse filtro e somava as
+    duas.
+    """
+    import pluggy_extrato as px
+    ativas = set(px.contas_ativas(conn))
+    conn.create_function("conta_ativa", 1, lambda conta: 1 if conta in ativas else 0)
+
+
 def serie_entradas_por_regra(meses: int = 12, ate: str = "") -> dict:
     """Quanto cada regra de entrada trouxe, mes a mes, nos ultimos `meses`.
 
@@ -1312,6 +1373,7 @@ def serie_entradas_por_regra(meses: int = 12, ate: str = "") -> dict:
     meses = max(1, min(36, int(meses or 12)))
     with _abrir() as conn:
         garantir_extrato_materializado(conn)
+        _so_contas_ativas(conn)
         fim = str(ate or "")[:7]
         if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", fim):
             fim = date.today().strftime("%Y-%m")
@@ -1341,7 +1403,7 @@ def serie_entradas_por_regra(meses: int = 12, ate: str = "") -> dict:
                    t.competencia_entrada AS competencia,
                    SUM(ABS(t.valor)) AS total
               FROM extrato_efetivo_cache t
-             WHERE t.tipo = 'CREDIT' AND t.entrada_considerada = 1
+             WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1 AND t.entrada_considerada = 1
                AND t.competencia_entrada BETWEEN ? AND ?
                AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
                                 WHERE x.transacao_id = t.transacao_id)
@@ -1385,6 +1447,7 @@ def entradas_payload(mes: str) -> dict:
         # descricao, que nem sao colunas caras. So a copia materializada,
         # nao a view.
         garantir_extrato_materializado(conn)
+        _so_contas_ativas(conn)
         valor_esperado = valor_esperado_entradas(conn)
         regras = [
             {
@@ -1404,7 +1467,7 @@ def entradas_payload(mes: str) -> dict:
                 """
                 SELECT e.*,
                        (SELECT COUNT(*) FROM extrato_efetivo_cache t
-                         WHERE t.tipo = 'CREDIT'
+                         WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
                            AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
                                            WHERE x.transacao_id = t.transacao_id)
                            AND CAST(SUBSTR(t.data, 9, 2) AS INTEGER)
@@ -1416,7 +1479,7 @@ def entradas_payload(mes: str) -> dict:
                            END
                          )) AS afetadas,
                        (SELECT COUNT(*) FROM extrato_efetivo_cache t
-                         WHERE t.tipo = 'CREDIT'
+                         WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
                            AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
                                            WHERE x.transacao_id = t.transacao_id)
                            AND STRFTIME('%Y-%m', DATE(SUBSTR(t.data, 1, 7) || '-01',
@@ -1430,7 +1493,7 @@ def entradas_payload(mes: str) -> dict:
                            END
                          )) AS afetadas_mes,
                        (SELECT COALESCE(SUM(ABS(t.valor)), 0) FROM extrato_efetivo_cache t
-                         WHERE t.tipo = 'CREDIT'
+                         WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
                            AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
                                            WHERE x.transacao_id = t.transacao_id)
                            AND STRFTIME('%Y-%m', DATE(SUBSTR(t.data, 1, 7) || '-01',
@@ -1467,7 +1530,7 @@ def entradas_payload(mes: str) -> dict:
                 FROM extrato_efetivo_cache t
                 LEFT JOIN pluggy_contas c ON c.conta_id = t.conta_id
                 LEFT JOIN extrato_entradas_exclusoes x ON x.transacao_id = t.transacao_id
-                WHERE t.competencia_entrada = ? AND t.tipo = 'CREDIT'
+                WHERE t.competencia_entrada = ? AND t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
                   AND t.incluida = 1 AND t.entrada_considerada = 1
                 ORDER BY t.data DESC, t.ordem DESC, t.transacao_id
                 """,
@@ -1499,6 +1562,7 @@ def _creditos_nao_reconhecidos(mes: str, limite: int = 40) -> list[dict]:
     """
     with _abrir() as conn:
         garantir_extrato_materializado(conn)
+        _so_contas_ativas(conn)
         return [
             {"id": l["transacao_id"], "data": l["data"][:10], "descricao": l["descricao"],
              "valor": float(abs(l["valor"])), "conta": l["conta_nome"]}
@@ -1508,7 +1572,7 @@ def _creditos_nao_reconhecidos(mes: str, limite: int = 40) -> list[dict]:
                        COALESCE(c.nome, 'Conta') AS conta_nome
                   FROM extrato_efetivo_cache t
                   LEFT JOIN pluggy_contas c ON c.conta_id = t.conta_id
-                 WHERE t.tipo = 'CREDIT' AND t.incluida = 1
+                 WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1 AND t.incluida = 1
                    AND t.entrada_considerada = 0
                    AND SUBSTR(t.data, 1, 7) = ?
                  ORDER BY ABS(t.valor) DESC, t.data DESC
@@ -1551,6 +1615,7 @@ def entradas_insights(mes: str, valor_esperado: float | None, recebido: float) -
     chegadas: dict[str, list[dict]] = {}
     with _abrir() as conn:
         garantir_extrato_materializado(conn)
+        _so_contas_ativas(conn)
         deslocamentos = {l["id"]: l["deslocamento_meses"] for l in conn.execute(
             "SELECT id, deslocamento_meses FROM extrato_regras_entradas")}
         for l in conn.execute(
@@ -1559,7 +1624,7 @@ def entradas_insights(mes: str, valor_esperado: float | None, recebido: float) -
                      ORDER BY {ORDEM_REGRAS_ENTRADA} LIMIT 1) AS regra_id,
                    t.competencia_entrada AS competencia, t.data, ABS(t.valor) AS valor
               FROM extrato_efetivo_cache t
-             WHERE t.tipo = 'CREDIT' AND t.entrada_considerada = 1
+             WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1 AND t.entrada_considerada = 1
                AND t.competencia_entrada BETWEEN ? AND ?
                AND NOT EXISTS (SELECT 1 FROM extrato_entradas_exclusoes x
                                 WHERE x.transacao_id = t.transacao_id)
@@ -1705,12 +1770,13 @@ def previa_regra_entrada(dados: dict, limite: int = 8) -> dict:
     desloc = desloc if desloc in (-1, 0, 1) else 0
     with _abrir() as conn:
         garantir_extrato_materializado(conn)
+        _so_contas_ativas(conn)
         linhas = conn.execute(
             "SELECT t.transacao_id, t.data, t.descricao, t.valor, t.entrada_considerada, "
             "       COALESCE(c.nome, 'Conta') AS conta_nome "
             "  FROM extrato_efetivo_cache t "
             "  LEFT JOIN pluggy_contas c ON c.conta_id = t.conta_id "
-            " WHERE t.tipo = 'CREDIT' AND t.incluida = 1 "
+            " WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1 AND t.incluida = 1 "
             " ORDER BY t.data DESC, t.transacao_id").fetchall()
     total, soma, amostra = 0, 0.0, []
     for l in linhas:

@@ -596,16 +596,47 @@ def garantir_tabelas(conn: sqlite3.Connection) -> None:
     _tabelas_prontas = True
 
 
+def bancos_das_contas(conn: sqlite3.Connection,
+                      ativas: set[str] | None = None) -> list[dict[str, Any]]:
+    """Contas bancárias agrupadas pela TAG que o usuário escolheu.
+
+    É o mesmo agrupamento dos cartões: contas com a mesma tag (escolhida em
+    Contas → Identificar contas) aparecem como um lugar só nos seletores, e
+    o id do grupo é "contas:" + o id da tag. Conta sem tag fica sozinha, com o próprio
+    id. Nada é deduzido do banco.
+    """
+    import contas_tags
+    tags = contas_tags.tags_das_contas(conn)
+    apelidos = mapa_apelidos(conn, ativas if ativas is not None else contas_ativas(conn))
+    grupos: dict[str, dict[str, Any]] = {}
+    for linha in conn.execute(
+            "SELECT conta_id FROM pluggy_contas WHERE subtipo <> 'CREDIT_CARD'"):
+        cid = linha["conta_id"]
+        if ativas is not None and cid not in ativas:
+            continue
+        tag = tags.get(cid)
+        # "contas:" separa o grupo de contas do grupo de cartões da mesma tag.
+        chave, nome = (f"contas:{tag['tagId']}", tag["tag"]) if tag else (cid, apelidos.get(cid, "Conta"))
+        grupo = grupos.setdefault(chave, {"id": chave, "nome": nome, "contas": [],
+                                          "cor": (tag or {}).get("cor", "")})
+        grupo["contas"].append(cid)
+    return sorted(grupos.values(), key=lambda b: (b["nome"].casefold(), b["id"]))
+
+
 def _grupos_contas(conn: sqlite3.Connection,
                    ativas: set[str] | None = None) -> dict[str, set[str]]:
-    """Contas bancárias são instrumentos individuais, separados de cartões."""
-    return {
-        linha["conta_id"]: {linha["conta_id"]}
-        for linha in conn.execute(
-            "SELECT conta_id FROM pluggy_contas WHERE subtipo <> 'CREDIT_CARD'"
-        )
-        if ativas is None or linha["conta_id"] in ativas
-    }
+    """Referência de filtro -> contas que ela abre.
+
+    O filtro de conta é por banco (ver bancos_das_contas). O id individual de
+    cada conta continua aceito, para link e filtro salvos antes do
+    agrupamento abrirem só aquela conta.
+    """
+    grupos: dict[str, set[str]] = {}
+    for banco in bancos_das_contas(conn, ativas):
+        grupos[banco["id"]] = set(banco["contas"])
+        for cid in banco["contas"]:
+            grupos.setdefault(cid, {cid})
+    return grupos
 
 
 def _grupos_cartoes(conn: sqlite3.Connection,
@@ -796,13 +827,14 @@ def filtros_payload(modo: str = "fatura") -> dict[str, Any]:
             )
         ]
 
-        grupos = _grupos_contas(conn, ativas)
         colunas_cartoes = cartoes_id.colunas(conn, ativas)
         apelidos_edicao = mapa_apelidos(conn, ativas)
         identidades = cartoes_id.identidades(conn)
+        # Um item por banco no seletor: as contas do mesmo banco se somam.
         contas = [
-            {"id": conta_id, "nome": apelidos_edicao[conta_id], "tipo": "conta"}
-            for conta_id in sorted(grupos, key=lambda cid: apelidos_edicao[cid])
+            {"id": banco["id"], "nome": banco["nome"], "tipo": "conta",
+             "contas": banco["contas"]}
+            for banco in bancos_das_contas(conn, ativas)
         ]
 
         # Ordem de arvore (pai seguido dos filhos): a tela indenta as
@@ -903,6 +935,22 @@ EH_PAGAMENTO_FATURA = cam.EH_PAGAMENTO_FATURA
 # significa que a renda caiu. Usado para projetar entradas de mes corrente ou
 # futuro que ainda estao incompletas -- ver _media_entradas_completas().
 ENTRADAS_ESPERADAS_POR_MES = 4
+
+# Ordens da lista de lançamentos: (ORDER BY do SQL, chave Python para juntar
+# com as parcelas projetadas). Valor é o absoluto -- "maior valor" é o maior
+# movimento, seja gasto ou entrada.
+ORDENS_EXTRATO = {
+    "recente": ("t.data DESC, t.ordem DESC, t.transacao_id",
+                lambda x: [-ord(ch) for ch in x["data"]]),
+    "antiga": ("t.data ASC, t.ordem ASC, t.transacao_id",
+               lambda x: (x["data"], x["id"])),
+    "maior": ("ABS(t.valor) DESC, t.data DESC, t.transacao_id",
+              lambda x: (-abs(x["valor"] or 0), [-ord(ch) for ch in x["data"]])),
+    "menor": ("ABS(t.valor) ASC, t.data DESC, t.transacao_id",
+              lambda x: (abs(x["valor"] or 0), [-ord(ch) for ch in x["data"]])),
+    "descricao": ("t.descricao COLLATE NOCASE ASC, t.data DESC",
+                  lambda x: (x["descricao"].casefold(), [-ord(ch) for ch in x["data"]])),
+}
 
 # Gasto da fatura: compra soma, estorno subtrai, pagamento da fatura e ignorado.
 GASTO_LIQUIDO = (
@@ -2001,6 +2049,13 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             and filtros.get("tipo") != "CREDIT"
             and not filtros.get("status")
         )
+        # Lista aberta (sem período nem busca): projeção só até o mês atual.
+        # Com o horizonte inteiro, "mais recentes" começava em 2027; cada
+        # projeção futura aparece quando o mês dela é escolhido (ou numa
+        # busca, que responde "quantas parcelas desta compra faltam").
+        teto_projecao = (
+            "" if (filtros.get("mesDe") or filtros.get("mesAte") or (filtros.get("busca") or "").strip())
+            else datetime.now().strftime("%Y-%m"))
         busca_termo = (filtros.get("busca") or "").strip().casefold()
         # Cadastrado manualmente na tela de Entradas ("valor esperado"), tem
         # prioridade sobre a media: quem cadastrou sabe quanto espera receber
@@ -2224,6 +2279,8 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     continue
                 if mes_ate and mes_ref_item > mes_ate:
                     continue
+                if teto_projecao and mes_ref_item > teto_projecao:
+                    continue
                 transacoes_extra.append({
                     "id": (
                         f"projetada:{item['compraId'] if item.get('recorrente') else item['transacaoBaseId']}:"
@@ -2290,9 +2347,13 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
 
         # Pagina a sequência projetadas + reais; os agregados usam o conjunto
         # completo do filtro e permanecem iguais em todas as páginas.
-        pagina_extra = transacoes_extra[offset:offset + limite]
-        limite_reais = limite - len(pagina_extra)
-        offset_reais = max(0, offset - len(transacoes_extra))
+        ordem = ORDENS_EXTRATO.get(filtros.get("ordem") or "", ORDENS_EXTRATO["recente"])
+        # Projetadas e reais se misturam em qualquer ordem -- cada projeção no
+        # seu lugar do tempo, e não empilhada no topo. A página sai de uma
+        # lista única: busca as reais até o fim desta página, junta, ordena e
+        # corta. As projetadas são poucas.
+        pagina_extra = []
+        limite_reais, offset_reais = offset + limite, 0
         linhas = conn.execute(
             f"""
             SELECT t.transacao_id, t.data, t.mes_ref, t.descricao, t.valor,
@@ -2312,7 +2373,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             JOIN pluggy_contas c ON c.conta_id = t.conta_id
             LEFT JOIN pluggy_transacoes pt ON pt.transacao_id = t.transacao_id
             LEFT JOIN extrato_categorias cat ON cat.id = t.categoria_id{onde}
-            ORDER BY t.data DESC, t.ordem DESC, t.transacao_id
+            ORDER BY {ordem[0]}
             LIMIT ? OFFSET ?
             """,
             [*params, limite_reais, offset_reais],
@@ -2360,7 +2421,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         for linha in linhas
     ]
 
-    transacoes = pagina_extra + transacoes
+    transacoes = sorted(transacoes_extra + transacoes, key=ordem[1])[offset:offset + limite]
     if por_categoria_extra:
         # Mescla por categoria: com mes unico selecionado o real ja vem
         # vazio (mes sem transacao), mas numa busca sem mes o real pode ter

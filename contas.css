@@ -128,3 +128,25 @@
   .ct-conexao { grid-template-columns: 96px minmax(0, 1fr) auto; }
   .ct-conexao .entrega { grid-column: 2 / -1; grid-row: 2; }
 }
+
+/* --- tags das contas: o mesmo desenho do modal de tags dos cartões ------- */
+.ct-tags-modal { width: min(680px, 100%); }
+.ct-tags-lista { display: grid; gap: 8px; max-height: min(60vh, 520px); overflow-y: auto; }
+.ct-tag-linha { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 210px) 26px;
+                gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line);
+                border-radius: var(--raio); background: var(--surface-2); }
+.ct-tag-selo { width: 32px; height: 32px; border-radius: 10px; display: inline-flex; align-items: center;
+               justify-content: center; color: #fff; font-weight: 700; font-size: 13px; background: var(--line-forte); }
+.ct-tag-nome { display: block; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.ct-tag-origem { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; }
+.ct-tag-rot { display: block; color: var(--text-3); font-size: 10px; font-weight: 650; text-transform: uppercase;
+              letter-spacing: .07em; margin-bottom: 4px; }
+.ct-tag-linha input[type="text"] { width: 100%; min-width: 0; }
+.ct-tag-limpar { width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 7px; border: 1px solid transparent;
+                 background: transparent; color: var(--text-3); font-size: 15px; line-height: 1; cursor: pointer; }
+.ct-tag-limpar:hover, .ct-tag-limpar:focus-visible { background: var(--surface-3); border-color: var(--line-forte); color: var(--text); }
+.ct-tag-linha:has(.i-tag:placeholder-shown) .ct-tag-limpar { opacity: .25; }
+@media (max-width: 700px) {
+  .ct-tag-linha { grid-template-columns: 32px minmax(0, 1fr) 26px; }
+  .ct-tag-linha .ct-tag-campo { grid-column: 2 / -1; grid-row: 2; }
+}

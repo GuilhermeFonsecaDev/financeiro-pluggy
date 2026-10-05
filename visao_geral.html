@@ -57,6 +57,23 @@
    grade", mas quebrava num x diferente das outras tres e era isso que dava a
    sensacao de tela desencaixada. */
 .c6 { grid-column:span 6; } .c12 { grid-column:span 12; }
+
+/* Sankey "Para onde foi": receita -> despesas/restante -> categoria -> sub. */
+.vg-sankey { padding:10px 18px 16px; position:relative; }
+.vg-sankey svg { display:block; width:100%; overflow:visible; }
+.vg-sankey .lk { fill:none; stroke-opacity:.22; transition:stroke-opacity .12s ease; }
+.vg-sankey .nd rect { rx:3; }
+.vg-sankey .nd text { font-size:11.5px; fill:var(--text-2); }
+.vg-sankey .nd text.v { font-size:10.5px; fill:var(--text-3); font-variant-numeric:tabular-nums; }
+.vg-sankey .nd[data-ir] { cursor:pointer; }
+.vg-sankey .nd[data-ir]:hover text:not(.v) { fill:var(--text); }
+.vg-sankey.foco .lk { stroke-opacity:.05; }
+.vg-sankey.foco .lk.on { stroke-opacity:.42; }
+.vg-sankey.foco .nd { opacity:.35; }
+.vg-sankey.foco .nd.on { opacity:1; }
+.vg-sankey-dica { position:absolute; pointer-events:none; background:var(--surface-2); border:1px solid var(--line-forte);
+                  border-radius:8px; padding:7px 10px; font-size:12px; color:var(--text-2); white-space:nowrap; z-index:2; }
+.vg-sankey-dica b { color:var(--text); }
 @media (max-width:1080px) { .c6 { grid-column:span 12; } }
 
 .painel-topo { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:12px 14px 0; }
@@ -255,6 +272,14 @@
   <div class="vg-kpis" id="kpis"></div>
 
   <div class="vg-grade">
+    <section class="painel c12">
+      <div class="painel-topo">
+        <h2>Para onde foi</h2>
+        <span class="nota" id="notaSankey"></span>
+      </div>
+      <div class="vg-sankey" id="sankey"></div>
+    </section>
+
     <section class="painel c6">
       <div class="painel-topo">
         <h2>Gasto geral mês a mês</h2>
@@ -337,8 +362,14 @@
 
 <script src="app.js"></script>
 <script>
-let PERIODO = "mes";
-let REF = "";
+/* Período e mês ficam guardados no navegador: abrir a Visão Geral de novo
+   volta onde você deixou. Sem storage (janela anônima), só começa do zero. */
+const CHAVE_FILTRO = "visaoGeral.filtro";
+const lerFiltro = () => { try { return JSON.parse(localStorage.getItem(CHAVE_FILTRO) || "{}"); } catch { return {}; } };
+const guardarFiltro = () => { try { localStorage.setItem(CHAVE_FILTRO, JSON.stringify({ periodo: PERIODO, ref: REF })); } catch { /* sem storage */ } };
+const FILTRO_SALVO = lerFiltro();
+let PERIODO = ["mes", "trimestre", "semestre", "ano"].includes(FILTRO_SALVO.periodo) ? FILTRO_SALVO.periodo : "mes";
+let REF = /^\d{4}-\d{2}$/.test(FILTRO_SALVO.ref || "") ? FILTRO_SALVO.ref : "";
 let D = null;
 const VISIVEIS_CMP = 5;
 const LINHA = new Map();
@@ -583,6 +614,158 @@ function renderDist() {
         <span class="dif">${dif === null ? "" : seta(Number(dif.toFixed(1)))}</span>
       </div>`;
     }).join("")}</div>`;
+}
+
+/* Sankey em SVG puro. Cada coluna soma o mesmo total (a receita, ou o gasto
+   quando ele passa da receita e entra um nó "Déficit"), então as faixas
+   fecham de uma coluna para a outra sem sobrar nem faltar. */
+function renderSankey() {
+  const alvo = el("sankey");
+  const receita = Math.max(0, D.resumo.entradas || 0);
+  const gasto = Math.max(0, D.resumo.gasto || 0);
+  el("notaSankey").textContent = D.periodo.rotulo;
+  if (!gasto && !receita) { alvo.innerHTML = `<div class="vg-nada" style="padding:24px;color:var(--text-3)">Sem movimento no período.</div>`; return; }
+
+  const estreito = alvo.clientWidth < 900;
+  const periodoQ = { from: D.periodo.mesDe || D.periodo.mesAte, to: D.periodo.mesAte };
+  const link = id => id ? `transacoes.html?${new URLSearchParams({ ...periodoQ, category: id })}` : null;
+
+  // Categorias abaixo de 1% do gasto viram "Outras"; subs, até 6 por pai.
+  const cats = [], outras = { nome: "Outras", cor: "var(--line-forte)", total: 0, filhos: [] };
+  for (const c of D.categorias.filter(c => c.total > 0)) {
+    if (c.total < gasto * 0.01) { outras.total += c.total; continue; }
+    // Subcategorias que pesam: até 4 por pai, cada uma com 0,5%+ do gasto.
+    // Listar tudo engarrafava a última coluna; cortar em 2% esvaziava.
+    const filhos = [...c.filhos].sort((a, b) => b.total - a.total)
+      .filter(f => f.total >= gasto * 0.005).slice(0, 4);
+    cats.push({ ...c, filhos });
+  }
+  if (outras.total > 0) cats.push(outras);
+
+  const deficit = Math.max(0, gasto - receita);
+  const restante = Math.max(0, receita - gasto);
+  const topo = Math.max(receita, gasto);
+
+  // Colunas de nós: [{id, nome, valor, cor, ir, col}], ligações: [{de, para, valor, cor}]
+  const nos = [], lks = [];
+  const no = (id, col, nome, valor, cor, ir = null) => { nos.push({ id, col, nome, valor, cor, ir }); return id; };
+  if (receita) no("rec", 0, "Receita", receita, "var(--verde)");
+  if (deficit) no("def", 0, "Déficit", deficit, "var(--laranja)");
+  no("desp", 1, "Despesas", gasto, "var(--vermelho)");
+  if (restante) no("rest", 1, "Restante", restante, "var(--azul)");
+  if (receita) lks.push({ de: "rec", para: "desp", valor: Math.min(receita, gasto), cor: "var(--vermelho)" });
+  if (restante) lks.push({ de: "rec", para: "rest", valor: restante, cor: "var(--azul)" });
+  if (deficit) lks.push({ de: "def", para: "desp", valor: deficit, cor: "var(--laranja)" });
+  cats.forEach((c, i) => {
+    const id = `c${i}`;
+    no(id, 2, c.nome, c.total, c.cor, link(c.id));
+    lks.push({ de: "desp", para: id, valor: c.total, cor: c.cor });
+    if (!estreito) c.filhos.forEach((f, j) => {
+      const fid = `c${i}f${j}`;
+      no(fid, 3, f.nome, f.total, f.cor || c.cor, link(f.id));
+      lks.push({ de: id, para: fid, valor: f.total, cor: f.cor || c.cor });
+    });
+  });
+
+  // Layout: cada nó tem uma linha fixa (SLOT) na coluna, como na referência;
+  // a espessura segue o valor, mas num teto pequeno (o maior fluxo tem
+  // FAIXA px). Proporcional à altura toda, "Despesas" ocupava a tela e as
+  // categorias pequenas se empilhavam umas sobre as outras.
+  const ncol = estreito ? 3 : 4;
+  const porCol = [...Array(ncol)].map((_, k) => nos.filter(n => n.col === k));
+  const SLOT = 44, FAIXA = 36, MIN = 4;
+  const escala = FAIXA / (topo || 1);
+  const W = alvo.clientWidth - 36, NW = 8;
+  const xCol = k => k === 0 ? 0 : k === ncol - 1 ? W - NW : (W - NW) * k / (ncol - 1);
+  // Linha de cada nó. Subcategoria começa na linha do pai (ou na próxima
+  // livre): fica perto dele, e as faixas quase não se cruzam.
+  const linha = {};
+  porCol.forEach((col, k) => {
+    let livre = 0;
+    for (const n of col) {
+      const pai = k === 3 ? lks.find(l => l.para === n.id)?.de : null;
+      linha[n.id] = Math.max(livre, pai != null ? linha[pai] ?? 0 : livre);
+      livre = linha[n.id] + 1;
+    }
+  });
+  const H = Math.max(200, (Math.max(...Object.values(linha)) + 1) * SLOT);
+  for (const n of nos) {
+    n.h = Math.max(MIN, n.valor * escala);
+    n.x = xCol(n.col);
+    n.y = linha[n.id] * SLOT + (SLOT - n.h) / 2;
+  }
+  const porId = Object.fromEntries(nos.map(n => [n.id, n]));
+  const saida = {}, entrada = {};
+  const caminhos = lks.map(l => {
+    const a = porId[l.de], b = porId[l.para];
+    if (!a || !b) return "";
+    const h = Math.max(1, l.valor * escala);
+    const y0 = a.y + (saida[a.id] || 0) + h / 2; saida[a.id] = (saida[a.id] || 0) + h;
+    const y1 = b.y + (entrada[b.id] || 0) + h / 2; entrada[b.id] = (entrada[b.id] || 0) + h;
+    const x0 = a.x + NW, x1 = b.x, mx = (x0 + x1) / 2;
+    return `<path class="lk" data-de="${a.id}" data-para="${b.id}" data-valor="${l.valor}" stroke="${esc(l.cor)}" stroke-width="${h.toFixed(1)}"
+      d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}"/>`;
+  }).join("");
+  const rotulos = nos.map(n => {
+    // Como na referência: receita e despesas com o rótulo à direita;
+    // categorias e subcategorias com o rótulo à esquerda do bloco, onde a
+    // faixa chega, e não por cima das faixas que saem.
+    const esquerda = n.col >= 2;
+    const tx = esquerda ? n.x - 8 : n.x + NW + 8, anc = esquerda ? "end" : "start";
+    const cy = n.y + n.h / 2;
+    return `<g class="nd" data-no="${n.id}" data-valor="${n.valor}" data-nome="${esc(n.nome)}" ${n.ir ? `data-ir="${esc(n.ir)}"` : ""}>
+      <rect x="${n.x}" y="${n.y.toFixed(1)}" width="${NW}" height="${n.h.toFixed(1)}" fill="${esc(n.cor)}"/>
+      <text x="${tx}" y="${(cy - 1).toFixed(1)}" text-anchor="${anc}">${esc(n.nome)}</text>
+      <text class="v" x="${tx}" y="${(cy + 12).toFixed(1)}" text-anchor="${anc}">${esc(fmtBRL(n.valor))}</text>
+    </g>`;
+  }).join("");
+  alvo.innerHTML = `<svg viewBox="0 -4 ${W} ${H + 8}" height="${H + 8}" role="img" aria-label="Fluxo da receita para despesas e categorias">${caminhos}${rotulos}</svg>
+    <div class="vg-sankey-dica" hidden></div>
+    ${!receita ? `<p class="nota" style="margin:6px 0 0">Nenhuma receita recebida no período; o fluxo começa nas despesas.</p>` : ""}`;
+  ligarSankey(alvo, lks, receita, gasto);
+}
+
+/* Destaca o caminho inteiro do que está sob o mouse: para cima até a receita
+   e para baixo até as subcategorias. */
+function ligarSankey(alvo, lks, receita, gasto) {
+  const dica = alvo.querySelector(".vg-sankey-dica");
+  const acima = id => lks.filter(l => l.para === id).flatMap(l => [l, ...acima(l.de)]);
+  const abaixo = id => lks.filter(l => l.de === id).flatMap(l => [l, ...abaixo(l.para)]);
+  const pct = (v, t) => t ? ` · ${Math.round(100 * v / t)}% ${t === receita ? "da receita" : "do gasto"}` : "";
+  const acender = (lista, nosIds) => {
+    alvo.classList.add("foco");
+    const chaves = new Set(lista.map(l => `${l.de}>${l.para}`));
+    alvo.querySelectorAll(".lk").forEach(p => p.classList.toggle("on", chaves.has(`${p.dataset.de}>${p.dataset.para}`)));
+    alvo.querySelectorAll(".nd").forEach(g => g.classList.toggle("on", nosIds.has(g.dataset.no)));
+  };
+  alvo.onmousemove = e => {
+    const g = e.target.closest(".nd"), p = e.target.closest(".lk");
+    if (!g && !p) { alvo.classList.remove("foco"); dica.hidden = true; return; }
+    let lista, ids, texto;
+    if (g) {
+      const id = g.dataset.no;
+      lista = [...acima(id), ...abaixo(id)];
+      ids = new Set([id, ...lista.flatMap(l => [l.de, l.para])]);
+      const v = Number(g.dataset.valor);
+      texto = `<b>${esc(g.dataset.nome)}</b> · ${esc(fmtBRL(v))}${pct(v, receita) || pct(v, gasto)}`;
+    } else {
+      const l = { de: p.dataset.de, para: p.dataset.para };
+      lista = [l, ...acima(l.de), ...abaixo(l.para)];
+      ids = new Set(lista.flatMap(x => [x.de, x.para]));
+      const v = Number(p.dataset.valor);
+      const nome = alvo.querySelector(`.nd[data-no="${l.para}"]`)?.dataset.nome || "";
+      texto = `<b>${esc(nome)}</b> · ${esc(fmtBRL(v))}${pct(v, receita) || pct(v, gasto)}`;
+    }
+    acender(lista, ids);
+    dica.innerHTML = texto;
+    dica.hidden = false;
+    const r = alvo.getBoundingClientRect();
+    const x = Math.min(e.clientX - r.left + 14, r.width - dica.offsetWidth - 4);
+    dica.style.left = `${x}px`;
+    dica.style.top = `${e.clientY - r.top + 14}px`;
+  };
+  alvo.onmouseleave = () => { alvo.classList.remove("foco"); dica.hidden = true; };
+  alvo.onclick = e => { const g = e.target.closest(".nd[data-ir]"); if (g) location.href = g.dataset.ir; };
 }
 
 /* Compara categoria a categoria com o período anterior do MESMO tamanho: mês
@@ -843,6 +1026,7 @@ async function carregar() {
   renderComparativo();
   renderFixas();
   renderDist();
+  renderSankey();
   renderTop();
   renderInsights();
   renderInvestimentos();
@@ -858,6 +1042,9 @@ async function recarregar() {
   montarNav("visao_geral.html");
   campoMesTodos();   // troca o calendário nativo pelo do projeto
   observarIdentidadeCartoes(recarregar);
+  // O Sankey é desenhado em pixels da largura atual; redimensionar redesenha.
+  let tSankey = null;
+  window.addEventListener("resize", () => { clearTimeout(tSankey); tSankey = setTimeout(() => D && renderSankey(), 150); });
   ligarHoverLinha("grafCartao");
   ligarHoverLinha("grafInvest");
   // Card com destino vira link de verdade: clique e Enter/Espaço pelo teclado.
@@ -875,11 +1062,14 @@ async function recarregar() {
     const b = e.target.closest("[data-periodo]");
     if (!b || b.dataset.periodo === PERIODO) return;
     PERIODO = b.dataset.periodo;
+    guardarFiltro();
     recarregar();
   });
   el("fRef").addEventListener("change", () => {
     if (!/^\d{4}-\d{2}$/.test(el("fRef").value)) return;
+    if (el("fRef").value === REF) return;
     REF = el("fRef").value;
+    guardarFiltro();
     recarregar();
   });
   // O grafico de linha usa pixels, entao precisa ser redesenhado quando o

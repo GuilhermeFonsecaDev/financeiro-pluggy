@@ -134,6 +134,16 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 .emoji-opcao.selecionado { border-color:var(--azul); background:var(--azul-suave); }
 .emoji-pop .pop-rodape { justify-content:flex-end; }
 </style>
+<style>
+/* Na barra de controles da lista, ao lado da busca e na altura dela. */
+/* Barra inteira na altura do Fatura/Mês (42px): ícones e busca. */
+.ordem-btn { color: var(--text-3); flex: none; width: 42px; height: 42px; min-height: 42px; }
+.filtros-barra .busca { height: 42px; min-height: 42px; }
+.ordem-btn:hover { color: var(--text); }
+.ordem-btn.ativo { color: var(--azul); }
+/* Filtros, ordenar e remover filtros: um grupo só, no início da barra. */
+.barra-icones { display: inline-flex; gap: 6px; flex: none; }
+</style>
 </head>
 <body>
 <nav class="nav"></nav>
@@ -148,7 +158,24 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
   </header>
 
   <div class="filtros-barra">
-    <button id="btnFiltros" data-abre-pop><span>⚙</span> Filtros</button>
+    <span class="barra-icones">
+    <button class="icone ordem-btn" id="btnFiltros" data-abre-pop aria-label="Filtros" title="Filtros">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 4h7M12 4h2M2 12h2M7 12h7"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="12" r="1.5"/></svg>
+    </button>
+    <button class="icone ordem-btn" id="ordem" data-abre-pop aria-haspopup="menu"
+      aria-label="Ordenar lançamentos" title="Ordenar">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 3v10M2.5 10.5 5 13l2.5-2.5M11 13V3M8.5 5.5 11 3l2.5 2.5"/></svg>
+      </button>
+    <button class="icone ordem-btn" id="btnLimparIcone" aria-label="Remover filtros" title="Remover filtros">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 3h9l-3.5 4.2V12L5.5 13V7.2L2 3z"/><path d="M11 10l3 3M14 10l-3 3"/></svg>
+    </button>
+    </span>
     <span class="segmentado" id="modoVisao" title="Fatura: agrupa cartão pelo mês em que a fatura vence. Mês: agrupa pela data em que a compra foi feita.">
       <button type="button" data-modo="fatura">Fatura</button>
       <button type="button" data-modo="mes">Mês</button>
@@ -164,7 +191,6 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
     <article class="painel">
       <div class="painel-tit">
         <h2>Lançamentos</h2>
-        <button class="sutil" id="btnLimpar">Limpar filtros</button>
       </div>
       <div class="tabela-wrap">
         <table>
@@ -324,7 +350,9 @@ const PAGE = 60;
 // competência de um gasto de cartão é o mês da fatura, então "18 a 29 de
 // agosto" não teria significado — a fatura vence num dia só. Mês único é
 // from === to, que é o que clicar na tira de evolução produz.
-let filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura" };
+let filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura", sort: "" };
+// A ordem é preferência de leitura, não filtro: fica lembrada no navegador.
+try { filtros.sort = localStorage.getItem("transacoes.ordem") || ""; } catch { /* sem storage */ }
 let CATEGORIAS = [], CONTAS = [], CARTOES = [], CONTAS_EDICAO = [], EMOJIS = [], MES_ATUAL = "";
 let EMOJI_CATALOGO = [], EMOJI_FILTRADOS = [], EMOJI_RENDERIZADOS = 0;
 let TRANSACOES = new Map();
@@ -424,6 +452,12 @@ function renderFiltrosAtivos() {
       `<span class="filtro-ativo">${esc(periodo)}<button data-tira="periodo">×</button></span>`);
   }
   document.getElementById("filtrosAtivos").innerHTML = ativos.join("");
+  // Ícone de remover filtros na barra: sempre visível e ativo; fica azul
+  // quando há filtro aplicado. Modo (Fatura/Mês) e ordem não contam.
+  const algum = ["from", "to", "account", "card", "type", "category", "status", "q"].some(k => filtros[k]);
+  const limparIcone = document.getElementById("btnLimparIcone");
+  limparIcone.classList.toggle("ativo", algum);
+  limparIcone.title = "Remover filtros";
 }
 
 /* ------------------------------------------------------------ categorias */
@@ -602,21 +636,7 @@ function renderMetricas(r, serie = []) {
         ${pontos.filter(p => p.temDados).map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5"></circle>`).join("")}
       </svg>
     </div></div></div>
-    <div class="evolucao-rodape">
-      <span class="titulo">Evolução mensal</span>
-      <span class="evolucao-stat">Transações <strong>${Number(r.quantidade || 0).toLocaleString("pt-BR")}</strong></span>
-      <span class="evolucao-stat ${r.entradasEstimativa ? "com-nota" : ""}">
-        <span>Entradas <strong class="positivo">${fmtBRL(r.entradas)}</strong></span>
-        ${r.entradasEstimativa
-          ? `<span class="estimativa-nota" title="Projeção ${esc(origemEntradasTexto(r.entradasOrigem))}">≈ projetado · recebido ${fmtBRL(r.entradasRecebidas)}</span>` : ""}
-      </span>
-      <span class="evolucao-stat ${r.saidasEstimativa ? "com-nota" : ""}">
-        <span>Saídas <strong class="negativo">${fmtBRL(r.saidas)}</strong></span>
-        ${r.saidasEstimativa
-          ? `<span class="estimativa-nota" title="Inclui parcelas ou recorrências ainda não lançadas">≈ inclui gastos previstos</span>` : ""}
-      </span>
-      <span class="evolucao-stat">Resultado <strong class="${r.resultado >= 0 ? "positivo" : "negativo"}">${fmtSinal(r.resultado)}</strong></span>
-    </div>`;
+    `;
 
   // Fora do requestAnimationFrame: em aba de fundo o rAF não dispara, e as
   // setas ficariam escondidas até a pessoa mexer na janela. O observer mede
@@ -1095,14 +1115,45 @@ function ligar() {
   // (fatura/mês) não é um "filtro" que se limpa junto -- é a forma como a
   // tela inteira agrupa, então "Limpar tudo" o preserva.
   const limpar = () => {
-    filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo };
+    filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo, sort: filtros.sort };
     document.getElementById("busca").value = "";
     sincronizarSelects();
     fecharPop();
     recarregar();
   };
   document.getElementById("fLimpar").addEventListener("click", limpar);
-  document.getElementById("btnLimpar").addEventListener("click", limpar);
+  document.getElementById("btnLimparIcone").addEventListener("click", limpar);
+
+  // Ordem: ícone discreto; as opções abrem num popover. O ícone fica azul
+  // quando a ordem não é a padrão, para não esquecer que ela está trocada.
+  const ORDENS = [["", "Mais recentes"], ["antiga", "Mais antigos"], ["maior", "Maior valor"],
+                  ["menor", "Menor valor"], ["descricao", "Descrição (A–Z)"]];
+  const botaoOrdem = document.getElementById("ordem");
+  const popOrdem = document.createElement("div");
+  popOrdem.className = "pop";
+  popOrdem.hidden = true;
+  popOrdem.setAttribute("role", "menu");
+  document.body.appendChild(popOrdem);
+  const pintarOrdem = () => {
+    const atual = filtros.sort || "";
+    botaoOrdem.classList.toggle("ativo", !!atual);
+    botaoOrdem.title = `Ordenar · ${ORDENS.find(([v]) => v === atual)?.[1] || "Mais recentes"}`;
+    popOrdem.innerHTML = `<div class="pop-tit">Ordenar por</div><div class="pop-lista">${ORDENS.map(([v, nome]) =>
+      `<button class="pop-item" role="menuitemradio" aria-checked="${v === atual}" data-ordem="${v}">
+         <span style="width:14px;display:inline-block">${v === atual ? "✓" : ""}</span>${esc(nome)}</button>`).join("")}</div>`;
+  };
+  pintarOrdem();
+  // Abre para a direita, como o painel de Filtros ao lado.
+  botaoOrdem.addEventListener("click", () => abrirPop(popOrdem, botaoOrdem));
+  popOrdem.addEventListener("click", e => {
+    const b = e.target.closest("[data-ordem]");
+    if (!b) return;
+    filtros.sort = b.dataset.ordem;
+    try { localStorage.setItem("transacoes.ordem", filtros.sort); } catch { /* sem storage */ }
+    pintarOrdem();
+    fecharPop();
+    recarregar();
+  });
 
   document.getElementById("filtrosAtivos").addEventListener("click", e => {
     const b = e.target.closest("[data-tira]");

@@ -37,6 +37,8 @@ forma de pagamento. Reembolso de terceiros é o único que some do total.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import re
 import sqlite3
 import uuid
@@ -159,14 +161,106 @@ _COLUNAS_NOVAS = {
     # lançado" do pai -- e um pai sem termo (que nunca casa) deixava todos os
     # subdescontos eternamente como previsto, somando na fatura que já os
     # continha.
+    # compra_projetada: vínculo com uma parcela que a fatura PREVISTA já
+    # cobra mas que ainda não virou transação. Guarda a identidade da compra
+    # (compraId), que não muda de parcela para parcela -- quando a cobrança
+    # real chegar, ela é reconhecida pela mesma chave.
     "fixas_descontos": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''",
-                        "transacao_id": "TEXT"},
+                        "transacao_id": "TEXT",
+                        "compra_projetada": "TEXT"},
 }
 
 # As tags mudaram de nome para bater com o dashboard manual.
 _TAGS_ANTIGAS = {"Pessoal": "Contas Pessoais", "Empresa": "Contas Empresa"}
 
 _pronto = False
+
+
+def _contas_da_referencia(conn: sqlite3.Connection, referencia: str) -> set[str]:
+    """Contas que o pagamento de uma conta fixa abrange.
+
+    Cartão: a tag ou o cartão (cartoes.resolver_contas). Conta bancária: o
+    banco inteiro ("contas:<tag>"), já que corrente e poupança do mesmo banco
+    são o mesmo lugar. Referência desconhecida vale só por ela mesma.
+    """
+    if str(referencia).startswith("contas:"):
+        return set(px._grupos_contas(conn, None).get(referencia, set())) or {referencia}
+    return set(cartoes.resolver_contas(conn, referencia)) or {referencia}
+
+
+
+# ---------------------------------------------------------------------------
+# Cópia independente para a tela Contas Fixas 2.0 (teste).
+#
+# A 2.0 usa o mesmo código desta tela, mas grava em tabelas próprias
+# (f2_fixas_*). Dentro de `usar_copia_2()`, a conexão devolvida por _abrir()
+# reescreve os nomes das tabelas de contas fixas antes de executar o SQL --
+# assim excluir ou editar algo na 2.0 nunca toca a tela original.
+# ---------------------------------------------------------------------------
+_COPIA_2 = contextvars.ContextVar("fixas_copia_2", default=False)
+_TABELAS_FIXAS = re.compile(r"\bfixas_(contas|mes|descontos|termos|migracoes|formas_migradas)\b")
+
+
+def _sql_da_copia(sql: str) -> str:
+    return _TABELAS_FIXAS.sub(r"f2_fixas_\1", sql)
+
+
+class _ConexaoCopia2:
+    """sqlite3.Connection com as tabelas de contas fixas trocadas pelas da 2.0."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+
+    def execute(self, sql, *args):
+        return self._conn.execute(_sql_da_copia(sql), *args)
+
+    def executemany(self, sql, *args):
+        return self._conn.executemany(_sql_da_copia(sql), *args)
+
+    def executescript(self, sql):
+        return self._conn.executescript(_sql_da_copia(sql))
+
+    def __enter__(self):
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._conn.__exit__(*exc)
+
+    def __getattr__(self, nome):
+        return getattr(self._conn, nome)
+
+
+@contextlib.contextmanager
+def usar_copia_2():
+    """Tudo o que rodar aqui dentro lê e grava as tabelas da 2.0."""
+    token = _COPIA_2.set(True)
+    try:
+        yield
+    finally:
+        _COPIA_2.reset(token)
+
+
+def em_copia_2() -> bool:
+    return _COPIA_2.get()
+
+
+def preparar_copia_2(conn: sqlite3.Connection) -> None:
+    """Cria as tabelas da 2.0 com a mesma estrutura das originais.
+
+    Só cria o que falta, e só copia os dados na primeira vez: depois disso
+    as duas telas seguem cada uma com os seus.
+    """
+    for (nome, sql) in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN "
+            "('fixas_contas','fixas_mes','fixas_descontos','fixas_termos',"
+            "'fixas_migracoes','fixas_formas_migradas')").fetchall():
+        destino = "f2_" + nome
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (destino,)).fetchone():
+            continue
+        conn.execute(_sql_da_copia(sql))
+        conn.execute(f"INSERT INTO {destino} SELECT * FROM {nome}")
+    conn.commit()
 
 
 def _abrir() -> sqlite3.Connection:
@@ -204,6 +298,9 @@ def _abrir() -> sqlite3.Connection:
         _migrar_formas(conn)
         conn.commit()
         _pronto = True
+    if _COPIA_2.get():
+        preparar_copia_2(conn)
+        return _ConexaoCopia2(conn)
     return conn
 
 
@@ -592,7 +689,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         formas_por_conta = _formas_por_conta(conn)
         identidades = cartoes.identidades(conn)
         fontes_por_referencia = {
-            referencia: set(cartoes.resolver_contas(conn, referencia)) or {referencia}
+            referencia: _contas_da_referencia(conn, referencia)
             for referencia in {f["conta_id"] for f in fixas if f["conta_id"]}
         }
         linhas_desconto = conn.execute(
@@ -642,19 +739,47 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
                 # Vinculado mas fora do mês: mantém o id sem fingir que achou.
                 "vinculoPerdido": bool(l["transacao_id"]) and tx_desc is None,
                 "projecao": None,   # preenchido depois, fora do "with"
+                "compraProjetada": l["compra_projetada"] or "",
             })
 
         # Vínculo que este subdesconto teve em MESES ANTERIORES. Serve para
         # reconhecer a parcela projetada do mês corrente: a projeção carrega o
         # id da compra que a originou, então "mesma compra" é comparação de
         # id, não adivinhação por descrição.
+        # Vale também a associação manual a uma parcela prevista feita num mês
+        # anterior: já guarda a compra, sem precisar de transação.
         vinculo_anterior: dict[tuple[str, str], str] = {}
+        compra_anterior: dict[tuple[str, str], str] = {}
         for l in conn.execute(
-            "SELECT fixa_id, descricao, transacao_id, mes_ref FROM fixas_descontos "
-            "WHERE transacao_id IS NOT NULL AND mes_ref < ? ORDER BY mes_ref",
+            "SELECT fixa_id, descricao, transacao_id, compra_projetada, mes_ref "
+            "FROM fixas_descontos WHERE (transacao_id IS NOT NULL OR compra_projetada IS NOT NULL) "
+            "AND mes_ref < ? ORDER BY mes_ref",
             (mes_ref,),
         ):
-            vinculo_anterior[(l["fixa_id"], cam.normalizar(l["descricao"]))] = l["transacao_id"]
+            chave = (l["fixa_id"], cam.normalizar(l["descricao"]))
+            if l["transacao_id"]:
+                vinculo_anterior[chave] = l["transacao_id"]
+                compra_anterior.pop(chave, None)
+            else:
+                compra_anterior[chave] = l["compra_projetada"]
+                vinculo_anterior.pop(chave, None)
+
+        # Associado a uma parcela prevista e a fatura já fechou: a cobrança
+        # real da mesma compra, se estiver no mês, passa a ser o vínculo.
+        pendentes = [d for lista in descontos.values() for d in lista
+                     if d["compraProjetada"] and not d["transacao"]]
+        vinculos_por_compra: dict[str, str] = {}
+        if pendentes:
+            for t in candidatas:
+                compra = px.compra_da_transacao(conn, t["transacao_id"])
+                if compra:
+                    vinculos_por_compra.setdefault("|".join(str(p) for p in compra), t["transacao_id"])
+            for d in pendentes:
+                tx_id = vinculos_por_compra.get(d["compraProjetada"])
+                if tx_id and tx_id in por_id:
+                    d["transacaoId"] = tx_id
+                    d["transacao"] = _detalhe_transacao(por_id[tx_id], apelidos, categorias, identidades)
+                    d["vinculoPerdido"] = False
 
         # Transação usada por um subdesconto sai do páreo das contas fixas:
         # senão a mesma cobrança pagaria a conta e o desconto dela.
@@ -662,6 +787,8 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
         vinculos_manuais |= {
             l["transacao_id"] for l in linhas_desconto if l["transacao_id"]
         }
+        vinculos_manuais |= {d["transacaoId"] for lista in descontos.values()
+                             for d in lista if d["transacaoId"]}
         # Só as que ainda não têm vínculo manual entram na regra CONTÉM.
         sem_vinculo = [
             f for f in fixas
@@ -716,13 +843,18 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
                     for desconto in lista:
                         if desconto["transacao"] or desconto["forma"] == FORMA_REEMBOLSO:
                             continue
-                        tx_antiga = vinculo_anterior.get(
-                            (fixa_id, cam.normalizar(desconto["descricao"])))
-                        if not tx_antiga:
-                            continue
-                        compra = px.compra_da_transacao(conn2, tx_antiga)
-                        achado = por_compra.get(
-                            "|".join(str(p) for p in compra)) if compra else None
+                        chave = (fixa_id, cam.normalizar(desconto["descricao"]))
+                        # Ordem: o vínculo manual deste mês, depois a compra
+                        # escolhida num mês anterior, depois a transação de
+                        # um mês anterior.
+                        compra_id = desconto["compraProjetada"] or compra_anterior.get(chave)
+                        if not compra_id:
+                            tx_antiga = vinculo_anterior.get(chave)
+                            if not tx_antiga:
+                                continue
+                            compra = px.compra_da_transacao(conn2, tx_antiga)
+                            compra_id = "|".join(str(p) for p in compra) if compra else None
+                        achado = por_compra.get(compra_id) if compra_id else None
                         if not achado or id(achado[1]) in projecao_usada:
                             continue
                         grupo, item = achado
@@ -1084,7 +1216,7 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
         identidades = cartoes.identidades(conn)
         fontes_por_referencia = {
-            fixa["conta_id"]: set(cartoes.resolver_contas(conn, fixa["conta_id"])) or {fixa["conta_id"]}
+            fixa["conta_id"]: _contas_da_referencia(conn, fixa["conta_id"])
         } if fixa["conta_id"] else {}
 
         pagamentos = []
@@ -1346,11 +1478,23 @@ def salvar_desconto(mes_ref: str, fixa_id: str, dados: dict) -> dict:
         raise ValueError("Valor do desconto inválido.")
 
     forma = str(dados.get("forma") or FORMA_PIX).strip() or FORMA_PIX
+    # Na 2.0 o reembolso tem uma fonte só (a tabela de reembolsos): aceitar
+    # aqui permitiria cadastrar o mesmo dinheiro de volta em dois lugares.
+    if forma == FORMA_REEMBOLSO and em_copia_2():
+        raise ValueError("Na Contas Fixas 2.0, cadastre o reembolso na tabela Reembolsos.")
     # A transação vinculada é o que diz se esta cobrança já entrou na fatura.
     # "" limpa o vínculo; ausente preserva o que já estava (a tela manda só o
     # que o usuário mexeu).
     tem_tx = "transacaoId" in dados
     transacao_id = str(dados.get("transacaoId") or "").strip() or None
+    # Vincular a uma parcela prevista e a uma transação são exclusivos: quem
+    # vier preenchido limpa o outro.
+    tem_compra = "compraProjetada" in dados
+    compra = str(dados.get("compraProjetada") or "").strip()[:400] or None
+    if compra:
+        transacao_id, tem_tx = None, True
+    elif transacao_id:
+        tem_compra = True
 
     desconto_id = str(dados.get("id") or "") or f"dc_{uuid.uuid4().hex[:10]}"
     with _abrir() as conn:
@@ -1365,14 +1509,15 @@ def salvar_desconto(mes_ref: str, fixa_id: str, dados: dict) -> dict:
             raise ValueError("Transação não encontrada.")
         conn.execute(
             "INSERT INTO fixas_descontos (id, fixa_id, mes_ref, descricao, valor, "
-            "  reembolso, forma_pagamento, transacao_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "  reembolso, forma_pagamento, transacao_id, compra_projetada) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET descricao = excluded.descricao, "
             "  valor = excluded.valor, reembolso = excluded.reembolso, "
             "  forma_pagamento = excluded.forma_pagamento"
-            + (", transacao_id = excluded.transacao_id" if tem_tx else ""),
+            + (", transacao_id = excluded.transacao_id" if tem_tx else "")
+            + (", compra_projetada = excluded.compra_projetada" if tem_compra else ""),
             (desconto_id, fixa_id, mes_ref, descricao, valor,
-             1 if forma == FORMA_REEMBOLSO else 0, forma, transacao_id),
+             1 if forma == FORMA_REEMBOLSO else 0, forma, transacao_id, compra),
         )
         conn.commit()
     return {"ok": True, "id": desconto_id}

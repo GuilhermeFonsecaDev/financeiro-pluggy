@@ -591,6 +591,12 @@ def payload() -> dict[str, Any]:
             if rotulos.get(principal["item_id"], "Instituição") == "Instituição" and nome != "Instituição":
                 rotulos[principal["item_id"]] = nome
         posicoes = list(unicas.values())
+        # Posições marcadas como "ignorar" na Carteira (dado errado vindo do
+        # banco) saem da tela inteira: saldo, lotes, movimentos e curvas.
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='carteira_posicoes'").fetchone():
+            ignoradas = {r[0] for r in conn.execute(
+                "SELECT investimento_id FROM carteira_posicoes WHERE ignorado=1")}
+            posicoes = [p for p in posicoes if p["investimento_id"] not in ignoradas]
         chaves = {p["investimento_chave"] for p in posicoes}
         ativos = [p for p in posicoes if p["status"] == "ACTIVE"]
 

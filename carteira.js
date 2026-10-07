@@ -95,7 +95,43 @@ function celulaDataResgate(item) {
 
 const IQ_ROTULO = { sim: "Sim", nao: "Não", "": "—" };
 
+const nomeDe = cnpj => (D?.itens || []).find(i => i.cnpj === cnpj)?.nome || cnpj;
+const sucessorDe = cnpj => (D?.substituicoes || []).find(s => s.origem === cnpj);
+
+/* Vaga hoje -> depois: o que a linhagem inteira tem aplicado e o % dela na
+   aba antes e depois do aporte. É o que a calculadora usa para decidir onde
+   o dinheiro vai -- quem está mais abaixo do alvo recebe primeiro. */
+function celulaVaga(item) {
+  if (item.fechadoEm) return `<span class="vaga-cel muted">${fmtBRL(item.posicao || 0)}</span>`;
+  const anteriores = (item.cadeia || []).length - 1;
+  const titulo = anteriores > 0
+    ? `inclui ${anteriores} fundo(s) anterior(es) desta vaga: ${(item.cadeia || []).slice(0, -1).map(nomeDe).join(" → ")}`
+    : "posição atual deste fundo";
+  // Uma linha só: o % antes e depois do aporte; o valor em reais fica na dica.
+  return `<span class="vaga-cel" title="${esc(`${fmtBRL(item.atualVaga || 0)} hoje · ${titulo}`)}">
+    <span class="vaga-pct ${item.pctDepois > item.pctAtual ? "sobe" : ""}">${pct(item.pctAtual)} → ${pct(item.pctDepois)}${anteriores > 0 ? ` <i class="vaga-linhagem">+${anteriores}</i>` : ""}</span>
+  </span>`;
+}
+
+/* Fundo fechado: fica na lista como histórico da vaga, sem receber aporte. */
+function linhaFechada(item) {
+  const suc = sucessorDe(item.cnpj);
+  const ponta = suc && !sucessorDe(suc.destino);
+  return `<tr data-cnpj="${esc(item.cnpj)}" class="fechado">
+    <td class="col-fundo"><div class="fundo-linha"><span class="abrir sem">⊘</span>
+      <div class="fundo-identidade">
+        <span class="fundo-nome" title="${esc(item.nome)}">${esc(item.nome)}</span>
+        <span class="fundo-cnpj">fechado em ${fmtData(item.fechadoEm)}${suc ? ` · substituído por ${esc(nomeDe(suc.destino))}` : ""}</span>
+      </div></div></td>
+    <td class="num muted">—</td>
+    <td class="num">${celulaVaga(item)}</td>
+    <td class="num"><span class="aporte-linha zerado">${fmtBRL(0)}</span></td>
+    <td><div class="acoes">${ponta ? `<button class="sutil" data-desfazer="${esc(item.cnpj)}" title="Reabrir este fundo e desfazer a substituição">Desfazer</button>` : ""}</div></td>
+  </tr>`;
+}
+
 function linha(item) {
+  if (item.fechadoEm) return linhaFechada(item);
   const abrir = item.url
     ? `<a class="abrir" href="${esc(item.url)}" target="_blank" rel="noopener"
           title="Abrir ${esc(item.nome)} no BTG${item.urlComo === "classe" ? " (o BTG lista a classe deste fundo)" : item.urlComo === "fundo" ? " (o BTG lista o fundo desta classe)" : ""}">↗</a>`
@@ -108,31 +144,19 @@ function linha(item) {
         ${abrir}
         <div class="fundo-identidade">
           <span class="fundo-nome" title="${esc(item.nome)}">${esc(item.nome)}</span>
-          <span class="fundo-cnpj">${esc(item.cnpjFormatado)}${item.noCatalogo ? "" : " · fora do catálogo do BTG"}</span>
+          <span class="fundo-cnpj">${esc(item.cnpjFormatado)}${item.qualificado === "sim" ? " · restrito a investidor qualificado" : ""}</span>
         </div>
       </div>
     </td>
     <td class="num"><span class="com-unidade">
       <input class="pct" data-campo="percentual" value="${item.percentual}" inputmode="decimal" aria-label="Alocação de ${esc(item.nome)}" /><i>%</i>
     </span></td>
+    <td class="num">${celulaVaga(item)}</td>
     <td class="num">
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
       ${item.redistribuido ? `<span class="nota-iq">restrito a IQ · ${pct(item.percentual)} redistribuídos</span>` : ""}
     </td>
-    <td class="num"><span class="com-unidade">
-      <input class="dias" data-campo="diasResgate" value="${item.diasResgate == null ? "" : item.diasResgate}" inputmode="numeric" aria-label="Liquidez em dias de ${esc(item.nome)}" /><i>dias</i>
-    </span></td>
-    <td class="num">${celulaDataResgate(item)}</td>
-    <td>
-      <select class="iq" data-campo="qualificado" aria-label="Investidor qualificado">
-        ${["", "sim", "nao"].map(v => `<option value="${v}" ${v === item.qualificado ? "selected" : ""}>${IQ_ROTULO[v]}</option>`).join("")}
-      </select>
-    </td>
-    <td><div class="acoes">
-      <select class="mover-perfil" data-mover="${esc(item.cnpj)}" aria-label="Mover ${esc(item.nome)} para outra aba" title="Mover para outra aba"><option value="">⇄</option>${(D.abas || []).filter(a => a.id !== PERFIL).map(a => `<option value="${esc(a.id)}">${esc(a.nome)}</option>`).join('')}</select>
-      <button class="icone" data-excluir="${esc(item.cnpj)}" title="Remover da carteira">×</button>
-    </div></td>
   </tr>`;
 }
 
@@ -150,7 +174,7 @@ function render() {
     el('cartAbas').innerHTML = abas.map(a => `<button type="button" role="tab" id="cartTab-${esc(a.id)}" data-perfil="${esc(a.id)}" aria-controls="cartPainel">${esc(a.nome.toUpperCase())}</button>`).join('');
     el('cartAbas').dataset.assinatura = assinatura;
   }
-  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL);
+  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL && !i.fechadoEm);
   // O atalho de foco vale para digitação, não para mudança de lista: excluir
   // um fundo (ou movê-lo de aba) deixa o próprio botão com o foco dentro da
   // tabela, e a linha que saiu continuava na tela até trocar de aba.
@@ -166,7 +190,7 @@ function render() {
 }
 
 function renderCalculos() {
-  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL);
+  const itens = (D.itens || []).filter(i => (i.perfil || "conservador") === PERFIL && !i.fechadoEm);
   // Campo que só o backend com redistribuição por IQ devolve. Sem ele, a
   // conta na tela seria a antiga -- e errada, sem dizer por quê.
   const servidorAtualizado = !!D.perfis;
@@ -176,6 +200,8 @@ function renderCalculos() {
     if (!tr) continue;
     tr.classList.toggle("abaixo", Boolean(item.abaixoDoMinimo));
     tr.classList.toggle("fora", Boolean(item.redistribuido));
+    const vaga = tr.querySelector(".vaga-cel");
+    if (vaga) vaga.outerHTML = celulaVaga(item);
     const celula = tr.querySelector(".num .aporte-linha").parentElement;
     celula.innerHTML = `
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
@@ -190,6 +216,10 @@ function renderCalculos() {
   el("cartSoma").textContent = pct(grupo.somaPercentual);
   el("cartSoma").className = `num ${grupo.somaFecha ? "" : "desalinhado"}`;
   el("cartTotal").textContent = fmtBRL(grupo.totalDistribuido);
+  el("cartVagaTotal").textContent = grupo.totalAtual != null ? fmtBRL(grupo.totalAtual) : "—";
+  el("cartVagaTotal").title = grupo.faltaParaAlvo
+    ? `depois deste aporte ainda faltariam ${fmtBRL(grupo.faltaParaAlvo)} para todas as vagas chegarem ao alvo (só aportando)`
+    : "com este aporte todas as vagas chegam ao alvo";
   // A soma fora de 100% é o aviso que mais engana em silêncio: os pesos são
   // normalizados pela própria soma, então a conta "fecha" mesmo errada.
   const problemas = [];
@@ -280,6 +310,19 @@ el("cartCorpo").addEventListener("change", e => {
   }
 });
 el("cartCorpo").addEventListener("click", async e => {
+  const subst = e.target.closest("[data-substituir]");
+  if (subst) { abrirSubstituicao(subst.dataset.substituir); return; }
+  const desfazer = e.target.closest("[data-desfazer]");
+  if (desfazer) {
+    if (!confirm(`Reabrir ${nomeDe(desfazer.dataset.desfazer)} e desfazer a substituição?`)) return;
+    try {
+      if (!await salvar()) return;
+      D = await pedir("/carteira/substituir/desfazer", "POST", { origem: desfazer.dataset.desfazer });
+      await carregar();
+      window.dispatchEvent(new Event("carteira-mudou"));
+    } catch (err) { el("cartErro").textContent = err.message; }
+    return;
+  }
   const botao = e.target.closest("[data-excluir]");
   if (!botao) return;
   const item = (D.itens || []).find(i => i.cnpj === botao.dataset.excluir);
@@ -419,11 +462,15 @@ async function cadastrar() {
     });
     fecharCadastro();
     await carregar();
+    window.dispatchEvent(new Event("carteira-mudou"));
   } catch (e) { el("cartCadastroErro").textContent = e.message; }
   finally { el("cartConfirmar").disabled = false; }
 }
 
-el("cartBtnCadastrar").addEventListener("click", abrirCadastro);
+el("cartGerenciar").addEventListener("click", () => {
+  fecharCarteira();
+  window.abrirMeusFundos?.();
+});
 el("cartFecharCadastro").addEventListener("click", fecharCadastro);
 el("cartModalCadastro").addEventListener("click", e => {
   if (e.target === el("cartModalCadastro")) fecharCadastro();
@@ -436,6 +483,62 @@ el("cartNovoCnpj").addEventListener("input", () => {
 for (const id of ["cartNovoCnpj", "cartNovoPct"]) {
   el(id).addEventListener("keydown", e => { if (e.key === "Enter") cadastrar(); });
 }
+
+/* ------------------------------------------------------- substituição */
+
+let ORIGEM_SUBST = null;
+let PEDIDO_SUBST = 0;
+let ESPERA_SUBST;
+
+function abrirSubstituicao(cnpj) {
+  ORIGEM_SUBST = cnpj;
+  el("cartSubstOrigem").textContent = `Fundo que fechou: ${nomeDe(cnpj)}`;
+  el("cartSubstCnpj").value = "";
+  el("cartSubstAchado").textContent = "";
+  el("cartSubstData").value = new Date().toISOString().slice(0, 10);
+  el("cartSubstMotivo").value = "";
+  el("cartSubstErro").textContent = "";
+  el("cartModalSubst").hidden = false;
+  el("cartSubstCnpj").focus();
+}
+const fecharSubstituicao = () => { el("cartModalSubst").hidden = true; };
+
+async function conferirSubst() {
+  const digitos = el("cartSubstCnpj").value.replace(/\D/g, "");
+  const achado = el("cartSubstAchado");
+  if (digitos.length !== 14) { achado.textContent = digitos.length ? "CNPJ incompleto" : ""; return; }
+  const pedido = ++PEDIDO_SUBST;
+  achado.textContent = "procurando…";
+  try {
+    const r = await pedir(`/fundos?consulta=${encodeURIComponent(digitos)}`);
+    if (pedido !== PEDIDO_SUBST) return;
+    const item = (r.resultados || [])[0] || {};
+    const nome = (item.btg && item.btg.nome) || (item.cvm && item.cvm.denominacao);
+    achado.textContent = nome || "CNPJ não encontrado nos catálogos";
+    achado.className = `cadastro-achado ${nome ? "" : "nao"}`;
+  } catch (e) { if (pedido === PEDIDO_SUBST) achado.textContent = e.message; }
+}
+
+async function confirmarSubstituicao() {
+  el("cartSubstErro").textContent = "";
+  el("cartConfirmarSubst").disabled = true;
+  try {
+    if (!await salvar()) return;
+    await pedir("/carteira/substituir", "POST", {
+      origem: ORIGEM_SUBST, destino: el("cartSubstCnpj").value,
+      data: el("cartSubstData").value, motivo: el("cartSubstMotivo").value,
+    });
+    fecharSubstituicao();
+    await carregar();
+    window.dispatchEvent(new Event("carteira-mudou"));
+  } catch (e) { el("cartSubstErro").textContent = e.message; }
+  finally { el("cartConfirmarSubst").disabled = false; }
+}
+
+el("cartFecharSubst").addEventListener("click", fecharSubstituicao);
+el("cartConfirmarSubst").addEventListener("click", confirmarSubstituicao);
+el("cartModalSubst").addEventListener("click", e => { if (e.target === el("cartModalSubst")) fecharSubstituicao(); });
+el("cartSubstCnpj").addEventListener("input", () => { clearTimeout(ESPERA_SUBST); ESPERA_SUBST = setTimeout(conferirSubst, 250); });
 
 el("cartAporte").addEventListener("focus", e => ajustarLargura(e.target));
 /* --------------------------------------------------------------- abertura */
@@ -457,6 +560,33 @@ function fecharCarteira() {
 }
 
 el("btnCarteira").addEventListener("click", abrirCarteira);
+
+/* Meus fundos usa os mesmos formulários: cadastro (com conferência do CNPJ)
+   e substituição. Eles precisam dos dados da carteira carregados. */
+window.carteiraCadastrar = async perfil => {
+  if (!D) await carregar();
+  if (perfil) PERFIL = perfil;
+  abrirCadastro();
+};
+window.carteiraSubstituir = async cnpj => {
+  if (!D) await carregar();
+  abrirSubstituicao(cnpj);
+};
+// Mudança feita em Meus fundos: a calculadora recarrega na próxima abertura.
+window.addEventListener("carteira-mudou", () => { if (CARREGOU) carregar(); });
+
+/* O grafo de linhagem abre a calculadora já na aba e na linha da vaga. */
+window.abrirCarteiraNaVaga = async (cnpj, perfil) => {
+  if (perfil) PERFIL = perfil;
+  await abrirCarteira();
+  render();
+  const tr = el("cartCorpo").querySelector(`tr[data-cnpj="${cnpj}"]`);
+  if (tr) {
+    tr.scrollIntoView({ block: "center" });
+    tr.classList.add("destaque");
+    setTimeout(() => tr.classList.remove("destaque"), 1600);
+  }
+};
 el("cartFechar").addEventListener("click", fecharCarteira);
 el("cartModal").addEventListener("click", e => {
   // Clique no escurecido fecha; dentro da caixa, não.
@@ -465,7 +595,8 @@ el("cartModal").addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   // Esc fecha a janela de cima primeiro: o cadastro abre sobre a carteira.
   if (e.key !== "Escape") return;
-  if (!el("cartModalListaAbas").hidden) fecharListaAbas();
+  if (!el("cartModalSubst").hidden) fecharSubstituicao();
+  else if (!el("cartModalListaAbas").hidden) fecharListaAbas();
   else if (!el("cartModalAba").hidden) fecharAba();
   else if (!el("cartModalCadastro").hidden) fecharCadastro();
   else if (!el("cartModal").hidden) fecharCarteira();

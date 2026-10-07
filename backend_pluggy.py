@@ -438,6 +438,23 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/carteira/excluir":
                 self.send_json(carteira.excluir(str(payload.get("cnpj") or "")))
                 return
+            # Linhagem: um fundo fechou para aportes e outro ocupa a vaga.
+            if parsed.path == "/api/carteira/substituir":
+                self.send_json(carteira.substituir(
+                    str(payload.get("origem") or ""), str(payload.get("destino") or ""),
+                    str(payload.get("data") or ""), str(payload.get("motivo") or "")))
+                return
+            if parsed.path == "/api/carteira/meta-cdb":
+                self.send_json(carteira.salvar_meta_cdb(str(payload.get("grupo") or ""), payload.get("meta")))
+                return
+            if parsed.path == "/api/carteira/posicao":
+                self.send_json(carteira.configurar_posicao(
+                    str(payload.get("id") or ""), payload.get("perfil"),
+                    payload.get("percentual"), payload.get("ignorado")))
+                return
+            if parsed.path == "/api/carteira/substituir/desfazer":
+                self.send_json(carteira.desfazer_substituicao(str(payload.get("origem") or "")))
+                return
 
             if parsed.path == "/api/fundos/atualizar":
                 fontes = payload.get("fontes")

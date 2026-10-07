@@ -101,6 +101,8 @@
 .cadastro-modal { width:min(460px,100%); }
 .cadastro-campos { display:grid; grid-template-columns:1fr 92px; gap:10px; }
 .cadastro-campo { display:grid; gap:5px; min-width:0; }
+.modal > .cadastro-campo + .cadastro-campo { margin-top:14px; }
+.modal > .cadastro-campo + .estado, .modal > .cadastro-achado + .cadastro-campo { margin-top:14px; }
 .cadastro-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
 .cadastro-campo input { width:100%; font-variant-numeric:tabular-nums; }
 .cadastro-achado { margin:10px 0 0; min-height:34px; color:var(--text-2); font-size:12.5px; line-height:1.4; }
@@ -133,3 +135,131 @@
 .linha-aba button { min-height:32px; padding:6px 10px; }
 .carteira select.mover-perfil { width:32px; padding:0; background-image:none; cursor:pointer; }
 @media(max-width:700px) { .cart-barra-abas { flex-wrap:wrap; } .cart-barra-abas .cart-abas { flex-basis:100%; } }
+
+
+/* --- vaga e linhagem na calculadora de rebalanceamento ------------------ */
+.vaga-cel { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.vaga-valor { font-variant-numeric: tabular-nums; }
+.vaga-linhagem { font-style: normal; font-size: 10.5px; color: var(--azul); border: 1px solid currentColor;
+                 border-radius: 999px; padding: 0 5px; margin-left: 4px; }
+.vaga-pct { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vaga-pct.sobe { color: var(--verde); }
+.carteira tr.fechado td { opacity: .55; }
+.carteira tr.fechado .acoes button { opacity: 1; }
+.carteira tr.destaque td { background: rgba(74, 149, 234, .14); transition: background .3s ease; }
+
+/* --- grafo de linhagem (tela de Investimentos) --------------------------- */
+.linhagem-grafo { overflow-x: auto; }
+.linhagem-svg { display: block; min-width: 640px; }
+.linhagem-eixo { font-size: 10.5px; fill: var(--text-3); }
+.linhagem-grade { stroke: var(--line); stroke-width: 1; }
+.linhagem-hoje { stroke: var(--azul); stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.linhagem-aba { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; fill: var(--text-3); }
+.linhagem-fundo-raia { fill: transparent; }
+.linhagem-vaga { cursor: pointer; outline: none; }
+.linhagem-vaga:hover .linhagem-fundo-raia, .linhagem-vaga:focus .linhagem-fundo-raia { fill: var(--surface-2); }
+.linhagem-barra.aberto { fill: rgba(74, 149, 234, .35); stroke: var(--azul); stroke-width: 1.2; }
+.linhagem-barra.fechado { fill: var(--surface-3); stroke: var(--line-forte); stroke-width: 1; }
+.linhagem-nome { font-size: 11px; fill: var(--text-2); }
+.linhagem-nome.fechado { fill: var(--text-3); }
+.linhagem-seta { fill: none; stroke: var(--text-3); stroke-width: 1.4; }
+.linhagem-ponta { fill: var(--text-3); }
+.linhagem-pct { font-size: 12px; font-weight: 650; fill: var(--text); font-variant-numeric: tabular-nums; }
+.linhagem-sub { font-size: 10.5px; fill: var(--text-3); }
+.linhagem-sub.abaixo { fill: var(--laranja); }
+.linhagem-vazia { color: var(--text-3); font-size: 13px; padding: 12px 4px; }
+
+
+/* --- pop-up Fundos ------------------------------------------------------- */
+.mf-lista { display: grid; gap: 14px; max-height: min(65vh, 640px); overflow-y: auto; padding-right: 4px; }
+.mf-aba-tit { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 6px;
+              color: var(--text-3); font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.mf-aba-tit span:last-child { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 11.5px; }
+.mf-desalinhado { color: var(--laranja); }
+.mf-fundo { display: grid; grid-template-columns: minmax(0, 1fr) 80px 120px 80px 56px 40px; gap: 12px; align-items: center;
+            padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2);
+            margin-bottom: 6px; }
+.mf-fundo.fechado { opacity: .6; }
+.mf-fundo.destaque { border-color: var(--azul); background: rgba(74, 149, 234, .1); }
+.mf-nome { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+
+.mf-cnpj, .mf-linhagem { color: var(--text-3); font-size: 11.5px; margin-top: 3px; }
+.mf-linhagem { color: var(--text-2); }
+.mf-status { font-size: 10px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; padding: 1px 7px;
+             border-radius: 999px; border: 1px solid currentColor; }
+.mf-status.aberto { color: var(--verde); }
+.mf-status.fechado { color: #e5787a; }
+.mf-num { text-align: center; }
+.mf-num > span { display: block; color: var(--text-3); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.mf-num b { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mf-acoes { text-align: right; }
+.mf-vazio { color: var(--text-3); font-size: 13px; padding: 16px 4px; }
+@media (max-width: 860px) {
+  .mf-fundo { grid-template-columns: minmax(0, 1fr) 90px 40px; }
+  .mf-fundo .mf-num:nth-of-type(n+3) { display: none; }
+}
+
+/* Menu ⋯ do pop-up Fundos: ícone numa coluna fixa, com espaço até o texto. */
+.mf-ic { display: inline-block; width: 16px; margin-right: 10px; text-align: center; }
+
+/* Fatia do aporte de cada aba, no título da aba em Fundos. */
+.mf-fatia { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.mf-fatia input { width: 52px; min-height: 26px; padding: 2px 6px; text-align: center; font-size: 12px; }
+.mf-fatia i { font-style: normal; font-size: 11.5px; color: var(--text-3); }
+
+/* Selo numa coluna própria, centrado na altura do bloco nome + CNPJ; o texto
+   ocupa a outra coluna, então CNPJ e linhagem já começam alinhados ao nome. */
+.mf-ident { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+.mf-ident > .mf-status { justify-self: center; align-self: center; min-width: 64px; text-align: center; }
+.mf-texto { min-width: 0; }
+
+/* Calculadora maior: modal mais largo e tabela com fontes de leitura confortável. */
+.carteira-modal { width:min(1240px,100%); }
+.carteira-modal .carteira th { font-size:12px; }
+.carteira-modal .carteira td { padding-top:14px; padding-bottom:14px; font-size:15px; }
+.carteira-modal .carteira .col-fundo { min-width:380px; max-width:460px; }
+.carteira-modal .carteira .fundo-nome { font-size:15px; }
+.carteira-modal .carteira .fundo-cnpj { font-size:12.5px; margin-top:3px; }
+.carteira-modal .carteira .aporte-linha { font-size:16.5px; }
+.carteira-modal .carteira .data-resgate { font-size:14.5px; }
+.carteira-modal .carteira .vaga-pct { font-size:15px; }
+.carteira-modal .carteira input.pct { font-size:15px; }
+.carteira-modal .carteira .com-unidade i { font-size:12.5px; }
+.carteira-modal .carteira .abrir { width:32px; height:32px; font-size:15px; }
+.carteira-modal .carteira tfoot td { font-size:16px; }
+.carteira-modal .cart-abas button { font-size:13.5px; }
+.carteira-modal .cart-fatia { font-size:14px; }
+.carteira-modal .cart-controles .aporte-entrada input { font-size:16px; }
+.aporte-campo[hidden] { display:none; }
+
+/* Carteira: CDBs e afins ao lado dos fundos. */
+.mf-status.cdb { color: var(--azul); }
+.mf-posicao.ignorado { opacity: .55; }
+.mf-meta { display: inline-flex; align-items: center; gap: 3px; }
+.mf-meta input { width: 4.5ch; padding: 3px 5px; text-align: center; font: inherit; font-weight: 700; }
+.mf-meta i { color: var(--text-3); font-style: normal; font-size: 11px; font-weight: 400; }
+.mf-abaixo { color: #f0b980; } .mf-acima { color: var(--azul); } .mf-ok { color: var(--verde); }
+
+/* Carteira: troca Fundos/CDBs e consolidado dos CDBs. */
+#mfModal .modal-tit { align-items: center; gap: 16px; }
+.mf-visao { margin-right: auto; }
+.mf-consolidado { display: grid; grid-template-columns: 200px 1fr; gap: 14px; margin-bottom: 16px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: var(--raio-g); background: var(--surface-2); }
+.mf-cons-total { display: grid; align-content: center; gap: 3px; }
+.mf-cons-total span, .mf-cons-tit { color: var(--text-3); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.mf-cons-total b { font-size: 22px; }
+.mf-cons-total small, .mf-cons-item small { color: var(--text-3); font-size: 11.5px; }
+.mf-cons-grupo { display: grid; align-content: start; gap: 6px; }
+.mf-cons-item { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; font-size: 13px; }
+.mf-cons-item b { text-align: right; font-variant-numeric: tabular-nums; }
+.mf-cons-item > small, .mf-cons-item > i { grid-column: 1 / -1; font-style: normal; font-size: 11.5px; }
+@media (max-width: 760px) { .mf-consolidado { grid-template-columns: 1fr; } }
+
+/* Grupo de CDBs do mesmo emissor e os CDBs dele, abertos embaixo. */
+.mf-expande { cursor: pointer; background: transparent; font: inherit; font-size: 10px; font-weight: 650; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--azul); }
+.mf-grupo-itens { margin: -4px 0 8px 28px; padding-left: 10px; border-left: 2px solid var(--line-forte); }
+.mf-grupo-itens .mf-fundo { margin-bottom: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mf-dif b { white-space: nowrap; text-transform: none; }
+.mf-pos { color: var(--verde); } .mf-neg { color: var(--vermelho); }

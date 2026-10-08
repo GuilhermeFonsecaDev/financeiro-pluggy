@@ -263,3 +263,5 @@
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mf-dif b { white-space: nowrap; text-transform: none; }
 .mf-pos { color: var(--verde); } .mf-neg { color: var(--vermelho); }
+
+.vaga-pct.cai { color: #f0b980; }

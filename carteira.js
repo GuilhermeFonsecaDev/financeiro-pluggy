@@ -107,10 +107,19 @@ function celulaVaga(item) {
   const titulo = anteriores > 0
     ? `inclui ${anteriores} fundo(s) anterior(es) desta vaga: ${(item.cadeia || []).slice(0, -1).map(nomeDe).join(" → ")}`
     : "posição atual deste fundo";
-  // Uma linha só: o % antes e depois do aporte; o valor em reais fica na dica.
+  // Coluna "Hoje": o % da vaga antes do aporte; o valor em reais fica na dica.
   return `<span class="vaga-cel" title="${esc(`${fmtBRL(item.atualVaga || 0)} hoje · ${titulo}`)}">
-    <span class="vaga-pct ${item.pctDepois > item.pctAtual ? "sobe" : ""}">${pct(item.pctAtual)} → ${pct(item.pctDepois)}${anteriores > 0 ? ` <i class="vaga-linhagem">+${anteriores}</i>` : ""}</span>
+    <span class="vaga-pct">${pct(item.pctAtual)}</span>
   </span>`;
+}
+
+/* Coluna "Depois": verde quando o aporte sobe a vaga; laranja quando ela cai
+   mais de 1 ponto (o resto da aba cresceu mais que ela). */
+function celulaDepois(item) {
+  if (item.fechadoEm || item.pctDepois == null) return `<span class="vaga-dep muted">—</span>`;
+  const d = item.pctDepois - item.pctAtual;
+  const classe = d > 0.005 ? "sobe" : d < -1 ? "cai" : "";
+  return `<span class="vaga-dep vaga-pct ${classe}">${pct(item.pctDepois)}</span>`;
 }
 
 /* Fundo fechado: fica na lista como histórico da vaga, sem receber aporte. */
@@ -125,6 +134,7 @@ function linhaFechada(item) {
       </div></div></td>
     <td class="num muted">—</td>
     <td class="num">${celulaVaga(item)}</td>
+    <td class="num">${celulaDepois(item)}</td>
     <td class="num"><span class="aporte-linha zerado">${fmtBRL(0)}</span></td>
     <td><div class="acoes">${ponta ? `<button class="sutil" data-desfazer="${esc(item.cnpj)}" title="Reabrir este fundo e desfazer a substituição">Desfazer</button>` : ""}</div></td>
   </tr>`;
@@ -152,6 +162,7 @@ function linha(item) {
       <input class="pct" data-campo="percentual" value="${item.percentual}" inputmode="decimal" aria-label="Alocação de ${esc(item.nome)}" /><i>%</i>
     </span></td>
     <td class="num">${celulaVaga(item)}</td>
+    <td class="num">${celulaDepois(item)}</td>
     <td class="num">
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>
       ${item.falta ? `<span class="falta">falta ${fmtBRL(item.falta)} para o mínimo</span>` : ""}
@@ -202,6 +213,8 @@ function renderCalculos() {
     tr.classList.toggle("fora", Boolean(item.redistribuido));
     const vaga = tr.querySelector(".vaga-cel");
     if (vaga) vaga.outerHTML = celulaVaga(item);
+    const depois = tr.querySelector(".vaga-dep");
+    if (depois) depois.outerHTML = celulaDepois(item);
     const celula = tr.querySelector(".num .aporte-linha").parentElement;
     celula.innerHTML = `
       <span class="aporte-linha ${item.aporte ? "" : "zerado"}">${fmtBRL(item.aporte)}</span>

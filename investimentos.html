@@ -32,8 +32,64 @@
 .spark-barra.pos { fill:var(--verde); opacity:.75; } .spark-barra.neg { fill:#e5787a; opacity:.75; }
 .spark-ponto { fill:var(--surface); stroke-width:2; }
 .hero-mini[hidden] { display:none; }
+.origem-valor.pendente { color:#f0b980; }
+.posicao-pendente .posicao-nome-pendente { font-weight:650; }
 /* Topo em dois cards: saldo (com bruto e ganho embaixo) e avisos. */
-.caixinha-hero { grid-template-columns:minmax(300px,380px) minmax(0,1fr) !important; align-items:stretch; }
+.caixinha-hero { grid-template-columns:minmax(300px,380px) minmax(240px,300px) minmax(0,1fr) !important; align-items:stretch; }
+/* Saldo líquido no mesmo visual do card de rendimento: superfície neutra,
+   rótulo pequeno, número grande e a linha de apoio embaixo. */
+.hero-principal { background:var(--surface) !important; border:1px solid var(--line) !important; border-radius:var(--raio-g);
+  display:flex; flex-direction:column; justify-content:center; gap:6px; padding:16px 18px !important; min-height:0 !important; }
+.hero-principal::after { display:none !important; }
+.hero-principal .hero-kicker { color:var(--text-3); font-size:11px; font-weight:650; letter-spacing:.055em; }
+.hero-principal .hero-valor { margin:0 !important; font-size:26px !important; font-weight:700; letter-spacing:-.02em; color:var(--text); }
+.hero-principal .hero-linha { margin:0; color:var(--text-2); font-size:12.5px; }
+.hero-principal .hero-linha b { color:var(--text); }
+.hero-principal .hero-linha #vGanhoBruto.ganho { color:var(--verde); }
+/* Os três cards do topo começam no mesmo ponto: rótulo, número e apoio
+   alinhados pelo topo, com o mesmo espaço interno. */
+.caixinha-hero > .hero-principal, .caixinha-hero > .rend-card, .caixinha-hero .avisos-card {
+  justify-content:flex-start !important; padding:16px 18px !important; gap:8px !important; box-sizing:border-box; }
+.caixinha-hero .rotulo, .caixinha-hero .hero-kicker { font-size:11px !important; line-height:16px; margin:0 !important; }
+.caixinha-hero .avisos-lista { gap:2px 28px !important; }
+.caixinha-hero .aviso { padding:3px 10px !important; }
+.caixinha-hero .aviso-frase { line-height:1.35; }
+/* Liquidez no card do saldo: um trecho da barra por prazo de resgate. */
+.liq-barra { display:flex; gap:2px; height:6px; margin-top:4px; border-radius:4px; overflow:hidden; background:var(--surface-2); }
+.liq-barra span { height:100%; min-width:3px; cursor:help; }
+.liq-texto:empty { display:none; }
+.liq-texto { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:11.5px; color:var(--text-3); }
+.liq-texto b { color:var(--text-2); font-weight:650; }
+.liq-texto i { display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:4px; vertical-align:0; font-style:normal; }
+/* Saldo e Rendimento com a mesma grade vertical: número e barra na mesma altura. */
+.caixinha-hero .hero-valor, .caixinha-hero .rend-card strong { line-height:32px !important; height:32px; margin:0 !important; }
+.caixinha-hero .liq-barra, .caixinha-hero .rend-barra { height:6px !important; margin:0 !important; }
+.rendm-acum { text-align:right; } .rendm-acum span { display:block; font-size:11px; color:var(--text-3); }
+.rendm-acum b { color:var(--verde); font-size:15px; } .rendm-acum b.perda { color:var(--vermelho); }
+.rendm-legenda { justify-content:flex-start !important; gap:16px; flex-wrap:wrap; }
+/* Carteira x alvo em HTML: nome | trilho com barra e marca do alvo | atual / alvo. */
+.alvo-grafico { display:grid; grid-template-columns:minmax(110px,auto) minmax(0,1fr) 110px; align-items:center; gap:15px 12px; margin:10px 0 20px; }
+.alvo-aba { grid-column:1/-1; margin-top:10px; color:var(--text-3); font-size:11px; font-weight:700; letter-spacing:.06em; }
+.alvo-nome { font-size:12.5px; color:var(--text-2); text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.alvo-trilho { position:relative; height:14px; border-radius:4px; background:var(--surface-2); }
+.alvo-barra { position:absolute; left:0; top:0; bottom:0; border-radius:4px; }
+.alvo-marca { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; background:var(--text); border-radius:1px; }
+.alvo-valor { font-size:12.5px; color:var(--text-3); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.alvo-valor b { color:var(--text); font-weight:650; }
+.rendm-legenda i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
+.rendm-legenda i.linha { width:14px; height:2px; background:var(--verde); vertical-align:3px; }
+.rendm-legenda .sub { margin-left:auto; }
+.rendm-legenda i.marca { width:2px; height:11px; background:var(--text); vertical-align:-1px; }
+.rend-card { display:flex; flex-direction:column; justify-content:center; gap:6px; padding:16px 18px; }
+.rend-card strong { font-size:26px !important; font-weight:700; letter-spacing:-.02em; margin:0 !important; }
+.rend-card strong.ganho { color:var(--verde); } .rend-card strong.perda { color:var(--vermelho); }
+.rend-barra { display:flex; height:6px; border-radius:4px; overflow:hidden; background:var(--surface-2); }
+.rend-barra span:first-child { background:var(--azul); } .rend-barra span:last-child { background:var(--verde); }
+.rend-partes { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; color:var(--text-2); }
+.rend-partes b { color:var(--text); font-weight:650; }
+.rend-card small { color:var(--text-3); font-size:11px; }
+.rend-card small:empty { display:none; }
+@media (max-width:1100px) { .caixinha-hero { grid-template-columns:1fr !important; } }
 .hero-grade { display:block !important; }
 .hero-principal { padding:16px 20px; }
 .hero-linha { margin-top:6px; color:#b8c8da; font-size:13px; }
@@ -47,13 +103,17 @@
 /* Avisos: um card com a lista em duas colunas; o número fica à direita. */
 .avisos-card { height:100%; box-sizing:border-box; padding:14px 18px; display:flex; flex-direction:column; gap:8px; }
 .avisos-lista { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 28px; }
-.aviso { display:grid; grid-template-columns:9px minmax(0,1fr) auto; align-items:center; gap:10px; padding:6px 10px; margin:0 -10px; border-radius:8px; cursor:pointer; }
+.aviso { display:grid; grid-template-columns:9px minmax(0,1fr); align-items:baseline; gap:10px; padding:6px 10px; margin:0 -10px; border-radius:8px; cursor:pointer; }
 .aviso:hover, .aviso:focus-visible { background:var(--surface-2); outline:none; }
 .aviso.ok { cursor:default; } .aviso.ok:hover { background:transparent; }
 .aviso-marca { width:9px; height:9px; border-radius:50%; background:var(--text-3); }
 .aviso.acima .aviso-marca { background:var(--azul); } .aviso.abaixo .aviso-marca { background:#f0b980; }
 .aviso.config .aviso-marca { background:var(--vermelho); } .aviso.ok .aviso-marca { background:var(--verde); }
 .aviso-texto { min-width:0; }
+.aviso-frase { margin:0; font-size:13.5px; line-height:1.4; color:var(--text-2); }
+.aviso-frase b { color:var(--text); font-weight:650; }
+.aviso-frase strong { display:inline !important; margin:0 !important; letter-spacing:0 !important; font-size:13.5px !important; font-weight:700; color:var(--text); }
+.aviso.acima .aviso-frase strong { color:#8fc2ff; } .aviso.abaixo .aviso-frase strong { color:#f0b980; } .aviso.config .aviso-frase strong { color:#f59a9a; }
 .aviso-texto b { display:block; font-size:14px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .aviso-texto small { display:block; margin-top:1px; color:var(--text-3); font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .aviso strong { font-size:18px; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -212,6 +272,8 @@
     <article class="painel hero-principal">
       <div class="hero-kicker">Saldo líquido</div>
       <div class="hero-valor" id="vLiquido">R$ 0,00</div><svg class="spark" id="sparkLiquido" aria-hidden="true" style="display:none"></svg>
+      <div class="liq-barra" id="liqBarra" aria-hidden="true"></div>
+      <div class="liq-texto" id="liqTexto"></div>
       <div class="hero-linha">bruto <b id="vBruto">R$ 0,00</b> · <span id="rotuloGanho">ganho</span> <b id="vGanhoBruto">—</b></div>
       <div class="hero-nota" style="display:none">posições informadas pelas instituições conectadas; novas conexões entram automaticamente</div>
       <div class="hero-meta" style="display:none">
@@ -219,11 +281,18 @@
         <span><small>Taxas informadas</small><b id="vTaxa">—</b></span>
       </div>
     </article>
+    <article class="hero-mini rend-card" id="cardRendimento" aria-labelledby="rendTitulo">
+      <span class="rotulo" id="rendTitulo">Rendimento do mês</span>
+      <strong id="rendTotal">—</strong>
+      <div class="rend-barra" aria-hidden="true"><span id="rendBarraFundos"></span><span id="rendBarraRf"></span></div>
+      <div class="rend-partes"><span>Fundos <b id="rendFundos">—</b></span><span>CDB <b id="rendRf">—</b></span></div>
+      <small id="rendDesde" style="display:none"></small>
+    </article>
     <div class="hero-grade">
       <div hidden><svg class="spark verde" id="sparkGanho" aria-hidden="true"></svg><small id="pGanhoBruto" style="display:none">Aguardando dados</small></div>
       <article class="hero-mini avisos-card" aria-labelledby="avisosTitulo">
         <span class="rotulo" id="avisosTitulo">Avisos</span>
-        <ul class="avisos-lista" id="avisosLista"><li class="aviso ok"><span class="aviso-marca"></span><div class="aviso-texto"><b>Conferindo a carteira…</b></div></li></ul>
+        <ul class="avisos-lista" id="avisosLista"><li class="aviso ok"><span class="aviso-marca"></span><p class="aviso-frase">Conferindo a carteira…</p></li></ul>
       </article>
       <article class="hero-mini media-aporte" hidden aria-hidden="true"><span class="rotulo">Média líquida mensal · 2026</span><strong id="vMediaLiquida2026">R$ 0,00</strong><svg class="spark" id="sparkMedia" aria-hidden="true"></svg><small id="pMediaLiquida2026" style="display:none">aplicações menos resgates</small></article>
       <article class="hero-mini" id="painelSemPosicao" hidden><span class="rotulo">Aguardando posição</span><strong id="vSemPosicao">R$ 0,00</strong><small>aplicado sem posição informada</small></article>
@@ -258,6 +327,17 @@
       <div class="painel-tit"><div><h2>Valor líquido por mês</h2><div class="sub">aplicações menos resgates em cada mês</div></div></div>
       <svg id="graficoAportes" class="chart" aria-label="Valor líquido mensal da carteira"></svg>
       <div class="legenda"><span id="aportesInicio">—</span><span id="aportesFim">—</span></div>
+    </article>
+    <article class="painel">
+      <div class="painel-tit"><div><h2>Rendimento por mês</h2><div class="sub">quanto a carteira rendeu em cada mês, sem contar aportes</div></div>
+        <div class="rendm-acum"><span>acumulado</span><b id="rendmAcumulado">—</b></div></div>
+      <svg id="graficoRendimento" class="chart" role="img" aria-label="Rendimento por mês, fundos e CDB, com o acumulado"></svg>
+      <div class="legenda rendm-legenda"><span><i style="background:var(--azul)"></i>Fundos</span><span><i style="background:var(--verde)"></i>CDB</span><span><i class="linha"></i>Acumulado</span><span class="sub" id="rendmNota"></span></div>
+    </article>
+    <article class="painel">
+      <div class="painel-tit"><div><h2>Carteira x alvo</h2><div class="sub">quanto cada fundo ocupa na aba hoje; a marca é o alvo</div></div></div>
+      <div id="graficoAlvo" class="alvo-grafico" role="img" aria-label="Percentual atual de cada fundo comparado com o alvo"></div>
+      <div class="legenda rendm-legenda"><span><i style="background:var(--azul)"></i>acima do alvo</span><span><i style="background:#f0b980"></i>abaixo do alvo</span><span><i style="background:var(--text-3)"></i>no alvo</span><span><i class="marca"></i>alvo</span></div>
     </article>
     <article class="painel">
       <div class="painel-tit"><div><h2>Evolução do saldo informado</h2><div class="sub">reconstrução das posições disponíveis; aplicações aguardando posição ficam fora desta curva</div></div></div>
@@ -697,6 +777,16 @@ function renderPosicoes() {
     + (agrupadas ? ` em ${linhas.length} ${linhas.length === 1 ? 'investimento' : 'investimentos'}` : '')
     + ` · ${fmtBRL(lista.reduce((s, l) => s + Number(l.liquido || 0), 0))} de saldo líquido`;
   const detalhe = (nome, valor) => `<div><dt>${nome}</dt><dd>${valor}</dd></div>`;
+  // Compras de cotas já no extrato, ainda não na API (o fundo converte em D+N).
+  const pendentes = (D.cotasPendentes || []).filter(m => m.tipo === 'BUY');
+  const pendenteDe = l => pendentes.filter(m => m.fundoId && (l.itens || [l]).some(i => i.id === m.fundoId))
+    .reduce((s, m) => s + m.valor, 0);
+  const notaPendente = v => v ? `<div class="origem-valor pendente" title="Já saiu da conta; o fundo ainda está convertendo em cotas">+ ${fmtBRL(v)} a liquidar</div>` : '';
+  const fundoNaLista = filtroClasse === 'todos' || filtroClasse === 'MUTUAL_FUND';
+  const semPosicao = fundoNaLista ? pendentes.filter(m => !m.fundoId) : [];
+  const linhasPendentes = semPosicao.map(m => `<tr class="posicao-pendente"><td class="posicao-produto"><div class="posicao-nome-pendente">${esc(m.fundo)}</div>
+    <div class="sub">${esc(m.instituicao || 'BTG')} · aguardando liquidação desde ${dataIso(m.data)}</div></td>
+    <td class="num">${fmtBRL(m.valor)}<div class="origem-valor pendente">a liquidar</div></td><td class="num sub">—</td><td class="num sub">—</td><td class="num sub">—</td></tr>`).join('');
   el('posicoes').innerHTML = linhas.map(l => {
     const fundo = l.tipo === 'MUTUAL_FUND';
     const subtipo = {INVESTMENT_FUND:'Fundo de investimento',STOCK_FUND:'Fundo de ações',FIXED_INCOME_FUND:'Fundo de renda fixa',MULTIMARKET_FUND:'Multimercado',EXCHANGE_FUND:'Fundo cambial'}[l.subtipo] || l.subtipo || nomeClasse(classeInvestimento(l));
@@ -719,9 +809,9 @@ function renderPosicoes() {
     const ganho = l.rendimentoBrutoEstimado, rent = l.rentabilidadeBrutaEstimada;
     const origem = l.aplicado == null || l.origemAplicado === 'pluggy' ? ''
       : !l.aplicadoConfiavel ? '<div class="origem-valor conferir">histórico de aportes divergente</div>'
-      : '<div class="origem-valor">pelos aportes registrados</div>';
-    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num">${l.aplicado == null || !l.aplicadoConfiavel ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
-  }).join('') || '<tr><td colspan="5" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
+      : '';
+    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num"${l.origemAplicado === 'movimentos' ? ' title="Somado pelos aportes registrados"' : ''}>${l.aplicado == null || !l.aplicadoConfiavel ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}${notaPendente(pendenteDe(l))}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
+  }).join('') + linhasPendentes || '<tr><td colspan="5" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
   // O aplicado pelos aportes só existe no backend novo; sem ele a coluna cai
   // para o custo da Pluggy, e quem está com o processo antigo precisa saber.
   const backendAntigo = (D.lotes || []).some(l => l.aplicado === undefined);
@@ -751,8 +841,92 @@ el('filtrosPosicoes').addEventListener('click', e => {
   if (botao && D) aplicarFiltroClasse(botao.dataset.classe);
 });
 
+/* Rendimento do mês: total, divisão fundos x CDB numa barra e as duas partes. */
+/* Barras por mês (fundos em cima do CDB) e a linha do acumulado. */
+function renderRendimentoMeses() {
+  const svg = el('graficoRendimento');
+  const meses = D.rendimentoMeses || [];
+  const W = 760, H = 260, L = 56, R = 16, T = 18, B = 30;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  if (!meses.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" class="chart-label">Ainda sem um mês para mostrar</text>`; return; }
+  let acum = 0;
+  const pts = meses.map(m => ({ ...m, acum: (acum += m.total) }));
+  const pos = v => Math.max(0, v), neg = v => Math.min(0, v);
+  const altos = pts.map(p => pos(p.fundos) + pos(p.rendaFixa)), baixos = pts.map(p => neg(p.fundos) + neg(p.rendaFixa));
+  let max = Math.max(1, ...altos, ...pts.map(p => p.acum)), min = Math.min(0, ...baixos, ...pts.map(p => p.acum));
+  const folga = (max - min) * .12; max += folga; if (min < 0) min -= folga;
+  const y = v => T + (H - T - B) * (max - v) / (max - min);
+  const passo = (W - L - R) / Math.max(pts.length, 6), larg = Math.min(56, passo * .55);
+  const cx = i => L + passo * (i + .5);
+  const grade = [max, (max + min) / 2, min].map(v => `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" class="chart-grid"/>`
+    + `<text x="${L-8}" y="${y(v)+4}" text-anchor="end" class="chart-label">${fmtBRL(v).replace(',00','')}</text>`).join('')
+    + `<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line-forte)"/>`;
+  const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const barras = pts.map((p, i) => {
+    const x = cx(i) - larg / 2, op = p.emAndamento ? .6 : 1;
+    // Empilha: CDB rente ao zero, fundos por cima (para baixo quando negativos).
+    const seg = (v, base, cor) => { const a = y(base), b = y(base + v); return `<rect x="${x}" y="${Math.min(a,b)}" width="${larg}" height="${Math.max(1,Math.abs(b-a))}" fill="${cor}" opacity="${op}" rx="2"/>`; };
+    const rf = p.rendaFixa, fu = p.fundos;
+    const baseFu = (rf >= 0) === (fu >= 0) ? rf : 0;
+    const dica = `${MES[+p.mes.slice(5)-1]}/${p.mes.slice(2,4)}${p.emAndamento ? ' (em andamento)' : ''}: ${fmtBRL(p.total)} · fundos ${fmtBRL(fu)} · CDB ${fmtBRL(rf)} · acumulado ${fmtBRL(p.acum)}`;
+    return `<g><title>${esc(dica)}</title>${seg(rf, 0, 'var(--verde)')}${seg(fu, baseFu, 'var(--azul)')}`
+      + `<text x="${cx(i)}" y="${H-10}" text-anchor="middle" class="chart-label">${MES[+p.mes.slice(5)-1]}${p.emAndamento ? '*' : ''}</text></g>`;
+  }).join('');
+  const linha = pts.length > 1 ? `<polyline points="${pts.map((p,i)=>`${cx(i)},${y(p.acum)}`).join(' ')}" fill="none" stroke="var(--verde)" stroke-width="2"/>` : '';
+  const pontos = pts.map((p,i)=>`<circle cx="${cx(i)}" cy="${y(p.acum)}" r="3.5" fill="var(--verde)"/>`).join('');
+  svg.innerHTML = grade + barras + linha + pontos;
+  el('rendmAcumulado').textContent = `${acum >= 0 ? '+' : '-'} ${fmtBRL(Math.abs(acum))}`;
+  el('rendmAcumulado').className = acum >= 0 ? '' : 'perda';
+  el('rendmNota').textContent = pts.some(p => p.emAndamento) ? '* mês em andamento' : '';
+}
+
+/* Carteira x alvo: uma barra por fundo aberto, com a vaga de hoje e a marca do alvo. */
+async function renderAlvo() {
+  const alvo = el('graficoAlvo');
+  let C;
+  try { C = await pedir('/carteira?aporte=0'); } catch (e) { alvo.innerHTML = ''; return; }
+  const abas = Object.fromEntries((C.abas || []).map(a => [a.id, a]));
+  const ordem = (C.abas || []).map(a => a.id);
+  const itens = (C.itens || []).filter(i => !i.fechadoEm && i.pctAtual != null)
+    .sort((a, b) => ordem.indexOf(a.perfil) - ordem.indexOf(b.perfil) || b.percentual - a.percentual);
+  if (!itens.length) { alvo.innerHTML = '<p class="sub" style="grid-column:1/-1">Cadastre fundos na Carteira para ver este gráfico.</p>'; return; }
+  const max = Math.max(10, ...itens.map(i => Math.max(i.pctAtual, i.percentual))) * 1.05;
+  const curto = n => n.replace(/\s+(FUNDO|FIC|FIRF|FICFIRF|FICFIDC|FIDC|FIA|RF|CrPr|RL)(\s.*)?$/i, '').split(/\s+/).slice(0, 3).join(' ');
+  let atual = null, html = '';
+  for (const i of itens) {
+    if (i.perfil !== atual) { html += `<div class="alvo-aba">${esc((abas[i.perfil]?.nome || i.perfil).toUpperCase())}</div>`; atual = i.perfil; }
+    const d = i.pctAtual - i.percentual;
+    const cor = Math.abs(d) <= 2 ? 'var(--text-3)' : d > 0 ? 'var(--azul)' : '#f0b980';
+    const dica = `${i.nome}: ${pct(i.pctAtual)} hoje, alvo ${pct(i.percentual)}`;
+    html += `<div class="alvo-nome" title="${esc(i.nome)}">${esc(curto(i.nome))}</div>`
+      + `<div class="alvo-trilho" title="${esc(dica)}"><span class="alvo-barra" style="width:${i.pctAtual / max * 100}%;background:${cor}"></span>`
+      + `<span class="alvo-marca" style="left:${i.percentual / max * 100}%"></span></div>`
+      + `<div class="alvo-valor"><b>${pct(i.pctAtual)}</b> / ${pct(i.percentual)}</div>`;
+  }
+  alvo.innerHTML = html;
+}
+
+function renderRendimento() {
+  const r = D.rendimentoMes;
+  if (!r) return;
+  const sinal = v => `${v >= 0 ? '+' : '-'} ${fmtBRL(Math.abs(v))}`;
+  const nomeMes = new Date(`${r.mes}-15T12:00:00`).toLocaleDateString('pt-BR', { month: 'long' });
+  el('rendTitulo').textContent = `Rendimento em ${nomeMes}`;
+  el('rendTotal').textContent = sinal(r.total);
+  el('rendTotal').className = r.total >= 0 ? 'ganho' : 'perda';
+  el('rendFundos').textContent = sinal(r.fundos);
+  el('rendRf').textContent = sinal(r.rendaFixa);
+  // Barra pelo tamanho de cada parte; uma parte negativa não tem fatia.
+  const f = Math.max(0, r.fundos), c = Math.max(0, r.rendaFixa), soma = f + c;
+  el('rendBarraFundos').style.width = soma ? `${f / soma * 100}%` : '50%';
+  el('rendBarraRf').style.width = soma ? `${c / soma * 100}%` : '50%';
+  el('rendDesde').textContent = r.desde ? `desde ${dataIso(r.desde)} · sem coleta no fim do mês anterior` : '';
+}
+
 function render() {
   const r = D.resumo;
+  renderRendimento();
+  renderRendimentoMeses();
   const servidorAtualizado = D.versao >= 2;
   el("avisoServidor").hidden = servidorAtualizado;
   if (!servidorAtualizado) { setEstado('estado','Reinicie o backend para carregar a atualização','erro'); return; }
@@ -791,7 +965,46 @@ function render() {
   setEstado("estado", !servidorAtualizado ? "Reinicie o backend para carregar a atualização" : r.coletadoEm ? `posição coletada em ${new Date(r.coletadoEm).toLocaleString('pt-BR')}` : 'Aguardando posições das instituições conectadas', servidorAtualizado ? "ok" : "erro");
 }
 
-async function carregar(){ try { D=await pedir('/investimentos'); render(); } catch(e){ setEstado('estado',e.message,'erro'); } }
+/* Quanto dá para resgatar e em quanto tempo. O D+N vem do cadastro da
+   Carteira (o que você informou) e, sem ele, do catálogo; CDB conta pelo
+   vencimento. Cores do mais rápido (verde) ao mais lento (cinza). */
+async function renderLiquidez() {
+  let prazos = {};
+  try {
+    const C = await pedir('/carteira?aporte=0');
+    for (const i of C.itens || []) if (i.diasResgate != null) prazos[i.cnpj] = Number(i.diasResgate);
+  } catch (e) { /* sem a Carteira, fica o catálogo */ }
+  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00');
+  const grupos = {};
+  for (const l of D.lotes || []) {
+    const cnpj = String(l.codigo || '').replace(/\D/g, '');
+    let dias = prazos[cnpj] ?? l.diasResgate;
+    if (dias == null && l.vencimento) dias = Math.max(0, Math.round((new Date(l.vencimento.slice(0, 10) + 'T12:00:00') - hoje) / 864e5));
+    const chave = dias == null ? '?' : dias;
+    (grupos[chave] ||= { dias, valor: 0, nomes: [] }).valor += Number(l.liquido || 0);
+    grupos[chave].nomes.push(l.nome);
+  }
+  // Faixas de prazo: até 30, até 60, até 90 e 90+ (faixa vazia não aparece).
+  const FAIXAS = [['até 30 dias', 30, '#3fbf7f'], ['até 60 dias', 60, '#4a95ea'],
+                  ['até 90 dias', 90, '#7d8fa6'], ['90+ dias', Infinity, '#5d6675']];
+  const faixas = FAIXAS.map(([nome, ate, cor]) => ({ nome, ate, cor, valor: 0, itens: [] }));
+  for (const g of Object.values(grupos)) {
+    const f = faixas.find(x => (g.dias ?? Infinity) <= x.ate);
+    f.valor += g.valor;
+    f.itens.push(...g.nomes.map(n => `${n} (${g.dias == null ? 'sem prazo' : g.dias > 365 ? 'no vencimento' : 'D+' + g.dias})`));
+  }
+  const usadas = faixas.filter(f => f.valor > 0);
+  const total = usadas.reduce((s, f) => s + f.valor, 0);
+  if (!total) { el('liqBarra').innerHTML = ''; el('liqTexto').innerHTML = ''; return; }
+  el('liqBarra').innerHTML = usadas.map(f =>
+    `<span style="flex:${f.valor / total};background:${f.cor}" title="${esc(f.nome)}: ${fmtBRL(f.valor)}"></span>`).join('');
+  // Sem legenda fixa: prazo e valor aparecem ao passar o mouse na barra.
+  el('liqTexto').innerHTML = '';
+}
+
+async function carregar(){ try { D=await pedir('/investimentos'); render(); renderLiquidez(); renderAlvo(); } catch(e){ setEstado('estado',e.message,'erro'); } }
+// Mudança na Carteira (alvo, aba, fundo novo) redesenha o gráfico de alvo.
+window.addEventListener('carteira-mudou', () => { if (D) renderAlvo(); });
 el("filtrosMovimentos").addEventListener("click",e=>{
   const botao=e.target.closest("[data-filtro-mov]"); if(!botao) return;
   filtroMovimentos=botao.dataset.filtroMov;

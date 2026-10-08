@@ -542,6 +542,16 @@ _COMPETENCIA_ENTRADA = f"""
 # regra pode so excluir dos calculos sem mexer na categoria, e uma regra de
 # categoria de prioridade alta nao deve cancelar uma exclusao de prioridade
 # baixa.
+# Uma regra do usuário com prioridade maior (número menor) que a regra de
+# SISTEMA que excluiria o lançamento decide por ele. Ex.: a portabilidade de
+# salário chega como "transferência entre contas próprias" (sistema: fora dos
+# cálculos), mas uma regra "TED da portabilidade -> Renda" com prioridade 5 vale como
+# receita. Regra do usuário contra regra do usuário segue independente.
+_REGRA_SUA_VENCE = """EXISTS (
+    SELECT 1 FROM extrato_regras c, extrato_regras i
+     WHERE c.id = rc.regra_categoria AND i.id = rc.regra_ignorar
+       AND c.sistema = 0 AND i.sistema = 1 AND c.prioridade < i.prioridade)"""
+
 VIEW = f"""
 DROP VIEW IF EXISTS extrato_efetivo;
 CREATE VIEW extrato_efetivo AS
@@ -583,13 +593,14 @@ SELECT
 
   CASE
     WHEN a.calculo_override IS NOT NULL THEN a.calculo_override
-    WHEN rc.regra_ignorar IS NOT NULL THEN 0
+    WHEN rc.regra_ignorar IS NOT NULL AND NOT {_REGRA_SUA_VENCE} THEN 0
     ELSE 1
   END AS incluida,
 
   CASE
     WHEN a.calculo_override = 0 THEN 'Excluída manualmente'
     WHEN a.calculo_override = 1 THEN NULL
+    WHEN {_REGRA_SUA_VENCE} THEN NULL
     ELSE (SELECT r.nome FROM extrato_regras r WHERE r.id = rc.regra_ignorar)
   END AS motivo_exclusao
   ,

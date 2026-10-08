@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from atualizar_pluggy import atualizar_em_background, registrar_item, definir_arquivada
 from atualizar_pluggy import status as pluggy_status
+from atualizar_pluggy import ultima_importacao
 from banco import DATABASE_PATH, ROOT, create_database_backup, ensure_database, list_database_backups
 from extrato_camada import (
     ajustar_transacao,
@@ -616,6 +617,7 @@ def run_server(host: str = HOST, port: int = PORT, open_browser: bool = False,
         print("Atualizacao da Pluggy rodando em segundo plano...")
         atualizar_em_background()
 
+    coleta_de_fim_de_mes()
     if open_browser:
         webbrowser.open(url)
     try:
@@ -624,6 +626,45 @@ def run_server(host: str = HOST, port: int = PORT, open_browser: bool = False,
         print("\nEncerrando backend.")
     finally:
         server.server_close()
+
+
+def _ultimo_dia_util(hoje) -> bool:
+    """Hoje é o último dia útil do mês (seg-sex; feriado não entra na conta)?"""
+    from datetime import timedelta
+    if hoje.weekday() >= 5:
+        return False
+    proximo = hoje + timedelta(days=1)
+    while proximo.weekday() >= 5:
+        proximo += timedelta(days=1)
+    return proximo.month != hoje.month
+
+
+def coleta_de_fim_de_mes(intervalo_s: int = 1800) -> None:
+    """Garante uma coleta no fechamento do mês.
+
+    O rendimento de cada mês parte da foto do fim do mês anterior; sem coleta
+    nesse dia, o mês seguinte começa atrasado (foi o que aconteceu de 23/09 a
+    01/10). A partir das 18h do último dia útil, se ainda não houve coleta
+    depois desse horário, dispara uma -- o backend só precisa estar aberto.
+    """
+    import threading, time
+    from datetime import datetime
+
+    def laco():
+        while True:
+            try:
+                agora = datetime.now()
+                corte = agora.replace(hour=18, minute=0, second=0, microsecond=0)
+                if _ultimo_dia_util(agora.date()) and agora >= corte:
+                    ultima = ultima_importacao()
+                    if ultima is None or ultima < corte:
+                        print("Coleta de fechamento do mês...")
+                        atualizar_em_background(forcar=True, intervalo_horas=0)
+            except Exception as erro:          # o laço nunca pode derrubar o backend
+                print(f"Coleta de fim de mês falhou: {erro}")
+            time.sleep(intervalo_s)
+
+    threading.Thread(target=laco, name="coleta-fim-de-mes", daemon=True).start()
 
 
 def main() -> None:

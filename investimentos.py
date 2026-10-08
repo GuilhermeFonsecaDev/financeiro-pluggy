@@ -365,13 +365,29 @@ def _movimentos_sem_posicao(conn, itens_com_posicao: set[str], rotulos: dict[str
     """
     movimentos = []
     arquivados = _itens_arquivados(conn)
+    # Uma instituição pode chegar por mais de uma conexão (ex.: a conta da
+    # corretora dentro do BTG, que só traz o extrato). Se outra conexão da
+    # mesma instituição já entrega as posições, o CDB do extrato já está lá.
+    # A instituição vem do código do banco (COMPE) das contas: o rótulo da
+    # conexão pode ser só "Conta Corrente".
+    banco_do_item: dict[str, set[str]] = defaultdict(set)
+    for conta in conn.execute("SELECT item_id, raw_json FROM pluggy_contas"):
+        try:
+            dados = json.loads(conta["raw_json"] or "{}").get("bankData") or {}
+        except (TypeError, ValueError):
+            dados = {}
+        codigo = str(dados.get("transferNumber") or "").split("/")[0].strip()
+        if codigo.isdigit():
+            banco_do_item[conta["item_id"]].add(codigo)
+    bancos_com_posicao = set().union(*(banco_do_item[i] for i in itens_com_posicao)) if itens_com_posicao else set()
     for m in conn.execute(
         "SELECT t.*, c.item_id, c.nome conta FROM pluggy_transacoes t "
         "JOIN pluggy_contas c ON c.conta_id=t.conta_id "
         "WHERE c.tipo='BANK' AND t.valor<>0 AND t.status NOT IN ('PENDING','CANCELED','CANCELLED') "
         "ORDER BY t.data DESC, t.transacao_id DESC"
     ):
-        if m["item_id"] in itens_com_posicao or m["item_id"] in arquivados:
+        if (m["item_id"] in itens_com_posicao or m["item_id"] in arquivados
+                or banco_do_item[m["item_id"]] & bancos_com_posicao):
             continue
         descricao = _norm(m["descricao"]).strip()
         operacao = re.match(r"^(emissao|aplicacao|aplic|compra|resgate|venda|vencimento)\b", descricao)
@@ -391,6 +407,243 @@ def _movimentos_sem_posicao(conn, itens_com_posicao: set[str], rotulos: dict[str
             "origem": "Extrato da conta", "confirmadoExtrato": True, "posicaoPendente": True,
         })
     return movimentos
+
+
+_COTAS = re.compile(r"\b(aquisicao|resgate) de cotas (?:no|do) fundo (.+)$")
+# Palavras do nome abreviado do extrato que não ajudam a achar o fundo.
+_RUIDO_FUNDO = {"pco", "fc", "fic", "fi", "rf", "fidc", "firf", "fia", "cp", "crpr", "rl", "de", "do",
+                "da", "em", "cotas", "fundo", "investimento", "plus", "cash"}
+JANELA_CONCILIACAO = (-3, 25)       # dias antes/depois do extrato em que a API pode trazer o movimento
+PENDENTE_ATRASADO = 10              # dias sem a API trazer: vira aviso
+
+
+def _palavras_fundo(nome: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]+", _norm(nome)) if w not in _RUIDO_FUNDO and len(w) >= 2]
+
+
+def _fundo_do_extrato(abreviado: str, ativos) -> Any:
+    """Posição de um "V8 CAS PLT FC RF PCO": cada palavra do extrato tem de
+    ser começo de uma palavra do nome. Sem um vencedor claro, não chuta."""
+    palavras = _palavras_fundo(abreviado)
+    if not palavras:
+        return None
+    melhores, nota_max = [], 0
+    for p in ativos:
+        nome = re.findall(r"[a-z0-9]+", _norm(p["nome"]))
+        nota = sum(1 for w in palavras if any(n.startswith(w) or w.startswith(n) and len(n) >= 3 for n in nome))
+        if nota > nota_max:
+            melhores, nota_max = [p], nota
+        elif nota == nota_max and nota:
+            melhores.append(p)
+    return melhores[0] if len(melhores) == 1 and nota_max >= 1 else None
+
+
+def _cotas_pendentes(conn, ativos, movimentos_investimento, rotulos) -> list[dict[str, Any]]:
+    """Compras e resgates de cotas que o extrato já mostra e a API ainda não.
+
+    A API de investimentos só manda o movimento depois que o fundo converte
+    as cotas (D+N); o extrato mostra o dinheiro saindo no mesmo dia. Aqui o
+    extrato antecipa o aporte, marcado como pendente. Quando a API trouxer o
+    mesmo movimento (mesmo tipo, valor igual, dentro da janela), o pendente
+    some e fica só o oficial -- nunca os dois.
+    """
+    from datetime import date, timedelta
+    arquivados = _itens_arquivados(conn)
+    hoje = date.today()
+    api = [(m["tipo"], abs(float(m["valor_bruto"] or 0)), str(m["data"])[:10], m["investimento_nome"])
+           for m in movimentos_investimento]
+    usados: set[int] = set()
+    vistos: set[tuple] = set()
+    pendentes = []
+    for t in conn.execute(
+        "SELECT t.transacao_id, t.data, t.descricao, t.valor, c.nome conta, c.conta_id, c.item_id "
+        "FROM pluggy_transacoes t JOIN pluggy_contas c ON c.conta_id=t.conta_id "
+        "WHERE c.tipo='BANK' AND t.valor<>0 AND t.status NOT IN ('PENDING','CANCELED','CANCELLED') "
+        "ORDER BY t.data, t.transacao_id"
+    ):
+        if t["item_id"] in arquivados:
+            continue
+        achado = _COTAS.search(_norm(t["descricao"]))
+        if not achado:
+            continue
+        tipo = "BUY" if achado[1] == "aquisicao" else "SELL"
+        valor = abs(float(t["valor"]))
+        if (tipo == "BUY") != (float(t["valor"]) < 0):
+            continue
+        # A mesma conta pode vir por duas conexões: o mesmo lançamento conta uma vez.
+        assinatura = (str(t["data"])[:10], _norm(t["descricao"]), round(float(t["valor"]), 2))
+        if assinatura in vistos:
+            continue
+        vistos.add(assinatura)
+        dia = date.fromisoformat(str(t["data"])[:10])
+        de, ate = (dia + timedelta(days=JANELA_CONCILIACAO[0])).isoformat(), (dia + timedelta(days=JANELA_CONCILIACAO[1])).isoformat()
+        fundo = _fundo_do_extrato(achado[2], ativos)
+        # Com o fundo identificado, só vale movimento DELE (até 3% de diferença:
+        # a API manda o valor convertido em cotas, o extrato o dinheiro que
+        # saiu). Sem fundo, só o mesmo valor no centavo. Casar só por valor com
+        # o fundo conhecido trocaria fundos de mesmo aporte (ex.: dois de 1.037).
+        def bate(tp, v, d, nome):
+            if tp != tipo or not de <= d <= ate:
+                return False
+            if fundo is not None:
+                return nome == fundo["nome"] and abs(v - valor) <= max(0.02, 0.03 * valor)
+            return abs(v - valor) < 0.02
+        casou = [i for i, m in enumerate(api) if i not in usados and bate(*m)]
+        if casou:
+            # Reconexões repetem o movimento em outra conexão: as cópias do
+            # mesmo fundo, dia e valor saem junto com o primeiro.
+            usados.update(i for i in casou if api[i][1:] == api[casou[0]][1:])
+            continue
+        dias = (hoje - dia).days
+        pendentes.append({
+            "id": t["transacao_id"], "data": t["data"], "liquidacao": t["data"], "tipo": tipo,
+            "descricao": t["descricao"], "valor": valor, "sinal": valor if tipo == "BUY" else -valor,
+            "bruto": valor, "quantidade": None, "valorCota": None,
+            "conta": t["conta"], "contaId": t["conta_id"], "itemId": t["item_id"],
+            "instituicao": rotulos.get(t["item_id"], "Instituição"),
+            "origem": "Extrato (aguardando liquidação)", "confirmadoExtrato": True, "pendente": True,
+            # Sem posição ainda (fundo novo): fica o nome que o extrato deu.
+            "fundo": fundo["nome"] if fundo else achado[2].replace(" pco", "").upper().strip(),
+            "fundoId": fundo["investimento_id"] if fundo else "",
+            "diasPendente": dias, "atrasado": dias > PENDENTE_ATRASADO,
+        })
+    return pendentes
+
+
+def _lotes_historicos(conn) -> list[dict[str, Any]]:
+    """Cada aplicação (lote), juntando as cópias que as reconexões criam.
+
+    Reconectar o banco recria a mesma posição com outra chave, e um mesmo nome
+    ("CDB - BANCO BTG PACTUAL S.A.") pode ter vários lotes. Duas chaves do
+    mesmo nome são o mesmo lote quando têm um movimento igual (tipo, dia e
+    valor) ou a mesma foto (dia de referência e saldo). Cada lote fica com as
+    fotos por dia e os movimentos sem repetição.
+    """
+    chaves = {r["investimento_chave"]: r for r in conn.execute(
+        "SELECT investimento_chave, nome, tipo, status, importado_em FROM pluggy_investimentos "
+        "ORDER BY importado_em")}
+    fotos: dict[str, dict[str, float]] = defaultdict(dict)
+    for f in conn.execute("SELECT investimento_chave k, substr(data_referencia,1,10) ref, saldo_liquido v "
+                          "FROM pluggy_investimento_snapshots WHERE saldo_liquido > 0 ORDER BY coletado_em"):
+        if f["ref"]:                     # foto sem data de referência não serve de base
+            fotos[f["k"]][f["ref"]] = float(f["v"])
+    movs: dict[str, set] = defaultdict(set)
+    for m in conn.execute("SELECT investimento_chave k, tipo, substr(data,1,10) d, valor_bruto v "
+                          "FROM pluggy_investimento_movimentos"):
+        if m["tipo"] in ("BUY", "SELL"):
+            movs[m["k"]].add((m["tipo"], m["d"], round(float(m["v"] or 0), 2)))
+    pai = {k: k for k in chaves}
+    def raiz(k):
+        while pai[k] != k:
+            pai[k] = pai[pai[k]]
+            k = pai[k]
+        return k
+    por_nome = defaultdict(list)
+    for k, r in chaves.items():
+        por_nome[r["nome"]].append(k)
+    for nomes in por_nome.values():
+        vistos: dict[tuple, str] = {}
+        for k in nomes:
+            assinaturas = [("m",) + m for m in movs[k]] + [("f", d, round(v, 2)) for d, v in fotos[k].items()]
+            for a in assinaturas:
+                if a in vistos:
+                    pai[raiz(k)] = raiz(vistos[a])
+                else:
+                    vistos[a] = k
+    lotes: dict[str, dict[str, Any]] = {}
+    for k, r in chaves.items():
+        lote = lotes.setdefault(raiz(k), {"nome": r["nome"], "tipo": r["tipo"], "fotos": {}, "movs": set(),
+                                         "ativo": False, "chaves": []})
+        lote["fotos"].update(fotos[k])
+        lote["movs"] |= movs[k]
+        lote["chaves"].append(k)
+        lote["ativo"] = lote["ativo"] or r["status"] == "ACTIVE"
+    return list(lotes.values())
+
+
+def _rendimento_entre(lotes, inicio, fim, saldo_hoje: dict[str, float] | None) -> dict[str, Any] | None:
+    """Rendimento dos lotes entre `inicio` (dia 1) e `fim` (dia 1 do mês seguinte).
+
+    Base: a foto mais recente antes de `inicio`, se tiver até 3 dias de
+    atraso; senão a primeira do mês (e o mês fica "parcial"). Fim: o saldo de
+    hoje no mês em andamento (`saldo_hoje`), a última foto do mês, ou zero se
+    o lote foi resgatado no mês. Rendimento = fim - base - aportes + resgates
+    feitos depois da base.
+    """
+    from datetime import timedelta
+    ini, fi = inicio.isoformat(), fim.isoformat()
+    limite = (inicio - timedelta(days=4)).isoformat()
+    grupos = {"fundos": 0.0, "rendaFixa": 0.0}
+    parcial = achou = False
+    for lote in lotes:
+        datas = sorted(lote["fotos"])
+        antes = [d for d in datas if d < ini]
+        no_mes = [d for d in datas if ini <= d < fi]
+        if antes and antes[-1] >= limite:
+            base_dia = antes[-1]
+        elif no_mes:
+            base_dia, parcial = no_mes[0], parcial or bool(antes) or True
+        else:
+            continue
+        base = lote["fotos"][base_dia]
+        if saldo_hoje is not None and lote["ativo"]:
+            valor_fim = sum(saldo_hoje.get(k, 0.0) for k in lote["chaves"] if k in saldo_hoje)
+            if not valor_fim and no_mes:
+                valor_fim = lote["fotos"][no_mes[-1]]
+        elif no_mes and (lote["ativo"] or any(d >= fi for d in datas)):
+            valor_fim = lote["fotos"][no_mes[-1]]
+        else:
+            valor_fim = 0.0      # resgatado: as fotos param antes do fim do mês
+        if not lote["ativo"] and no_mes and not any(d >= fi for d in datas) and saldo_hoje is None:
+            # Encerrado durante o mês: o que saiu está nos resgates.
+            valor_fim = 0.0 if any(t == "SELL" and base_dia < d < fi for t, d, _ in lote["movs"]) else lote["fotos"][no_mes[-1]]
+        fluxo = sum(v if t == "BUY" else -v for t, d, v in lote["movs"] if base_dia < d < fi)
+        grupos["rendaFixa" if lote["tipo"] == "FIXED_INCOME" else "fundos"] += valor_fim - base - fluxo
+        achou = True
+    if not achou:
+        return None
+    return {"mes": ini[:7], "total": round(grupos["fundos"] + grupos["rendaFixa"], 2),
+            "fundos": round(grupos["fundos"], 2), "rendaFixa": round(grupos["rendaFixa"], 2),
+            "parcial": parcial, "emAndamento": saldo_hoje is not None}
+
+
+def _proximo_mes(d):
+    from datetime import timedelta
+    return (d.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+def _rendimento_meses(conn, ativos, hoje=None) -> list[dict[str, Any]]:
+    """Um rendimento por mês, do primeiro mês com coleta até o mês corrente."""
+    from datetime import date
+    hoje = hoje or date.today()
+    lotes = _lotes_historicos(conn)
+    datas = [d for l in lotes for d in l["fotos"]]
+    if not datas:
+        return []
+    saldo_hoje = {p["investimento_chave"]: float(p["saldo_liquido"] or 0) for p in ativos}
+    # Só os lotes da carteira de hoje: o histórico dos já resgatados vem com
+    # resgates faltando na API e fotos depois do resgate, e daria rendimentos
+    # de milhares de reais que nunca existiram.
+    lotes = [l for l in lotes if any(k in saldo_hoje for k in l["chaves"])]
+    inicio, atual, meses = date.fromisoformat(min(datas)).replace(day=1), hoje.replace(day=1), []
+    while inicio <= atual:
+        r = _rendimento_entre(lotes, inicio, _proximo_mes(inicio), saldo_hoje if inicio == atual else None)
+        # Mês fechado sem base no fim do mês anterior não entra: o número
+        # misturaria o mês passado ou deixaria dias de fora. O corrente entra
+        # sempre (marcado como parcial quando for o caso).
+        if r and (inicio == atual or not r["parcial"]):
+            meses.append(r)
+        inicio = _proximo_mes(inicio)
+    return meses
+
+
+def _rendimento_do_mes(meses, hoje=None) -> dict[str, Any]:
+    """O mês corrente, para o card do topo (a mesma conta do gráfico)."""
+    from datetime import date
+    mes = (hoje or date.today()).isoformat()[:7]
+    r = next((m for m in meses if m["mes"] == mes), None) or {
+        "mes": mes, "total": 0.0, "fundos": 0.0, "rendaFixa": 0.0, "parcial": False, "emAndamento": True}
+    return {**r, "desde": f"{mes}-01" if r.get("parcial") else ""}
 
 
 def _meses_movimentos(movimentos) -> list[dict[str, Any]]:
@@ -606,6 +859,15 @@ def payload() -> dict[str, Any]:
             "ORDER BY m.data DESC, m.movimento_id DESC"
         ))
         movimentos_investimento = [m for m in movimentos_investimento if m["investimento_chave"] in chaves]
+        # A API às vezes manda o mesmo aporte duas vezes: uma com as cotas e
+        # uma "fantasma" com quantidade zero (mesma posição, dia, tipo e valor).
+        # Somar as duas dobra o aplicado; fica só a que tem cotas.
+        com_cotas = {(m["investimento_chave"], str(m["data"])[:10], m["tipo"], round(float(m["valor_bruto"] or 0), 2))
+                     for m in movimentos_investimento if float(m["quantidade"] or 0) > 0}
+        movimentos_investimento = [
+            m for m in movimentos_investimento
+            if float(m["quantidade"] or 0) > 0 or (m["investimento_chave"], str(m["data"])[:10], m["tipo"],
+                                                    round(float(m["valor_bruto"] or 0), 2)) not in com_cotas]
 
         # O endpoint de investimentos pode omitir resgates recentes ou desmembrar um
         # único resgate em vários lotes. O fallback conhecido de COFRINHOS só
@@ -633,6 +895,9 @@ def payload() -> dict[str, Any]:
         ))
         snaps = [s for s in snaps if s["investimento_chave"] in chaves]
         sem_posicao = _movimentos_sem_posicao(conn, itens_com_posicao, rotulos)
+        cotas_pendentes = _cotas_pendentes(conn, ativos, movimentos_investimento, rotulos)
+        rendimento_meses = _rendimento_meses(conn, ativos)
+        rendimento_mes = _rendimento_do_mes(rendimento_meses)
         series_por_posicao = _series_por_posicao(snaps)
         movs_por_posicao = _movimentos_por_posicao(movimentos_investimento, rotulos)
 
@@ -810,6 +1075,9 @@ def payload() -> dict[str, Any]:
     # posição ainda não entrou nesse saldo.
     meses_posicoes = _meses_movimentos(movs)
     movs.extend(sem_posicao)
+    # Aporte já visto no extrato e ainda não na API: entra no mês e na lista,
+    # mas não na curva do saldo (a posição ainda não o contém).
+    movs.extend(cotas_pendentes)
     movs.sort(key=lambda m: (m["data"], m["id"]), reverse=True)
 
     meses = _meses_movimentos(movs)
@@ -839,8 +1107,10 @@ def payload() -> dict[str, Any]:
     # CDI, que não recebe aporte. XIRR entra como medida do dinheiro, sobre o
     # histórico inteiro de movimentos.
     twr_carteira = rentabilidade.rentabilidade_carteira(series_por_posicao, movs_por_posicao)
+    # Aporte pendente ainda não está no saldo: entrar no XIRR seria contar
+    # dinheiro que saiu sem o valor que ele comprou.
     xirr_carteira = rentabilidade.rentabilidade_xirr(
-        movs, liquido, max((p["data_referencia"] for p in ativos), default=""))
+        [m for m in movs if not m.get("pendente")], liquido, max((p["data_referencia"] for p in ativos), default=""))
 
     cache_indice: dict[tuple[str, str], dict[str, Any]] = {}
     with fin.connect() as conn:
@@ -888,6 +1158,9 @@ def payload() -> dict[str, Any]:
                    "coletadoEm": max((p["importado_em"] for p in posicoes), default="")},
         "lotes": lotes, "movimentos": movs, "meses": meses,
         "movimentosSemPosicao": sem_posicao, "mesesPosicoes": meses_posicoes,
+        "cotasPendentes": cotas_pendentes,
+        "rendimentoMes": rendimento_mes,
+        "rendimentoMeses": rendimento_meses,
         "confirmacaoExtrato": {"fontePrincipal": "API de investimentos Pluggy",
                                 "fallback": "Extrato da conta via Pluggy, quando conciliável",
                                 "criterio": "por conexão, mês e tipo; fallback COFRINHOS apenas para carteira compatível",

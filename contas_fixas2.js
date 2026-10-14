@@ -33,8 +33,13 @@ function renderComposicao() {
     if (it.status === "fora_cartao") fora[parte] += it.somado;
     for (const d of it.descontos) if (d.status === "fora_cartao") fora[parte] += d.somado;
   }
-  const cartoes = r.faturas + r.previstos;
-  const despesas = r.total;
+  // No modo "atual" os cards das faturas não somam os hábitos estimados (só o
+  // lançado e o que vai cair no cartão). A composição segue o mesmo modo,
+  // senão Cartões aqui fica maior que a soma dos cards bem nos hábitos.
+  const semHabitos = MODO_VALORES === "atual";
+  const habitos = semHabitos ? r.faturasHabitos : 0;
+  const cartoes = r.faturas + r.previstos - habitos;
+  const despesas = r.total - habitos;
   const entradas = Number(EXTRATO_MES?.resumo?.entradas || 0);
   const saldo = entradas - despesas;
 
@@ -45,7 +50,9 @@ function renderComposicao() {
   // estimativa (parcelas, hábitos e contas fixas que vão cair no cartão).
   el("compCobrado").textContent = fmtBRL(r.faturasCobrado);
   el("compParcelas").textContent = fmtBRL(r.faturasParcelas);
-  el("compHabitos").textContent = fmtBRL(r.faturasHabitos);
+  el("compHabitos").textContent = fmtBRL(semHabitos ? 0 : r.faturasHabitos);
+  el("compHabitos").title = semHabitos
+    ? `Fora do total no modo atual (${fmtBRL(r.faturasHabitos)} estimados). Mude para "previsto" para somar.` : "";
   el("compPrevistos").textContent = fmtBRL(r.previstos);
   el("compPessoais").textContent = fmtBRL(fora.pessoais);
   el("compEmpresa").textContent = fmtBRL(fora.empresa);
@@ -64,6 +71,38 @@ function renderComposicao() {
     : (saldo < 0 ? "Saldo negativo" : "");
 }
 
+/* Contas e subdescontos no cartão que ainda não têm cobrança vinculada. */
+function semVinculo() {
+  const lista = [];
+  for (const it of F2?.itens || []) {
+    if (it.status === "prevista")
+      lista.push({ titulo: it.nome, cartao: it.formaNome || "Cartão", valor: it.somado || it.liquido || it.valor || 0 });
+    for (const d of it.descontos)
+      if (d.status === "prevista")
+        lista.push({ titulo: `${it.nome} › ${d.descricao}`, cartao: d.formaNome || it.formaNome || "Cartão", valor: d.somado || d.valor || 0 });
+  }
+  return lista;
+}
+
+/* A lista do aviso laranja, no mesmo modal dos itens de cada cartão. */
+function abrirSemVinculo() {
+  const lista = semVinculo();
+  if (!lista.length) return;
+  const total = lista.reduce((s, p) => s + Math.round(p.valor * 100), 0) / 100;
+  el("cardModalTitulo").textContent = "No cartão sem vínculo";
+  el("cardModalSub").textContent =
+    "Contas que vão ser pagas no cartão e ainda não apareceram na fatura. Somam como previsto até a cobrança cair; quando cair, o vínculo é feito sozinho ou pelo botão de vínculo da conta.";
+  el("cardModalResumo").innerHTML = `
+    <div><span>Contas</span><strong>${lista.length}</strong></div>
+    <div><span>Total previsto</span><strong>${fmtBRL(total)}</strong></div>
+    <div><span>Mês</span><strong>${esc(labelMes(MES))}</strong></div>`;
+  el("cardModalLista").innerHTML = lista.map(p => `
+    <div class="card-modal-linha">
+      <span>${esc(p.titulo)}</span><span>${esc(p.cartao)}</span><strong>${fmtBRL(p.valor)}</strong>
+    </div>`).join("");
+  el("modalCard").hidden = false;
+}
+
 /* Aviso laranja ao lado de "N conta(s)": contas e subdescontos no cartão
  * que ainda não têm cobrança vinculada -- são os que estão somando como
  * previsto. A dica lista quais são. */
@@ -75,14 +114,16 @@ function renderAvisoSemVinculo() {
     aviso.className = "estado f2-aviso";
     el("estado").insertAdjacentElement("afterend", aviso);
   }
-  const nomes = [];
-  for (const it of F2?.itens || []) {
-    if (it.status === "prevista") nomes.push(it.nome);
-    for (const d of it.descontos) if (d.status === "prevista") nomes.push(`${it.nome} › ${d.descricao}`);
-  }
+  const pendentes = semVinculo();
+  const nomes = pendentes.map(p => p.titulo);
   aviso.hidden = !nomes.length;
   aviso.textContent = `${nomes.length} no cartão sem vínculo`;
-  aviso.title = `Somando como previsto até a cobrança aparecer:\n${nomes.join("\n")}`;
+  aviso.title = `Somando como previsto até a cobrança aparecer:\n${nomes.join("\n")}\n\nClique para ver a lista.`;
+  aviso.setAttribute("role", "button");
+  aviso.tabIndex = 0;
+  aviso.style.cursor = "pointer";
+  aviso.onclick = abrirSemVinculo;
+  aviso.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirSemVinculo(); } };
 
   // Segundo aviso: o que merece conferência -- conta que não apareceu na
   // fatura fechada, subdescontos acima da conta, hábito com cobertura
@@ -167,3 +208,27 @@ el("reembolsosLista").addEventListener("click", async e => {
 // tabela de Reembolsos (uma fonte só, sem risco de contar duas vezes).
 const opcoesFormaOriginal = opcoesForma;
 opcoesForma = (selecionada, opcoes = {}) => opcoesFormaOriginal(selecionada, { ...opcoes, reembolso: false });
+
+/* Barras de fundo da composição: cada linha mostra a fatia que ocupa das
+ * despesas. Só apresentação -- lê os valores já escritos na tela, então não
+ * mexe no cálculo nem depende de qual renderComposicao rodou. */
+(function barrasComposicao() {
+  const desp = el("compDespesas");
+  if (!desp) return;
+  const num = t => Number(String(t || "").replace(/[^\d,-]/g, "").replace(",", ".")) || 0;
+  const cores = { compCartoes: "var(--azul)", compPessoais: "var(--laranja)", compEmpresa: "var(--roxo, var(--azul))", compReembolsos: "var(--verde)" };
+  const pintar = () => {
+    const total = Math.abs(num(desp.textContent));
+    document.querySelectorAll(".f2-comp").forEach(linha => {
+      const v = Math.abs(num(el(linha.dataset.comp)?.textContent));
+      const frac = total > 0 ? Math.min(1, v / total) : 0;
+      const f = linha.querySelector(".v-f");
+      f.style.width = `${(frac * 100).toFixed(1)}%`;
+      f.style.background = cores[linha.dataset.comp] || "var(--text-3)";
+      linha.querySelector(".v-chip").textContent = total > 0 && v > 0 ? `${Math.round(frac * 100)}%` : "";
+    });
+  };
+  const obs = new MutationObserver(pintar);
+  [desp, ...document.querySelectorAll(".f2-comp b")].forEach(n => obs.observe(n, { childList: true, characterData: true, subtree: true }));
+  pintar();
+})();

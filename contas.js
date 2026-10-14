@@ -426,7 +426,7 @@
   });
   window.addEventListener('beforeunload', () => clearTimeout(timer));
 
-  montarNav('contas.html');
+  montarNav(montarAlternador('cartoes', 'contas.html'));
   observarIdentidadeCartoes(() => Promise.all([carregar(), carregarBancos()]));
   carregar();
   carregarBancos();

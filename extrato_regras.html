@@ -88,6 +88,7 @@
 <nav class="nav"></nav>
 
 <main class="container">
+  <nav id="alternador" aria-label="Entradas ou regras"></nav>
   <header class="topo">
     <div>
       <h1>Regras</h1>
@@ -645,7 +646,7 @@ function guardarUrl() {
   if (ABAS.some(a => a.id === inicial.get("aba"))) aba = inicial.get("aba");
   busca = inicial.get("q") || "";
   el("busca").value = busca;
-  montarNav("extrato_regras.html");
+  montarNav(montarAlternador("entradas", "extrato_regras.html"));
   ligar();
   try {
     CATEGORIAS = (await pedir("/extrato/categorias")).categorias || [];

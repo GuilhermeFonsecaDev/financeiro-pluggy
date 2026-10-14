@@ -347,7 +347,9 @@ def payload(periodo: str = "mes", referencia: str = "") -> dict[str, Any]:
     detalhe = _detalhe(de, ate)
     cartoes_mes = _cartoes_do_mes(mes_foco)
     try:
-        fx_payload = fixas.mes_payload(mes_foco)
+        # Contas Fixas é a 2.0: os cadastros dela, não os da tela aposentada.
+        with fixas.usar_copia_2():
+            fx_payload = fixas.mes_payload(mes_foco)
     except Exception:
         fx_payload = {"resumo": {}, "itens": []}
     fx = fx_payload.get("resumo") or {}

@@ -6,6 +6,7 @@
 <title>Investimentos</title>
 <link rel="stylesheet" href="tema.css" />
 <link rel="stylesheet" href="carteira.css" />
+<link rel="stylesheet" href="visual.css" />
 <style>
 .caixinha-hero { display:grid; grid-template-columns:minmax(300px,1.25fr) minmax(500px,2fr); gap:14px; margin-bottom:14px; }
 .hero-principal { position:relative; overflow:hidden; padding:18px 22px; border-color:rgba(74,149,234,.5); background:linear-gradient(125deg,#234d7d 0%,#213b5c 58%,var(--surface) 100%); }
@@ -127,6 +128,17 @@
 .hero-mini .rotulo { color:var(--text-3); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.055em; }
 .hero-mini strong { display:block; margin-top:7px; font-size:21px; letter-spacing:-.02em; }
 .hero-mini small { display:block; margin-top:3px; color:var(--text-3); font-size:11px; }
+/* Visual minimalista (visual.css) sobre os cards do topo. */
+.caixinha-hero .v-cartao { border-radius:16px !important; }
+.caixinha-hero .v-tit { text-transform:none !important; letter-spacing:0 !important; font-size:13px !important; font-weight:500 !important; color:var(--text-3) !important; }
+.caixinha-hero .v-big { font-size:28px !important; font-weight:650 !important; }
+.rend-partes.v-legenda { justify-content:flex-start; gap:4px 10px; }
+.rend-partes.v-legenda span:empty { display:none; }
+.alvo-lista .v-subtit { margin:10px 0 2px; }
+.alvo-lista .v-subtit:first-child { margin-top:0; }
+/* .aviso do card de avisos vaza para o selo .v-chip.aviso; desfaz aqui. */
+.v-chip.aviso { display:inline-block !important; margin:0 !important; padding:2px 8px !important; cursor:default; }
+.v-chip.aviso:hover { background:rgba(232,149,74,.14) !important; }
 .sec-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:14px 0; }
 .chart { width:100%; height:clamp(250px,16vw,330px); display:block; overflow:visible; }
 .chart-grid { stroke:var(--line); stroke-width:1; }
@@ -269,29 +281,29 @@
   </section>
 
   <section class="caixinha-hero">
-    <article class="painel hero-principal">
-      <div class="hero-kicker">Saldo líquido</div>
-      <div class="hero-valor" id="vLiquido">R$ 0,00</div><svg class="spark" id="sparkLiquido" aria-hidden="true" style="display:none"></svg>
+    <article class="painel hero-principal v-cartao">
+      <div class="hero-kicker v-tit">Saldo líquido</div>
+      <div class="hero-valor v-big" id="vLiquido">R$ 0,00</div><svg class="spark" id="sparkLiquido" aria-hidden="true" style="display:none"></svg>
       <div class="liq-barra" id="liqBarra" aria-hidden="true"></div>
       <div class="liq-texto" id="liqTexto"></div>
-      <div class="hero-linha">bruto <b id="vBruto">R$ 0,00</b> · <span id="rotuloGanho">ganho</span> <b id="vGanhoBruto">—</b></div>
+      <div class="hero-linha v-rodape">bruto <b id="vBruto">R$ 0,00</b> · <span id="rotuloGanho">ganho</span> <b id="vGanhoBruto">—</b></div>
       <div class="hero-nota" style="display:none">posições informadas pelas instituições conectadas; novas conexões entram automaticamente</div>
       <div class="hero-meta" style="display:none">
         <span><small>Referência</small><b id="vReferencia">—</b></span>
         <span><small>Taxas informadas</small><b id="vTaxa">—</b></span>
       </div>
     </article>
-    <article class="hero-mini rend-card" id="cardRendimento" aria-labelledby="rendTitulo">
-      <span class="rotulo" id="rendTitulo">Rendimento do mês</span>
-      <strong id="rendTotal">—</strong>
+    <article class="hero-mini rend-card v-cartao" id="cardRendimento" aria-labelledby="rendTitulo">
+      <span class="rotulo v-tit" id="rendTitulo">Rendimento do mês</span>
+      <strong class="v-big" id="rendTotal">—</strong>
       <div class="rend-barra" aria-hidden="true"><span id="rendBarraFundos"></span><span id="rendBarraRf"></span></div>
-      <div class="rend-partes"><span>Fundos <b id="rendFundos">—</b></span><span>CDB <b id="rendRf">—</b></span></div>
+      <div class="rend-partes v-legenda"><span><i style="background:var(--azul)"></i>Fundos <b id="rendFundos">—</b></span><span class="v-sep">·</span><span><i style="background:var(--verde)"></i>CDB <b id="rendRf">—</b></span></div>
       <small id="rendDesde" style="display:none"></small>
     </article>
     <div class="hero-grade">
       <div hidden><svg class="spark verde" id="sparkGanho" aria-hidden="true"></svg><small id="pGanhoBruto" style="display:none">Aguardando dados</small></div>
-      <article class="hero-mini avisos-card" aria-labelledby="avisosTitulo">
-        <span class="rotulo" id="avisosTitulo">Avisos</span>
+      <article class="hero-mini avisos-card v-cartao" aria-labelledby="avisosTitulo">
+        <span class="rotulo v-tit" id="avisosTitulo">Avisos</span>
         <ul class="avisos-lista" id="avisosLista"><li class="aviso ok"><span class="aviso-marca"></span><p class="aviso-frase">Conferindo a carteira…</p></li></ul>
       </article>
       <article class="hero-mini media-aporte" hidden aria-hidden="true"><span class="rotulo">Média líquida mensal · 2026</span><strong id="vMediaLiquida2026">R$ 0,00</strong><svg class="spark" id="sparkMedia" aria-hidden="true"></svg><small id="pMediaLiquida2026" style="display:none">aplicações menos resgates</small></article>
@@ -323,26 +335,29 @@
   </section>
 
   <section class="sec-grid">
-    <article class="painel">
-      <div class="painel-tit"><div><h2>Valor líquido por mês</h2><div class="sub">aplicações menos resgates em cada mês</div></div></div>
-      <svg id="graficoAportes" class="chart" aria-label="Valor líquido mensal da carteira"></svg>
-      <div class="legenda"><span id="aportesInicio">—</span><span id="aportesFim">—</span></div>
+    <article class="v-cartao">
+      <h2 class="v-tit">Valor líquido por mês</h2>
+      <div class="v-legenda"><span><i style="background:var(--v-verde)"></i>aplicações menos resgates</span><span class="v-sep">·</span><span id="aportesInicio">—</span><span class="v-sep">·</span><span id="aportesFim">—</span></div>
+      <svg id="graficoAportes" class="v-graf" height="170" aria-label="Valor líquido mensal da carteira"></svg>
+      <p class="v-rodape">Quanto entrou na carteira em cada mês, descontados os resgates.</p>
     </article>
-    <article class="painel">
-      <div class="painel-tit"><div><h2>Rendimento por mês</h2><div class="sub">quanto a carteira rendeu em cada mês, sem contar aportes</div></div>
-        <div class="rendm-acum"><span>acumulado</span><b id="rendmAcumulado">—</b></div></div>
-      <svg id="graficoRendimento" class="chart" role="img" aria-label="Rendimento por mês, fundos e CDB, com o acumulado"></svg>
-      <div class="legenda rendm-legenda"><span><i style="background:var(--azul)"></i>Fundos</span><span><i style="background:var(--verde)"></i>CDB</span><span><i class="linha"></i>Acumulado</span><span class="sub" id="rendmNota"></span></div>
+    <article class="v-cartao">
+      <h2 class="v-tit">Rendimento por mês</h2>
+      <div class="v-legenda"><span><i style="background:var(--azul)"></i>Fundos</span><span><i style="background:var(--verde)"></i>CDB</span><span class="v-sep">·</span><span>acumulado <b id="rendmAcumulado">—</b></span><span class="v-sep" id="rendmNota"></span></div>
+      <svg id="graficoRendimento" class="v-graf" height="170" role="img" aria-label="Rendimento por mês, fundos e CDB, com o acumulado"></svg>
+      <p class="v-rodape">Quanto a carteira rendeu em cada mês, sem contar aportes; o mês atual em destaque.</p>
     </article>
-    <article class="painel">
-      <div class="painel-tit"><div><h2>Carteira x alvo</h2><div class="sub">quanto cada fundo ocupa na aba hoje; a marca é o alvo</div></div></div>
-      <div id="graficoAlvo" class="alvo-grafico" role="img" aria-label="Percentual atual de cada fundo comparado com o alvo"></div>
-      <div class="legenda rendm-legenda"><span><i style="background:var(--azul)"></i>acima do alvo</span><span><i style="background:#f0b980"></i>abaixo do alvo</span><span><i style="background:var(--text-3)"></i>no alvo</span><span><i class="marca"></i>alvo</span></div>
+    <article class="v-cartao">
+      <h2 class="v-tit">Carteira x alvo</h2>
+      <div class="v-legenda"><span><i style="background:var(--azul)"></i>acima do alvo</span><span><i style="background:#f0b980"></i>abaixo do alvo</span><span><i style="background:var(--text-3)"></i>no alvo</span></div>
+      <div id="graficoAlvo" class="alvo-lista" role="img" aria-label="Percentual atual de cada fundo comparado com o alvo"></div>
+      <p class="v-rodape">Quanto cada fundo ocupa na aba hoje; o selo mostra o alvo.</p>
     </article>
-    <article class="painel">
-      <div class="painel-tit"><div><h2>Evolução do saldo informado</h2><div class="sub">reconstrução das posições disponíveis; aplicações aguardando posição ficam fora desta curva</div></div></div>
-      <svg id="graficoTotal" class="chart" aria-label="Evolução do valor total da carteira"></svg>
-      <div class="legenda"><span id="totalInicio">—</span><span id="totalFim">—</span></div>
+    <article class="v-cartao">
+      <h2 class="v-tit">Evolução do saldo informado</h2>
+      <div class="v-legenda"><span><i style="background:var(--v-azul)"></i>saldo</span><span class="v-sep">·</span><span id="totalInicio">—</span><span class="v-sep">·</span><span id="totalFim">—</span></div>
+      <svg id="graficoTotal" class="v-graf" height="170" aria-label="Evolução do valor total da carteira"></svg>
+      <p class="v-rodape">Reconstrução das posições disponíveis; aplicações aguardando posição ficam fora da curva.</p>
     </article>
   </section>
 
@@ -606,6 +621,7 @@
 </div>
 
 <script src="app.js"></script>
+<script src="graficos.js"></script>
 <script>
 const el = id => document.getElementById(id);
 let D = null;
@@ -648,45 +664,27 @@ function sparkBarras(id, serie) {
   }).join("");
 }
 
-function desenharGrafico(id, serie, {classe="", zero=true, signed=false}={}) {
+/* Linha minimalista (graficos.js): sem eixo nem grade, valor na dica. */
+function desenharGrafico(id, serie, {cor="var(--v-azul)"}={}) {
   const svg = el(id);
-  const W=Math.max(560,Math.round(svg.clientWidth || 900));
-  const H=Math.max(250,Math.round(svg.clientHeight || 280));
-  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
-  svg.setAttribute("preserveAspectRatio","xMidYMid meet");
-  if (!serie.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" class="chart-label">Histórico ainda não disponível</text>`; return; }
-  const vals = serie.map(p => Number(p.valor || 0));
-  let min = zero ? 0 : Math.min(...vals);
-  let max = Math.max(1,...vals);
-  if (signed) { min=Math.min(0,...vals); max=Math.max(0,...vals); const folga=Math.max(1,(max-min)*.08); min-=folga; max+=folga; }
-  else if (!zero && serie.length > 1) { const folga=Math.max(1,(max-min)*.18); min=Math.max(0,min-folga); max+=folga; }
-  else if (!zero) { min=0; max*=1.12; }
-  const faixa = max-min || 1;
-  const L=64,R=18,T=18,B=24;
-  const x = i => L + (W-L-R) * (serie.length===1 ? .5 : i/(serie.length-1));
-  const y = v => T + (H-T-B) * (1-(v-min)/faixa);
-  const linha = serie.map((p,i) => `${x(i)},${y(p.valor)}`).join(" ");
-  // A area e preenchida ate a altura do zero. Quando o eixo nao comeca no zero
-  // (curva de saldo, que arranca perto do menor valor), y(0) cai muito abaixo
-  // do desenho e o preenchimento vazava para fora do SVG -- que tem
-  // overflow:visible -- por cima do painel de baixo. O piso e o proprio chao
-  // do grafico.
-  const baseY=Math.min(Math.max(y(0),T),H-B);
-  const area = `${x(0)},${baseY} ${linha} ${x(serie.length-1)},${baseY}`;
-  const grades = [0,.25,.5,.75,1].map(f => { const yy=T+(H-T-B)*f; const valor=max-faixa*f; return `<line class="chart-grid" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="chart-label" x="${L+4}" y="${yy-5}">${esc(fmtBRLCurto(valor))}</text>`; }).join("");
-  const dots = serie.map((p,i) => `<circle class="chart-dot ${classe}" cx="${x(i)}" cy="${y(p.valor)}" r="3.5"><title>${esc(p.rotulo)}: ${fmtBRL(p.valor)}</title></circle>`).join("");
-  svg.innerHTML = `${grades}<polygon class="chart-area ${classe}" points="${area}"/><polyline class="chart-line ${classe}" points="${linha}"/>${dots}`;
+  if (!serie.length) { svg.innerHTML = ""; return; }
+  // Rótulos longos ("Agosto 2026"): poucas marcas e nenhuma colada na última.
+  const caben = Math.max(2, Math.floor((svg.clientWidth || 600) / 120));
+  const n = serie.length, passo = Math.max(1, Math.ceil(n / caben));
+  const eixo = [...Array(n).keys()].filter(i => i % passo === 0 && n - 1 - i >= passo / 2).concat(n - 1);
+  vLinhas(svg, serie.map(p => p.rotulo), [{ valores: serie.map(p => Number(p.valor || 0)), cor }],
+    { dica: i => `${serie[i].rotulo}: ${fmtBRL(serie[i].valor)}`, eixo });
 }
 
 function renderGraficos() {
   const meses=D.meses||[];
   const liquidos=meses.map(m=>({rotulo:labelMes(m.mes),valor:Number(m.liquido||0),mes:m.mes}));
-  desenharGrafico("graficoAportes",liquidos,{classe:"aportes",signed:true});
+  desenharGrafico("graficoAportes",liquidos,{cor:"var(--v-verde)"});
   if(liquidos.length){ el("aportesInicio").textContent=`${liquidos[0].rotulo} · ${fmtBRL(liquidos[0].valor)}`; el("aportesFim").textContent=`${liquidos.at(-1).rotulo} · ${fmtBRL(liquidos.at(-1).valor)}`; }
 
   // A reconstrução mora em app.js: a Visão geral desenha a mesma curva.
   const totais=serieSaldoInvestimentos(D);
-  desenharGrafico("graficoTotal",totais,{zero:false});
+  desenharGrafico("graficoTotal",totais);
   // Cards do topo: saldo e bruto seguem a curva do saldo; o ganho é o saldo
   // menos o líquido aportado até o mês (aproximação); a média mostra os meses.
   sparkLinha("sparkLiquido", totais);
@@ -847,37 +845,21 @@ el('filtrosPosicoes').addEventListener('click', e => {
 function renderRendimentoMeses() {
   const svg = el('graficoRendimento');
   const meses = D.rendimentoMeses || [];
-  const W = 760, H = 260, L = 56, R = 16, T = 18, B = 30;
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  if (!meses.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" class="chart-label">Ainda sem um mês para mostrar</text>`; return; }
+  if (!meses.length) { svg.innerHTML = ''; return; }
   let acum = 0;
   const pts = meses.map(m => ({ ...m, acum: (acum += m.total) }));
-  const pos = v => Math.max(0, v), neg = v => Math.min(0, v);
-  const altos = pts.map(p => pos(p.fundos) + pos(p.rendaFixa)), baixos = pts.map(p => neg(p.fundos) + neg(p.rendaFixa));
-  let max = Math.max(1, ...altos, ...pts.map(p => p.acum)), min = Math.min(0, ...baixos, ...pts.map(p => p.acum));
-  const folga = (max - min) * .12; max += folga; if (min < 0) min -= folga;
-  const y = v => T + (H - T - B) * (max - v) / (max - min);
-  const passo = (W - L - R) / Math.max(pts.length, 6), larg = Math.min(56, passo * .55);
-  const cx = i => L + passo * (i + .5);
-  const grade = [max, (max + min) / 2, min].map(v => `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" class="chart-grid"/>`
-    + `<text x="${L-8}" y="${y(v)+4}" text-anchor="end" class="chart-label">${fmtBRL(v).replace(',00','')}</text>`).join('')
-    + `<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line-forte)"/>`;
   const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const barras = pts.map((p, i) => {
-    const x = cx(i) - larg / 2, op = p.emAndamento ? .6 : 1;
-    // Empilha: CDB rente ao zero, fundos por cima (para baixo quando negativos).
-    const seg = (v, base, cor) => { const a = y(base), b = y(base + v); return `<rect x="${x}" y="${Math.min(a,b)}" width="${larg}" height="${Math.max(1,Math.abs(b-a))}" fill="${cor}" opacity="${op}" rx="2"/>`; };
-    const rf = p.rendaFixa, fu = p.fundos;
-    const baseFu = (rf >= 0) === (fu >= 0) ? rf : 0;
-    const dica = `${MES[+p.mes.slice(5)-1]}/${p.mes.slice(2,4)}${p.emAndamento ? ' (em andamento)' : ''}: ${fmtBRL(p.total)} · fundos ${fmtBRL(fu)} · CDB ${fmtBRL(rf)} · acumulado ${fmtBRL(p.acum)}`;
-    return `<g><title>${esc(dica)}</title>${seg(rf, 0, 'var(--verde)')}${seg(fu, baseFu, 'var(--azul)')}`
-      + `<text x="${cx(i)}" y="${H-10}" text-anchor="middle" class="chart-label">${MES[+p.mes.slice(5)-1]}${p.emAndamento ? '*' : ''}</text></g>`;
-  }).join('');
-  const linha = pts.length > 1 ? `<polyline points="${pts.map((p,i)=>`${cx(i)},${y(p.acum)}`).join(' ')}" fill="none" stroke="var(--verde)" stroke-width="2"/>` : '';
-  const pontos = pts.map((p,i)=>`<circle cx="${cx(i)}" cy="${y(p.acum)}" r="3.5" fill="var(--verde)"/>`).join('');
-  svg.innerHTML = grade + barras + linha + pontos;
+  // Barras empilhadas (CDB embaixo, fundos em cima); o mês mais recente em destaque.
+  // O acumulado fica na legenda e na dica de cada mês.
+  const itens = pts.map(p => ({
+    rotulo: `${MES[+p.mes.slice(5)-1]}${p.emAndamento ? '*' : ''}`,
+    valor: Math.abs(p.rendaFixa) + Math.abs(p.fundos),
+    dica: `${MES[+p.mes.slice(5)-1]}/${p.mes.slice(2,4)}${p.emAndamento ? ' (em andamento)' : ''}: ${fmtBRL(p.total)} · fundos ${fmtBRL(p.fundos)} · CDB ${fmtBRL(p.rendaFixa)} · acumulado ${fmtBRL(p.acum)}`,
+    partes: [{ valor: p.rendaFixa, cor: 'var(--verde)', nome: 'CDB' }, { valor: p.fundos, cor: 'var(--azul)', nome: 'Fundos' }],
+  }));
+  vBarras(svg, itens, { destaque: itens.length - 1 });
   el('rendmAcumulado').textContent = `${acum >= 0 ? '+' : '-'} ${fmtBRL(Math.abs(acum))}`;
-  el('rendmAcumulado').className = acum >= 0 ? '' : 'perda';
+  el('rendmAcumulado').className = acum >= 0 ? 'ganho' : 'perda';
   el('rendmNota').textContent = pts.some(p => p.emAndamento) ? '* mês em andamento' : '';
 }
 
@@ -893,16 +875,17 @@ async function renderAlvo() {
   if (!itens.length) { alvo.innerHTML = '<p class="sub" style="grid-column:1/-1">Cadastre fundos na Carteira para ver este gráfico.</p>'; return; }
   const max = Math.max(10, ...itens.map(i => Math.max(i.pctAtual, i.percentual))) * 1.05;
   const curto = n => n.replace(/\s+(FUNDO|FIC|FIRF|FICFIRF|FICFIDC|FIDC|FIA|RF|CrPr|RL)(\s.*)?$/i, '').split(/\s+/).slice(0, 3).join(' ');
-  let atual = null, html = '';
-  for (const i of itens) {
-    if (i.perfil !== atual) { html += `<div class="alvo-aba">${esc((abas[i.perfil]?.nome || i.perfil).toUpperCase())}</div>`; atual = i.perfil; }
-    const d = i.pctAtual - i.percentual;
-    const cor = Math.abs(d) <= 2 ? 'var(--text-3)' : d > 0 ? 'var(--azul)' : '#f0b980';
-    const dica = `${i.nome}: ${pct(i.pctAtual)} hoje, alvo ${pct(i.percentual)}`;
-    html += `<div class="alvo-nome" title="${esc(i.nome)}">${esc(curto(i.nome))}</div>`
-      + `<div class="alvo-trilho" title="${esc(dica)}"><span class="alvo-barra" style="width:${i.pctAtual / max * 100}%;background:${cor}"></span>`
-      + `<span class="alvo-marca" style="left:${i.percentual / max * 100}%"></span></div>`
-      + `<div class="alvo-valor"><b>${pct(i.pctAtual)}</b> / ${pct(i.percentual)}</div>`;
+  // Uma lista por aba: barra de fundo com o % de hoje e o selo com o alvo.
+  let html = '';
+  for (const id of [...new Set(itens.map(i => i.perfil))]) {
+    html += `<p class="v-subtit">${esc(abas[id]?.nome || id)}</p><div class="v-barras">`;
+    html += vListaBarras(itens.filter(i => i.perfil === id).map(i => {
+      const d = i.pctAtual - i.percentual;
+      const cor = Math.abs(d) <= 2 ? 'var(--text-3)' : d > 0 ? 'var(--azul)' : '#f0b980';
+      return { nome: curto(i.nome), valor: `<b>${pct(i.pctAtual)}</b>`, chip: `alvo ${pct(i.percentual)}`,
+        chipTipo: Math.abs(d) <= 2 ? 'bom' : d > 0 ? '' : 'aviso', fracao: i.pctAtual / max, cor, ponto: cor,
+        dica: `${i.nome}: ${pct(i.pctAtual)} hoje, alvo ${pct(i.percentual)}` };
+    })) + '</div>';
   }
   alvo.innerHTML = html;
 }
@@ -1259,7 +1242,7 @@ document.addEventListener("keydown", e => {
 
 montarNav("investimentos.html"); campoMesTodos(); carregar();
 let resizeGrafico;
-window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) renderGraficos(); },120); });
+window.addEventListener("resize",()=>{ clearTimeout(resizeGrafico); resizeGrafico=setTimeout(()=>{ if(D) { renderGraficos(); renderRendimentoMeses(); } },120); });
 </script>
 <script src="carteira.js"></script>
 <script src="linhagem.js"></script>

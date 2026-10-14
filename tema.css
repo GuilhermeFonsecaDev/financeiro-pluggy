@@ -546,3 +546,12 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
 .selo-origem.oficial, .selo-origem.pagamento { color:var(--verde); }
 .selo-origem.aberta, .selo-origem.aberta_projecao, .selo-origem.mista { color:var(--laranja); }
 .selo-origem.projecao, .selo-origem.vazio, .selo-origem.movimento, .selo-origem.fechada { color:var(--text-3); }
+
+/* ------------------------------------------------------------ alternador */
+/* Seletor no topo de telas que dividem uma entrada do menu (Cartões | Contas). */
+.alternador { display:inline-flex; gap:4px; padding:4px; margin:0 0 16px; border-radius:14px; background:var(--surface-2); border:1px solid var(--line); }
+.alternador a { display:inline-flex; align-items:center; gap:8px; min-width:140px; justify-content:center; padding:9px 18px; border-radius:10px; color:var(--text-3); font-size:14px; font-weight:550; text-decoration:none; }
+.alternador a:hover { color:var(--text-2); }
+.alternador a.ativo { background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.25); }
+.alternador .ic { font-size:15px; opacity:.85; }
+@media (max-width:560px) { .alternador { display:flex; } .alternador a { flex:1; min-width:0; } }

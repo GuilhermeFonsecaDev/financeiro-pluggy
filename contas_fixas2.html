@@ -3,10 +3,35 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Contas Fixas 2.0</title>
+<title>Contas Fixas</title>
 <link rel="stylesheet" href="tema.css" />
 <link rel="stylesheet" href="contas_fixas.css" />
 <link rel="stylesheet" href="contas_fixas2.css" />
+<link rel="stylesheet" href="visual.css" />
+<style>
+/* Linguagem visual mínima (visual.css) aplicada só nesta página: o
+   contas_fixas.css é dividido com a página antiga e o simulador. */
+.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); }
+.fatura-card { min-height:0; padding:18px 20px; background:var(--surface); box-shadow:none; }
+.fatura-card.banco:hover { transform:none; box-shadow:none; border-color:var(--line-forte); }
+.fatura-rotulo { font-size:13px; font-weight:500; text-transform:none; letter-spacing:0; }
+.fatura-valor { margin:6px 0 10px; font-size:28px; font-weight:650; letter-spacing:-.02em; }
+.fatura-barra { height:3px; margin:0 0 10px; }
+.fatura-linhas { font-size:12.5px; flex-wrap:wrap; }
+.fatura-topo .selo-previsto.v-chip { border:0; margin:0; vertical-align:0; cursor:pointer; min-height:0; }
+.fatura-topo .selo-previsto.v-chip:hover { background:rgba(232,149,74,.24); }
+.composicao { grid-column:span 1; }
+.composicao-saldo { gap:0; margin:10px 0 0; }
+.composicao-saldo strong.v-big { font-size:28px; }
+.composicao-barra { height:3px; margin-top:12px; }
+.composicao-percentuais { font-size:12px; color:var(--text-3); }
+.composicao-detalhes { margin-top:8px; }
+.v-bl.f2-sub { min-height:30px; margin-left:12px; font-size:12.5px; color:var(--text-2); }
+.v-bl.f2-sub .v-val { font-weight:500; }
+.vinculos-painel { background:var(--surface); border-radius:16px; }
+.vinculos-topo h2 { font-size:13px; font-weight:500; color:var(--text-3); }
+.vinculos-total strong { font-variant-numeric:tabular-nums; }
+</style>
 </head>
 <body>
 <nav class="nav"></nav>
@@ -14,7 +39,7 @@
 <main class="container">
   <header class="topo">
     <div>
-      <h1>Contas fixas 2.0 <span class="f2-teste">teste</span></h1>
+      <h1>Contas fixas</h1>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="estado" id="estado">Carregando…</span>
@@ -90,28 +115,22 @@
         </div>
       </section>
     </div>
-    <aside class="painel composicao" aria-labelledby="composicaoTitulo">
-      <div class="composicao-cabecalho">
-        <h2 id="composicaoTitulo">Composição do mês</h2>
-        <span class="composicao-mes" id="compMes"></span>
-      </div>
-      <div class="composicao-saldo" id="compSaldoCard"><span>Saldo do mês</span><strong id="compSaldo">R$ 0,00</strong></div>
-      <div class="composicao-resumo">
-        <div><span>Receitas</span><strong id="compReceitas">R$ 0,00</strong></div>
-        <div><span>Despesas</span><strong id="compDespesas">R$ 0,00</strong></div>
-      </div>
+    <aside class="v-cartao composicao" aria-labelledby="composicaoTitulo">
+      <h2 class="v-tit" id="composicaoTitulo">Composição do mês <span class="composicao-mes" id="compMes"></span></h2>
+      <div class="composicao-saldo" id="compSaldoCard"><span class="v-subtit">Saldo do mês</span><strong class="v-big" id="compSaldo">R$ 0,00</strong></div>
+      <p class="v-legenda"><span><i style="background:var(--verde)"></i>Receitas <b id="compReceitas">R$ 0,00</b></span><span class="v-sep">·</span><span><i style="background:var(--vermelho)"></i>Despesas <b id="compDespesas">R$ 0,00</b></span></p>
       <div class="composicao-barra" id="compBarra" role="img"><div id="compBarraPreenchimento"></div></div>
       <div class="composicao-percentuais"><span id="compComprometido"></span><span id="compPercentualSaldo"></span></div>
-      <div class="composicao-detalhes">
-        <h3>Dentro das despesas</h3>
-        <div class="composicao-linha"><span>Cartões</span><strong id="compCartoes">R$ 0,00</strong></div>
-        <div class="composicao-linha f2-sub"><span>já cobrado nas faturas</span><strong id="compCobrado">R$ 0,00</strong></div>
-        <div class="composicao-linha f2-sub"><span>parcelas projetadas</span><strong id="compParcelas">R$ 0,00</strong></div>
-        <div class="composicao-linha f2-sub"><span>hábitos estimados</span><strong id="compHabitos">R$ 0,00</strong></div>
-        <div class="composicao-linha f2-sub"><span>contas no cartão a cobrar</span><strong id="compPrevistos">R$ 0,00</strong></div>
-        <div class="composicao-linha"><span>Contas pessoais</span><strong id="compPessoais">R$ 0,00</strong></div>
-        <div class="composicao-linha"><span>Empresa</span><strong id="compEmpresa">R$ 0,00</strong></div>
-        <div class="composicao-linha"><span>Reembolsos</span><strong id="compReembolsos">R$ 0,00</strong></div>
+      <p class="v-subtit" style="margin-top:18px">Dentro das despesas</p>
+      <div class="v-barras composicao-detalhes">
+          <div class="v-bl f2-comp" data-comp="compCartoes"><i class="v-f"></i><span class="v-nome">Cartões</span><span class="v-val"><b id="compCartoes">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp f2-sub" hidden style="display:none" data-comp="compCobrado"><i class="v-f"></i><span class="v-nome">já cobrado nas faturas</span><span class="v-val"><b id="compCobrado">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp f2-sub" hidden style="display:none" data-comp="compParcelas"><i class="v-f"></i><span class="v-nome">parcelas projetadas</span><span class="v-val"><b id="compParcelas">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp f2-sub" hidden style="display:none" data-comp="compHabitos"><i class="v-f"></i><span class="v-nome">hábitos estimados</span><span class="v-val"><b id="compHabitos">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp f2-sub" hidden style="display:none" data-comp="compPrevistos"><i class="v-f"></i><span class="v-nome">contas no cartão a cobrar</span><span class="v-val"><b id="compPrevistos">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp" data-comp="compPessoais"><i class="v-f"></i><span class="v-nome">Contas pessoais</span><span class="v-val"><b id="compPessoais">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp" data-comp="compEmpresa"><i class="v-f"></i><span class="v-nome">Empresa</span><span class="v-val"><b id="compEmpresa">R$ 0,00</b><span class="v-chip"></span></span></div>
+          <div class="v-bl f2-comp" data-comp="compReembolsos"><i class="v-f"></i><span class="v-nome">Reembolsos</span><span class="v-val"><b id="compReembolsos">R$ 0,00</b><span class="v-chip"></span></span></div>
       </div>
     </aside>
   </section>
@@ -367,6 +386,7 @@
 </div>
 
 <script src="app.js"></script>
+<script src="graficos.js"></script>
 <script>
 /* Contas Fixas 2.0 é independente da tela original: toda chamada de contas
    fixas daqui vai para /f2/..., que lê e grava as tabelas próprias da 2.0.
@@ -737,7 +757,7 @@ function renderCardsFaturas() {
       // exibido para o card virar previsão do mês. O selo "≈ previsto" abre a
       // lista do que foi somado -- o número não pode parecer vindo do banco.
       const selo = c.aLancar > 0 || previsoesDoCartao(c.id, Number(MES.slice(5, 7)) - 1).length > 0
-        ? `<button class="fatura-banco selo-previsto" data-previstos="${esc(c.id)}"
+        ? `<button class="v-chip aviso selo-previsto" data-previstos="${esc(c.id)}"
                    title="Ver o que está somado como previsto">≈ previsto</button>`
         : "";
       return `

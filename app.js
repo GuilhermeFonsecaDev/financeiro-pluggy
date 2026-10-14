@@ -423,8 +423,13 @@ function campoMes(input, { obrigatorio = false } = {}) {
     const alvo = e.target.closest("button");
     if (!alvo) return;
     if (alvo.dataset.ano) {
+      // pintarPop troca o HTML e tira o botão clicado da página: sem parar o
+      // clique aqui, o "clique fora" do documento não acha o alvo dentro do
+      // popover e fecha antes de dar tempo de escolher o mês do outro ano.
+      e.stopPropagation();
       anoAberto += Number(alvo.dataset.ano);
       pintarPop();
+      pop.querySelector(`[data-ano="${alvo.dataset.ano}"]`)?.focus();
       return;
     }
     if (alvo.dataset.mes) definir(alvo.dataset.mes);
@@ -459,16 +464,13 @@ function campoMesTodos(raiz = document) {
 
 const PAGINAS = [
   { href: "visao_geral.html", ic: "◎", nome: "Visão Geral" },
-  { href: "contas_fixas.html", ic: "◫", nome: "Contas Fixas" },
-  { href: "contas_fixas2.html", ic: "◧", nome: "Contas Fixas 2.0" },
+  { href: "contas_fixas2.html", ic: "◫", nome: "Contas Fixas" },
   { href: "transacoes.html", ic: "☰", nome: "Transações" },
   { href: "categorias.html", ic: "◑", nome: "Categorias" },
-  { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões" },
+  { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões e Contas" },
   { href: "investimentos.html", ic: "↗", nome: "Investimentos" },
-  { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
-  { href: "entradas.html", ic: "↑", nome: "Entradas" },
-  { href: "emprestimos.html", ic: "⇄", nome: "Emprestado" },
-  { href: "contas.html", ic: "⇋", nome: "Contas" },
+  { href: "entradas.html", ic: "↑", nome: "Entradas e Regras" },
+  { href: "planejamento.html", ic: "◇", nome: "Planejamento e Empréstimos" },
 ];
 
 /* Ícone da aba = o símbolo da página no menu, em PNG de fundo transparente.
@@ -524,6 +526,36 @@ function montarNav(atual) {
         <span class="ic">${p.ic}</span><span>${p.nome}</span>
       </a>`).join("")}
     <div class="nav-rodape">Guilherme</div>`;
+}
+
+/* Telas que dividem uma entrada do menu e se alternam por um seletor no
+ * topo (ex.: Cartões | Contas). A primeira da lista é a que o menu abre. */
+const GRUPOS_TELAS = {
+  cartoes: [
+    { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões" },
+    { href: "contas.html", ic: "⇋", nome: "Contas" },
+  ],
+  planejamento: [
+    { href: "planejamento.html", ic: "◇", nome: "Planejamento" },
+    { href: "emprestimos.html", ic: "⇄", nome: "Empréstimos" },
+  ],
+  entradas: [
+    { href: "entradas.html", ic: "↑", nome: "Entradas" },
+    { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
+  ],
+};
+
+/** Desenha o seletor do grupo em `alvo` e devolve a página que o menu marca. */
+function montarAlternador(grupo, atual, alvo = document.getElementById("alternador")) {
+  const telas = GRUPOS_TELAS[grupo] || [];
+  if (alvo) {
+    alvo.className = "alternador";
+    alvo.setAttribute("role", "tablist");
+    alvo.innerHTML = telas.map(t => `
+      <a href="${t.href}" role="tab" aria-selected="${t.href === atual}" class="${t.href === atual ? "ativo" : ""}">
+        <span class="ic" aria-hidden="true">${t.ic}</span>${esc(t.nome)}</a>`).join("");
+  }
+  return telas[0]?.href || atual;
 }
 
 /* ------------------------------------------------------------- estados */

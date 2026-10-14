@@ -1,0 +1,54 @@
+/* Visual minimalista compartilhado (nasceu no Planejamento).
+
+   Cada card: título pequeno e cinza, uma linha de legenda com bolinha de cor
+   e os números, o gráfico sem eixo nem grade, uma frase de rodapé. Detalhe
+   só no mouse. Classes com prefixo v- para não colidir com as das telas.
+
+   Gráficos: ver graficos.js (vLinhas, vBarras, vListaBarras). */
+:root { --v-verde:#3fbf7f; --v-azul:#4a95ea; --v-laranja:#e8954a; --v-roxo:#9085e9; }
+
+.v-cartao { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; }
+.v-tit { margin:0; color:var(--text-3); font-size:13px; font-weight:500; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.v-tit button, .v-tit select { padding:4px 10px; font-size:12px; }
+.v-legenda { display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; margin:6px 0 0; font-size:13px; color:var(--text-2); }
+.v-legenda b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.v-legenda i { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+.v-legenda .v-sep { color:var(--text-3); }
+.v-rodape { margin:10px 0 0; font-size:13px; color:var(--text-3); line-height:1.5; }
+.v-rodape b { color:var(--text-2); font-weight:600; }
+.v-big { font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; margin-top:6px; font-variant-numeric:tabular-nums; }
+.v-big small { font-size:14px; color:var(--text-3); font-weight:500; margin-left:2px; }
+.v-chip { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:4px; background:var(--surface-3); color:var(--text-2); white-space:nowrap; }
+.v-chip.bom { background:rgba(63,191,127,.14); color:var(--verde); }
+.v-chip.ruim { background:rgba(240,106,106,.14); color:var(--vermelho); }
+.v-chip.aviso { background:rgba(232,149,74,.14); color:var(--laranja); }
+.v-subtit { margin:0; font-size:12.5px; color:var(--text-3); }
+
+/* Gráficos: só a linha (ou as barras), sem eixo nem grade. */
+.v-graf { width:100%; display:block; overflow:visible; margin-top:10px; }
+.v-graf .v-linha { fill:none; stroke-width:2; stroke-linecap:round; }
+.v-graf .v-linha.tracejada { stroke-dasharray:5 5; opacity:.7; }
+.v-graf .v-ponto { fill:var(--surface); stroke-width:1.6; }
+.v-graf .v-mes { fill:var(--text-3); font-size:11px; }
+.v-graf .v-mes.sel { fill:var(--text); font-weight:650; }
+.v-graf .v-alvo { fill:var(--text-3); font-size:10.5px; }
+.v-graf .v-valor { fill:var(--text); font-size:11px; font-weight:650; }
+.v-graf .v-hover { fill:transparent; }
+.v-graf .v-marca { stroke:var(--line-forte); stroke-dasharray:2 4; }
+.v-graf .v-col { cursor:default; }
+.v-graf .v-col.clicavel { cursor:pointer; }
+.v-graf .v-col:hover .v-bar { opacity:.85 !important; }
+
+/* Lista em barra de fundo (estilo "gasto por conta"). */
+.v-barras { display:grid; gap:6px; margin-top:10px; }
+.v-barras.rolar { max-height:260px; overflow-y:auto; padding-right:4px; }
+.v-bl { position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:36px; padding:0 12px; border-radius:10px; background:var(--surface-2); overflow:hidden; font-size:13.5px; }
+.v-bl > .v-f { position:absolute; left:0; top:0; bottom:0; border-radius:10px; opacity:.22; }
+.v-bl > span { position:relative; min-width:0; }
+.v-bl .v-nome { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v-bl .v-nome small { color:var(--text-3); margin-left:6px; font-size:12px; }
+.v-bl .v-val { display:flex; align-items:center; gap:8px; flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
+.v-bl .v-val .v-chip { margin:0; vertical-align:0; font-weight:500; }
+.v-bl.clicavel { cursor:pointer; }
+.v-bl.clicavel:hover { background:var(--surface-3); }
+.v-ponto-cor { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; vertical-align:1px; }

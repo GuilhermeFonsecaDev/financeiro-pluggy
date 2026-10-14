@@ -115,6 +115,7 @@ mark { background:rgba(74,149,234,.24); color:inherit; border-radius:3px; paddin
 <nav class="nav"></nav>
 
 <main class="container">
+  <nav id="alternador" aria-label="Entradas ou regras"></nav>
   <header class="topo">
     <div>
       <h1>Entradas</h1>
@@ -638,7 +639,7 @@ function ligar() {
 }
 
 (async function iniciar() {
-  montarNav("entradas.html");
+  montarNav(montarAlternador("entradas", "entradas.html"));
   const inicial = new URLSearchParams(location.search);
   if (ABAS.some(a => a.id === inicial.get("aba"))) aba = inicial.get("aba");
   busca = inicial.get("q") || "";

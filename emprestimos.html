@@ -50,6 +50,7 @@
 <nav class="nav"></nav>
 
 <main class="container">
+  <nav id="alternador" aria-label="Planejamento ou empréstimos"></nav>
   <header class="topo">
     <h1>Dinheiro emprestado</h1>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -405,7 +406,7 @@ function ligar() {
 /* --------------------------------------------------------------- carga */
 
 (async function iniciar() {
-  montarNav("emprestimos.html");
+  montarNav(montarAlternador("planejamento", "emprestimos.html"));
   ligar();
   try {
     DADOS = await pedir("/emprestimos");

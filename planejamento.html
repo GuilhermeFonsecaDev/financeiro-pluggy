@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Planejamento</title>
+<link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="carteira.css" />
+<style>
+/* Planejamento olha para a frente; o histórico fica na Visão Geral.
+   Visual minimalista: título pequeno, uma linha de legenda com os números,
+   gráfico sem eixo nem grade, uma frase de rodapé. Detalhe só no mouse. */
+:root { --pl-verde:#3fbf7f; --pl-azul:#4a95ea; }
+.pl { display:grid; gap:14px; }
+.pl-linha { display:grid; gap:14px; }
+.pl-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.pl-meio { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); }
+@media (max-width:1100px) { .pl-3, .pl-meio { grid-template-columns:minmax(0,1fr); } }
+.cartao { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; }
+.tit { margin:0; color:var(--text-3); font-size:13px; font-weight:500; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.tit button { padding:4px 10px; font-size:12px; }
+.legenda { display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; margin:6px 0 0; font-size:13px; color:var(--text-2); }
+.legenda b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.legenda i { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+.legenda .sep { color:var(--text-3); }
+.rodape { margin:10px 0 0; font-size:13px; color:var(--text-3); line-height:1.5; }
+.rodape b { color:var(--text-2); font-weight:600; }
+.big { font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; margin-top:6px; font-variant-numeric:tabular-nums; }
+.pl-chip { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:4px; background:var(--surface-3); color:var(--text-2); }
+.pl-chip.bom { background:rgba(63,191,127,.14); color:var(--verde); }
+.pl-chip.ruim { background:rgba(240,106,106,.14); color:var(--vermelho); }
+.ruim { color:var(--vermelho); }
+.pl-avisos { color:var(--laranja); font-size:13px; margin:0; }
+
+/* Gráficos: só a linha (ou as barras), sem eixo nem grade. */
+.graf { width:100%; display:block; overflow:visible; margin-top:10px; }
+.graf .linha { fill:none; stroke-width:2; stroke-linecap:round; }
+.graf .linha.tracejada { stroke-dasharray:5 5; opacity:.7; }
+.graf .fim { fill:var(--surface); stroke-width:1.6; }
+.graf .eixo-m { fill:var(--text-3); font-size:11px; }
+.graf .alvo { fill:var(--text-3); font-size:10.5px; }
+.graf .hover { fill:transparent; }
+.graf .marca { stroke:var(--line-forte); stroke-dasharray:2 4; }
+.graf .pbar { transition:opacity .15s; }
+.graf .col { cursor:pointer; }
+.graf .col:hover .pbar { opacity:.85 !important; }
+
+/* Lista em barra de fundo (estilo "gasto por conta"). */
+.barras { display:grid; gap:6px; margin-top:10px; }
+.bl { position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:36px; padding:0 12px; border-radius:10px; background:var(--surface-2); overflow:hidden; font-size:13.5px; }
+.bl > .f { position:absolute; left:0; top:0; bottom:0; border-radius:10px; opacity:.22; }
+.bl > span { position:relative; min-width:0; }
+.bl .nome { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bl .nome small { color:var(--text-3); margin-left:6px; font-size:12px; }
+.bl .val { display:flex; align-items:center; gap:8px; flex:none; font-weight:600; font-variant-numeric:tabular-nums; }
+.bl .val .pl-chip { margin:0; vertical-align:0; font-weight:500; }
+.bl .icone { width:24px; height:24px; font-size:13px; }
+.bl .nome .prog { display:flex; align-items:center; gap:2px; margin-top:4px; }
+.bl .nome .prog i { width:6px; height:6px; border-radius:2px; background:var(--surface-3); }
+.bl .nome .prog i.pago { background:var(--text-3); opacity:.6; }
+.bl .nome .prog small { margin-left:6px; }
+.pl-ponto { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; vertical-align:1px; }
+#parcLista .bl { padding:8px 12px; }
+.barras.rolar { max-height:252px; overflow-y:auto; padding-right:4px; }
+
+/* Posso comprar? */
+.compra-campos { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:8px; margin-top:12px; }
+.compra-campos input, .compra-campos select { width:100%; font-variant-numeric:tabular-nums; }
+.veredito { margin:12px 0 0; font-size:14px; color:var(--text-2); line-height:1.5; }
+.veredito b { color:var(--text); }
+.veredito i { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:1px; }
+.ese { width:110px; text-align:right; padding:3px 8px; font-size:13px; }
+
+/* Parcelas */
+.parc-2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; margin-top:12px; }
+@media (max-width:900px) { .parc-2 { grid-template-columns:minmax(0,1fr); } }
+.subtit { margin:0; font-size:12.5px; color:var(--text-3); }
+
+/* Modal de meta */
+.pl-nome-meta { display:grid; grid-template-columns:72px minmax(0,1fr); gap:10px; }
+.emoji-campo { text-align:center; font-size:20px; padding:4px; }
+.emojis { display:flex; flex-wrap:wrap; gap:4px; margin-top:-4px; }
+.emojis button { padding:3px 6px; font-size:17px; line-height:1; background:transparent; border-color:transparent; }
+.emojis button:hover { background:var(--surface-3); }
+.pl-tipo { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+</style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<main class="container">
+  <nav id="alternador" aria-label="Planejamento ou empréstimos"></nav>
+  <header class="topo">
+    <div><h1>Planejamento</h1></div>
+    <div class="acoes-topo"><span class="estado" id="estado"></span>
+      <button type="button" id="btnPeriodo" data-abre-pop aria-haspopup="menu" title="Quantos meses à frente os gráficos mostram">Próximos 6 meses ▾</button></div>
+  </header>
+
+  <div class="pl">
+    <p class="pl-avisos" id="avisos" hidden></p>
+
+    <section class="pl-linha pl-3">
+      <article class="cartao" id="cTeto"><p class="tit" id="kTetoRot">Livre para gastar</p>
+        <div class="big" id="kTeto">—</div><p class="rodape" id="kTetoApoio"></p></article>
+      <article class="cartao" id="cAporte"><p class="tit">Aporte no seu ritmo</p>
+        <div class="big" id="kAporte">—</div><p class="rodape" id="kAporteApoio"></p></article>
+      <article class="cartao" id="cComp"><p class="tit">Renda já comprometida</p>
+        <div class="big" id="kComp">—</div><p class="rodape" id="kCompApoio"></p></article>
+    </section>
+
+    <section class="cartao" aria-labelledby="fluxoTit">
+      <p class="tit" id="fluxoTit">Aporte previsto</p>
+      <p class="legenda" id="fluxoLeg"></p>
+      <svg class="graf" id="fluxo" height="130" role="img" aria-label="Aporte previsto nos próximos 6 meses"></svg>
+      <p class="rodape" id="fluxoFrase"></p>
+    </section>
+
+    <section class="pl-linha pl-meio">
+      <article class="cartao" aria-labelledby="projTit">
+        <p class="tit" id="projTit">Para onde o seu ritmo leva</p>
+        <p class="legenda" id="marcos"></p>
+        <svg class="graf" id="grafico" height="150" role="img" aria-label="Projeção do patrimônio"></svg>
+        <p class="rodape">E se eu aportar mais <input class="ese" id="extra" inputmode="decimal" autocomplete="off" placeholder="0,00" /> por mês? <span id="eseTxt"></span></p>
+      </article>
+
+      <article class="cartao" aria-labelledby="compraTit">
+        <p class="tit" id="compraTit">Posso comprar?</p>
+        <div class="compra-campos">
+          <input id="cValor" inputmode="decimal" autocomplete="off" placeholder="Valor da compra" aria-label="Valor da compra" />
+          <select id="cParcelas" aria-label="Pagamento">
+            <option value="1">À vista</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+            <option value="5">5x</option><option value="6">6x</option><option value="10">10x</option><option value="12">12x</option>
+            <option value="18">18x</option><option value="24">24x</option></select>
+        </div>
+        <div id="compra"><p class="rodape">Digite um valor para ver quanto a compra tira dos seus aportes e quanto atrasa o próximo marco.</p></div>
+      </article>
+    </section>
+
+    <section class="cartao" aria-labelledby="parcTit" id="secParcelas">
+      <p class="tit" id="parcTit">Parcelas de cartão</p>
+      <div class="big" id="parcTotal">—</div>
+      <svg class="graf" id="parcGraf" height="120" role="img" aria-label="Parcelas por mês"></svg>
+      <div class="parc-2">
+        <div><p class="subtit" id="parcCartTit">Por cartão</p><div class="barras" id="parcCartoes"></div></div>
+        <div><p class="subtit" id="parcMesTit">Parcelas do mês</p><div class="barras rolar" id="parcLista"></div></div>
+      </div>
+      <p class="rodape" id="parcFrase"></p>
+    </section>
+
+    <section class="cartao" aria-labelledby="metasTit">
+      <p class="tit"><span id="metasTit">Metas</span><button class="sutil" id="btnMeta">+ Nova meta</button></p>
+      <p class="legenda" id="plano" hidden></p>
+      <div class="barras" id="metas"></div>
+    </section>
+  </div>
+</main>
+
+<div class="pop" id="popPeriodo" hidden style="min-width:180px"><div class="pop-lista">
+  <button class="pop-item" data-periodo="3">3 meses</button><button class="pop-item" data-periodo="6">6 meses</button>
+  <button class="pop-item" data-periodo="12">12 meses</button><button class="pop-item" data-periodo="18">18 meses</button>
+  <button class="pop-item" data-periodo="24">24 meses</button></div></div>
+<div class="pop" id="plMenu" hidden style="min-width:200px"><div class="pop-lista" id="plMenuLista"></div></div>
+
+<div class="modal-fundo" id="modalMeta" hidden>
+  <div class="modal cadastro-modal" role="dialog" aria-labelledby="metaTitulo">
+    <header class="modal-tit"><h2 id="metaTitulo">Nova meta</h2><button class="icone" data-fecha aria-label="Fechar">×</button></header>
+    <div style="display:grid;gap:12px">
+      <div class="pl-nome-meta">
+        <div class="cadastro-campo"><label for="metaEmoji">Emoji</label><input id="metaEmoji" class="emoji-campo" maxlength="8" placeholder="✈️" autocomplete="off" /></div>
+        <div class="cadastro-campo"><label for="metaNome">Nome</label><input id="metaNome" maxlength="60" placeholder="Viagem de fim de ano" /></div>
+      </div>
+      <div class="emojis" id="emojis" aria-label="Sugestões de emoji"></div>
+      <div class="pl-tipo">
+        <div class="cadastro-campo"><label for="metaAlvo">Valor da meta</label><input id="metaAlvo" inputmode="decimal" placeholder="20.000,00" /></div>
+        <div class="cadastro-campo"><label for="metaPrazo">Prazo <small>(opcional)</small></label><input id="metaPrazo" type="month" /></div>
+      </div>
+      <div class="cadastro-campo"><label for="metaTipo">O progresso vem de</label>
+        <select id="metaTipo">
+          <option value="carteira">Carteira toda (saldo líquido)</option>
+          <option value="liquidez">Investimentos com resgate em até 30 dias</option>
+          <option value="aba">Uma aba da Carteira</option>
+          <option value="cdb">Um grupo de CDBs</option>
+          <option value="manual">Valor que eu informo</option>
+        </select></div>
+      <div class="cadastro-campo" id="campoRef" hidden><label for="metaRef" id="metaRefRotulo">Aba</label><select id="metaRef"></select></div>
+      <div class="cadastro-campo" id="campoManual" hidden><label for="metaManual">Quanto já tenho</label><input id="metaManual" inputmode="decimal" placeholder="0,00" /></div>
+    </div>
+    <p class="estado erro" id="metaErro"></p>
+    <footer class="modal-rodape"><button class="primario" id="metaSalvar">Salvar</button></footer>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="planejamento.js"></script>
+</body>
+</html>

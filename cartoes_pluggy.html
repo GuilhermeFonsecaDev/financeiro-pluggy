@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Cartões Pluggy — Open Finance</title>
 <link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="visual.css" />
 <style>
 /* --- identificacao de cartoes ------------------------------------------- */
 .topo { flex-wrap:wrap; }
@@ -162,9 +163,10 @@ tbody tr { cursor:pointer; }
 <body>
 <nav class="nav"></nav>
 <main class="container">
+  <nav id="alternador" aria-label="Cartões ou contas"></nav>
   <header class="topo">
     <div>
-      <h1>Cartões Pluggy</h1>
+      <h1>Cartões</h1>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div class="anos" id="anos" role="group" aria-label="Ano"></div>
@@ -178,7 +180,8 @@ tbody tr { cursor:pointer; }
 
   <section class="carteira" id="carteira" aria-label="Cartões e a fatura do mês"></section>
 
-  <section class="painel" style="padding:0;overflow:hidden">
+  <section class="v-cartao" style="padding:18px 0 0;overflow:hidden">
+    <h2 class="v-tit" style="padding:0 20px 10px">Faturas por cartão e mês</h2>
     <div class="tabela-wrap grade-cartoes" tabindex="0" aria-label="Faturas dos cartões; deslize para ver todas as colunas">
       <table aria-label="Gastos por cartão e mês vindos do Open Finance">
         <thead id="tableHead"></thead>
@@ -188,24 +191,15 @@ tbody tr { cursor:pointer; }
   </section>
 
   <div class="duo">
-    <section class="painel">
-      <div class="painel-tit">
-        <div>
-          <h2>Mês a mês</h2>
-          <div class="sub">clique num mês para ver a composição · translúcido indica parcelas a lançar</div>
-        </div>
-      </div>
-      <div class="ano-empilhado" id="anoEmpilhado"></div>
-      <div class="legenda-ano" id="legendaAno"></div>
+    <section class="v-cartao">
+      <h2 class="v-tit">Mês a mês</h2>
+      <div class="v-legenda" id="legendaAno"></div>
+      <div id="anoEmpilhado"><svg class="v-graf" id="grafAno" height="170"></svg></div>
+      <p class="v-rodape" id="rodapeAno"></p>
     </section>
 
-    <section class="painel">
-      <div class="painel-tit">
-        <div>
-          <h2>Composição</h2>
-          <div class="sub" id="compSub">—</div>
-        </div>
-      </div>
+    <section class="v-cartao">
+      <h2 class="v-tit"><span>Composição</span><span id="compSub">—</span></h2>
       <div id="composicao"></div>
     </section>
   </div>
@@ -231,6 +225,7 @@ tbody tr { cursor:pointer; }
 </div>
 
 <script src="app.js"></script>
+<script src="graficos.js"></script>
 <script>
 // fmtBRL, esc, pedir e montarNav vêm do app.js; lá os meses se chamam MESES.
 const MONTHS = MESES;
@@ -357,35 +352,34 @@ function renderCarteira() {
 
 function renderAnoEmpilhado() {
   const lista = cartoes();
-  const alvo = document.getElementById("anoEmpilhado");
+  const svg = document.getElementById("grafAno");
   const legenda = document.getElementById("legendaAno");
-  if (!lista.length) { alvo.innerHTML = ""; legenda.innerHTML = ""; return; }
+  const rodape = document.getElementById("rodapeAno");
+  if (!lista.length) { svg.innerHTML = ""; legenda.innerHTML = ""; rodape.textContent = ""; return; }
 
-  // Uma escala para os doze meses: a altura de um mes e comparavel a do outro.
-  const teto = Math.max(1, ...MONTHS.map((_, i) => totalMes(i)));
-
-  alvo.innerHTML = MONTHS.map((mes, indice) => {
-    const segmentos = lista.map(cartao => {
+  // Barras empilhadas pela cor de cada cartao; parcelas a lancar ficam mais apagadas.
+  const itens = MONTHS.map((mes, indice) => ({
+    rotulo: mes.slice(0, 3).toLowerCase(),
+    valor: totalMes(indice),
+    dica: `${mes}: ${fmtBRL(totalMes(indice))}`,
+    partes: lista.map(cartao => {
       const valor = valorMes(cartao.id, indice);
-      if (valor <= 0) return "";
       const origem = origemMes(cartao.id, indice);
       const futura = origem === "projecao" || origem === "aberta_projecao";
-      return `<span class="seg${futura ? " futura" : ""}"
-        style="height:${(valor / teto * 100).toFixed(2)}%;background:${esc(corInstrumento(cartao))}"
-        title="${esc(nomeInstrumento(cartao))}: ${fmtBRL(valor)}"></span>`;
-    }).reverse().join("");
-    return `
-      <button type="button" class="mes-col" data-mes="${indice}"
-              aria-pressed="${indice === mesSelecionado}"
-              title="${esc(mes)}: ${fmtBRL(totalMes(indice))}">
-        <span class="pilha">${segmentos}</span>
-        <span class="rotm">${esc(mes.slice(0, 3).toLowerCase())}</span>
-      </button>`;
-  }).join("");
+      const cor = corInstrumento(cartao);
+      return { valor, nome: nomeInstrumento(cartao),
+        cor: futura ? `color-mix(in srgb, ${cor} 45%, transparent)` : cor };
+    }).filter(p => p.valor > 0),
+  }));
+  vBarras(svg, itens, { destaque: mesSelecionado, clicavel: true, valorNoTopo: fmtBRL });
 
-  legenda.innerHTML = lista.map(cartao =>
-    `<span><i style="background:${esc(corInstrumento(cartao))}"></i>${esc(nomeInstrumento(cartao))}</span>`
-  ).join("");
+  const totalAno = itens.reduce((s, i) => s + i.valor, 0);
+  const comValor = itens.filter(i => i.valor > 0).length || 1;
+  legenda.innerHTML = `<span>No ano <b>${fmtBRL(totalAno)}</b></span><span class="v-sep">·</span>
+    <span>Média <b>${fmtBRL(totalAno / comValor)}</b></span><span class="v-sep">·</span>
+    <span>${esc(MONTHS[mesSelecionado])} <b>${fmtBRL(itens[mesSelecionado].valor)}</b></span>` +
+    lista.map(c => `<span><i style="background:${esc(corInstrumento(c))}"></i>${esc(nomeInstrumento(c))}</span>`).join("");
+  rodape.textContent = "Clique num mês para ver a composição; barras mais claras são parcelas ainda a lançar.";
 }
 
 function renderComposicao() {
@@ -396,22 +390,15 @@ function renderComposicao() {
   if (!lista.length) { alvo.innerHTML = ""; return; }
 
   const total = totalMes(mesSelecionado);
-  const fatias = lista
+  const fatias = `<div class="v-barras">${vListaBarras(lista
     .map(c => ({ cartao: c, valor: valorMes(c.id, mesSelecionado) }))
     .sort((a, b) => b.valor - a.valor)
     .map(({ cartao, valor }) => {
-      const pct = total > 0 ? valor / total * 100 : 0;
-      return `
-      <div class="comp-linha">
-        <div class="comp-topo">
-          <b>${esc(nomeInstrumento(cartao))}</b>
-          <span>${pct.toFixed(0)}% \u00b7 ${fmtBRL(valor)}</span>
-        </div>
-        <div class="trilha" style="--faixa:${esc(corInstrumento(cartao))}">
-          <i style="width:${pct.toFixed(1)}%"></i>
-        </div>
-      </div>`;
-    }).join("");
+      const fracao = total > 0 ? valor / total : 0;
+      const cor = corInstrumento(cartao);
+      return { nome: nomeInstrumento(cartao), valor: fmtBRL(valor), chip: `${(fracao * 100).toFixed(0)}%`,
+        fracao, cor, ponto: cor, dica: `${nomeInstrumento(cartao)}: ${fmtBRL(valor)}` };
+    }))}</div>`;
 
   // Dentro de uma tag, quanto foi de cada cartao. O payload traz a serie por
   // conta ao lado da consolidada, entao isso nao custa requisicao nova.
@@ -573,8 +560,8 @@ function ligarEventos() {
     recarregar();
   });
   document.getElementById("anoEmpilhado").addEventListener("click", event => {
-    const botao = event.target.closest("button[data-mes]");
-    if (botao) selecionarMes(Number(botao.dataset.mes));
+    const barra = event.target.closest("[data-v-i]");
+    if (barra) selecionarMes(Number(barra.dataset.vI));
   });
   document.getElementById("tableBody").addEventListener("click", event => {
     const linha = event.target.closest("tr[data-mes]");
@@ -641,7 +628,7 @@ async function salvarIdent() {
 }
 
 (function iniciar() {
-  montarNav("cartoes_pluggy.html");
+  montarNav(montarAlternador("cartoes", "cartoes_pluggy.html"));
   el("btnIdentificar").addEventListener("click", abrirIdent);
   el("btnFecharIdent").addEventListener("click", () => { el("modalCartoes").hidden = true; });
   el("btnCancelarIdent").addEventListener("click", () => { el("modalCartoes").hidden = true; });

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Transações</title>
 <link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="visual.css" />
 <style>
 /* Só o que é específico desta tela. O resto vem do tema. */
 .filtros-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -54,11 +55,9 @@
 .mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-2); }
 .mes-evolucao.ativo { border-color: rgba(74,149,234,.55); background: rgba(74,149,234,.09); }
 .mes-evolucao.atual:not(.ativo) { border-color: rgba(74,149,234,.22); }
-.mes-evolucao.futuro { border-style: dashed; opacity: .72; }
 /* Mes com entradas projetadas: mesmo desenho normal, so um aviso no canto --
    o numero e uma estimativa, nao esconde isso mas tambem nao grita. */
-.mes-evolucao.estimado { border-style: dashed; }
-.mes-evolucao .mes-valor.estimado-valor::before { content: "≈ "; opacity: .7; font-weight: 500; }
+/* Valor estimado sem marca: a linha tracejada já indica previsão (dica no mouse). */
 .evolucao-stat.com-nota { flex-direction: column; align-items: flex-start; gap: 1px; }
 .evolucao-stat.com-nota > span:first-child { display: flex; gap: 6px; align-items: center; }
 .estimativa-nota { font-size: 10.5px; font-weight: 450; color: var(--text-3); }
@@ -144,6 +143,58 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 /* Filtros, ordenar e remover filtros: um grupo só, no início da barra. */
 .barra-icones { display: inline-flex; gap: 6px; flex: none; }
 </style>
+<style>
+/* Visual minimalista (visual.css): a tira de meses perde as caixas pesadas,
+   a lista agrupa por dia e as categorias viram barras de fundo. */
+.tx-grade { grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); align-items: start; }
+@media (max-width:1100px) { .tx-grade { grid-template-columns: minmax(0,1fr); } }
+.evolucao-painel { margin-bottom: 14px; padding: 16px 18px 10px; }
+.evolucao-painel .v-legenda { margin-bottom: 8px; }
+/* Cada mês continua um quadro, no estilo dos cards: fundo suave, cantos
+   12px, sem sombra. O escolhido ganha a borda azul. */
+.mes-evolucao { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; color: var(--text-3); }
+.mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-3); }
+.mes-evolucao.ativo { border-color: var(--azul); background: var(--surface-3); color: var(--text); }
+.mes-evolucao.atual:not(.ativo) .mes-nome { color: var(--text); font-weight: 600; }
+/* Meses seguintes: mesmo quadro e mesma cor; só a linha muda (ver .previsto). */
+.evolucao-svg path.previsto { stroke: var(--text-3); stroke-dasharray: 5 5; }
+.evolucao-svg circle.previsto { stroke: var(--text-3); }
+.mes-evolucao .mes-valor { font-size: 12.5px; font-weight: 600; }
+.mes-evolucao .mes-valor.positivo { color: var(--verde); }
+.mes-evolucao .mes-valor.negativo { color: var(--vermelho); }
+.evolucao-svg path { stroke-width: 2; }
+.evolucao-svg circle { stroke-width: 1.6; }
+.evolucao-svg circle.sel { stroke-width: 2.2; }
+
+/* Lançamentos agrupados por dia. */
+#linhas td { border-bottom: 0; padding-top: 7px; padding-bottom: 7px; vertical-align: middle; }
+#linhas tr.dia-linha td { padding: 14px 0 4px; }
+/* Dia, lançamentos e o título do card começam na mesma borda. */
+#linhas tr[data-tx] > td:first-child { padding-left: 0; }
+#linhas tr[data-tx] > td:last-child { padding-right: 0; }
+#linhas tr.dia-linha:first-child td { padding-top: 2px; }
+.dia-cab { display: flex; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 12px; font-weight: 550; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+.dia-cab b { font-weight: 550; font-variant-numeric: tabular-nums; }
+.tx-ic { width: 26px; height: 26px; min-height: 26px; padding: 0; border: 0; border-radius: 7px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; cursor: pointer; }
+.tx-ic.proj { cursor: default; opacity: .7; }
+.tx-ic.manual { box-shadow: inset 0 0 0 1px rgba(74,149,234,.45); }
+.tx-ic:hover:not(.proj) { background: var(--surface-3); }
+.tx-ic .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0; }
+#linhas .desc { font-weight: 600; font-size: 13.5px; }
+#linhas .desc small { font-size: 12px; margin-top: 2px; }
+#linhas .num { font-weight: 600; white-space: nowrap; }
+#linhas .num.negativo { color: var(--text); }
+#linhas .num.positivo { color: var(--verde); }
+
+/* Categorias em barras de fundo: as classes antigas ficam pro clique. */
+.cat-lista, .cat-grupo { gap: 6px; }
+.cat-linha.v-bl { margin: 0; padding: 0 12px; display: flex; }
+.cat-linha.v-bl:hover { background: var(--surface-3); }
+.cat-linha.v-bl.sel { box-shadow: inset 0 0 0 1px rgba(74,149,234,.55); }
+.cat-linha.v-bl.primeiro-filho { border-top: 0; margin-top: 2px; padding-top: 0; }
+.cat-linha.v-bl.filho { min-height: 32px; margin-left: 14px; font-size: 12.5px; }
+.cat-linha.v-bl .v-nome { display: flex; align-items: center; gap: 7px; }
+</style>
 </head>
 <body>
 <nav class="nav"></nav>
@@ -185,13 +236,11 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
     <span class="contador" id="contador">—</span>
   </div>
 
-  <section class="painel evolucao-painel" id="metricas"></section>
+  <section class="v-cartao evolucao-painel" id="metricas"></section>
 
-  <section class="grid grid-2-1">
-    <article class="painel">
-      <div class="painel-tit">
-        <h2>Lançamentos</h2>
-      </div>
+  <section class="grid tx-grade">
+    <article class="v-cartao">
+      <h2 class="v-tit">Lançamentos</h2>
       <div class="tabela-wrap">
         <table>
           <tbody id="linhas"></tbody>
@@ -203,11 +252,8 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
       </div>
     </article>
 
-    <article class="painel">
-      <div class="painel-tit">
-        <h2>Gastos por categoria</h2>
-        <span class="muted" style="font-size:12px">Filtro atual</span>
-      </div>
+    <article class="v-cartao">
+      <h2 class="v-tit">Gastos por categoria <span style="font-size:12px">filtro atual</span></h2>
       <div id="categorias"></div>
     </article>
   </section>
@@ -341,6 +387,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 </div>
 
 <script src="app.js"></script>
+<script src="graficos.js"></script>
 <script>
 const PAGE = 60;
 
@@ -472,18 +519,15 @@ function marcaCategoria(cat, tamanho = 13) {
     : `<span class="ponto" style="background:${esc(cat.cor || "#9ba1ab")}"></span>`;
 }
 
+/* O ícone quadradinho da categoria é o próprio botão de recategorizar:
+   o nome dela desce pra linha de baixo, junto com a conta. */
 function chipCategoria(tx) {
   if (tx.projetada) {
-    return `<span class="chip" style="opacity:.7;cursor:default" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">
-      ${marcaCategoria(tx.categoria)}${esc(tx.categoria.nome)}
-    </span>`;
+    return `<span class="tx-ic proj" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">${marcaCategoria(tx.categoria)}</span>`;
   }
   const manual = tx.origemCategorizacao === "manual";
-  const dica = `Original: ${tx.categoriaOriginal || "(vazia)"} · origem: ${tx.origemCategorizacao}`;
-  return `<button class="chip" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}"
-            style="${manual ? "border-color:rgba(74,149,234,.45)" : ""}">
-    ${marcaCategoria(tx.categoria)}${esc(tx.categoria.nome)}
-  </button>`;
+  const dica = `${tx.categoria.nome} · original: ${tx.categoriaOriginal || "(vazia)"} · origem: ${tx.origemCategorizacao} · clique para trocar`;
+  return `<button class="tx-ic ${manual ? "manual" : ""}" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}">${marcaCategoria(tx.categoria)}</button>`;
 }
 
 function renderPopCategorias(termo = "") {
@@ -511,8 +555,36 @@ function renderPopCategorias(termo = "") {
 
 /* ------------------------------------------------------------ transações */
 
+/** "Seg, 13 out": cabeçalho curto do grupo do dia. */
+function rotuloDia(iso) {
+  const d = new Date(`${iso}T12:00:00`);
+  if (isNaN(d)) return fmtData(iso);
+  const sem = d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+  const mes = d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${sem.charAt(0).toUpperCase()}${sem.slice(1)}, ${d.getDate()} ${mes}`;
+}
+
+/** Monta a lista inteira a partir de TRANSACOES. Só agrupa por dia quando a
+ *  ordem é por data -- em "maior valor" o dia picotaria a lista à toa. O
+ *  total do dia soma só o que entra nos cálculos. */
+function htmlLista() {
+  const txs = [...TRANSACOES.values()];
+  if (filtros.sort && filtros.sort !== "antiga") return txs.map(linha).join("");
+  const grupos = [];
+  txs.forEach(tx => {
+    const dia = String(tx.data || "").slice(0, 10);
+    if (!grupos.length || grupos[grupos.length - 1].dia !== dia) grupos.push({ dia, itens: [] });
+    grupos[grupos.length - 1].itens.push(tx);
+  });
+  return grupos.map(g => {
+    const total = g.itens.filter(t => t.incluidaNosCalculos).reduce((a, t) => a + Number(t.valorNormalizado || 0), 0);
+    return `<tr class="dia-linha"><td colspan="4"><div class="dia-cab"><span>${esc(rotuloDia(g.dia))}</span><b>${fmtSinal(total)}</b></div></td></tr>`
+      + g.itens.map(linha).join("");
+  }).join("");
+}
+
 function linha(tx) {
-  const det = [];
+  const det = [tx.categoria?.nome, tx.rotuloInstrumento || tx.nomeExibicao || tx.contaNome].filter(Boolean);
   if (tx.parcelaTotal > 1) det.push(`parcela ${tx.parcelaNumero}/${tx.parcelaTotal}`);
   if (!tx.incluidaNosCalculos) det.push(tx.motivoExclusao || "fora dos cálculos");
   if (tx.projetada) det.push(tx.recorrente ? "recorrente previsto" : "parcela projetada");
@@ -523,10 +595,8 @@ function linha(tx) {
       : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
   return `
     <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""}">
-      <td class="data" style="width:62px">${fmtData(tx.data)}</td>
-      <td class="desc">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
-      <td style="width:1%">${chipCategoria(tx)}</td>
-      <td class="conta-tag" style="width:1%" title="${esc([tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.rotuloInstrumento || tx.nomeExibicao || tx.contaNome)}</td>
+      <td style="width:34px">${chipCategoria(tx)}</td>
+      <td class="desc" title="${esc([fmtData(tx.data), tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
       <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
       <td style="width:34px">${acoes}</td>
     </tr>`;
@@ -584,7 +654,7 @@ function observarEvolucao() {
   observadorEvolucao.observe(scroll.firstElementChild);
 }
 
-function renderMetricas(r, serie = []) {
+function renderMetricas(r, serie = [], porCategoria = []) {
   const mesAtual = new Date().toISOString().slice(0, 7);
   const mapa = new Map(serie.map(i => [i.mes, i]));
   const ano = String(MES_ATUAL || new Date().getFullYear()).slice(0, 4);
@@ -604,10 +674,30 @@ function renderMetricas(r, serie = []) {
   const pontos = itens.map((i, indice) => {
     const x = indice * passo + 56;
     const y = (alturaSvg - 8) - ((Number(i.resultado || 0) - minimo) / amplitude * (alturaSvg - 16));
-    return { x, y, temDados: !!(i.quantidade || i.entradas || i.saidas) };
+    return { x, y, temDados: !!(i.quantidade || i.entradas || i.saidas), futuro: i.mes > mesAtual };
   });
-  const caminho = pontos.filter(p => p.temDados).map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+  // Realizado até o mês atual (linha azul); dali em diante é previsão (linha
+  // cinza tracejada, saindo do ponto do mês atual). Os quadros são iguais.
+  const reais = pontos.filter(p => p.temDados && !p.futuro);
+  const previstos = pontos.filter(p => p.temDados && p.futuro);
+  const caminho = vCurva(reais.map(p => [p.x, p.y]));
+  const caminhoPrevisto = previstos.length
+    ? vCurva([...reais.slice(-1), ...previstos].map(p => [p.x, p.y])) : "";
+  // Resumo do mês escolhido (ou do atual) com o que a carga já trouxe.
+  const selecionados = itens.filter(i => mesNoPeriodo(i.mes));
+  const foco = selecionados.length === 1 ? selecionados[0] : (selecionados.length ? null : mapa.get(mesAtual));
+  const resumo = [];
+  if (foco) {
+    resumo.push(`<span>${esc(labelMes(foco.mes))}</span>`);
+    resumo.push(`<span><i style="background:var(--verde)"></i>entradas <b>${fmtBRLCurto(foco.entradas || 0)}</b></span>`);
+    resumo.push(`<span><i style="background:var(--vermelho)"></i>saídas <b>${fmtBRLCurto(Math.abs(foco.saidas || 0))}</b></span>`);
+    resumo.push(`<span>resultado <b>${fmtBRLCurto(foco.resultado || 0)}</b></span>`);
+    if (foco.quantidade) resumo.push(`<span><b>${foco.quantidade}</b> lançamentos</span>`);
+  }
+  if (porCategoria[0]) resumo.push(`<span>maior categoria <b>${esc(porCategoria[0].categoria)}</b></span>`);
   document.getElementById("metricas").innerHTML = `
+    <h2 class="v-tit">Mês a mês</h2>
+    ${resumo.length ? `<p class="v-legenda">${resumo.join('<span class="v-sep">·</span>')}</p>` : ""}
     <div class="evolucao-trilho">
     <button class="evolucao-seta esquerda" data-rolar="-1" aria-label="Meses anteriores">‹</button>
     <button class="evolucao-seta direita" data-rolar="1" aria-label="Meses seguintes">›</button>
@@ -633,7 +723,10 @@ function renderMetricas(r, serie = []) {
       }).join("")}
       <svg class="evolucao-svg" width="100%" viewBox="0 0 ${largura} ${alturaSvg}" preserveAspectRatio="none" aria-hidden="true">
         <path d="${caminho}"></path>
-        ${pontos.filter(p => p.temDados).map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5"></circle>`).join("")}
+        ${caminhoPrevisto ? `<path class="previsto" d="${caminhoPrevisto}"></path>` : ""}
+        ${pontos.map((p, n) => p.temDados ? (mesNoPeriodo(itens[n].mes)
+          ? `<circle class="sel ${p.futuro ? "previsto" : ""}" cx="${p.x}" cy="${p.y}" r="5"></circle>`
+          : `<circle class="${p.futuro ? "previsto" : ""}" cx="${p.x}" cy="${p.y}" r="3.5"></circle>`) : "").join("")}
       </svg>
     </div></div></div>
     `;
@@ -669,14 +762,17 @@ function marcaLinhaCategoria(i) {
     esc(i.cor || "#9ba1ab")}"></span></span>`;
 }
 
-function linhaCategoria(i, maior, classes = "") {
+/* Linha em barra de fundo (.v-bl): a barra é o tamanho relativo ao maior
+   pai, o chip é a fatia do total. Classes cat-linha/filho seguem pro clique. */
+function linhaCategoria(i, maior, classes = "", soma = 0) {
+  const pct = soma ? Math.round(i.total / soma * 100) : 0;
   return `
-    <div class="cat-linha ${classes}${filtros.category === i.categoriaId ? " sel" : ""}"
+    <div class="v-bl clicavel cat-linha ${classes}${filtros.category === i.categoriaId ? " sel" : ""}"
          data-categoria="${esc(i.categoriaId || "")}"
          title="${i.quantidade} transação(ões) · clique para filtrar">
-      <span class="cat-nome">${marcaLinhaCategoria(i)}${esc(i.categoria)}</span>
-      <span class="cat-valor">${fmtBRLCurto(i.total)}</span>
-      <span class="barra"><span style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor)}"></span></span>
+      <span class="v-f" style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor || "#9ba1ab")}"></span>
+      <span class="v-nome">${marcaLinhaCategoria(i)}${esc(i.categoria)}</span>
+      <span class="v-val">${fmtBRLCurto(i.total)}${soma ? `<span class="v-chip">${pct}%</span>` : ""}</span>
     </div>`;
 }
 
@@ -693,11 +789,12 @@ function renderCategorias(itens) {
   // A regua de todas as barras continua sendo o maior PAI, entao a barra da
   // subcategoria mostra o quanto ela ocupa dentro do guarda-chuva.
   const maior = Math.max(...itens.map(i => i.total));
+  const soma = itens.reduce((a, i) => a + Number(i.total || 0), 0);
   alvo.innerHTML = `<div class="cat-lista">${itens.map(i => {
     const filhos = (i.filhos || []).filter(f => f.total > 0);
-    return `<div class="cat-grupo">${linhaCategoria(i, maior)}${
+    return `<div class="cat-grupo">${linhaCategoria(i, maior, "", soma)}${
       filhos.map((f, n) => linhaCategoria(
-        f, maior, n === 0 ? "filho primeiro-filho" : "filho"
+        f, maior, n === 0 ? "filho primeiro-filho" : "filho", soma
       )).join("")}</div>`;
   }).join("")}</div>`;
 }
@@ -711,14 +808,15 @@ async function carregar({ mais = false } = {}) {
   const corpo = document.getElementById("linhas");
   if (!mais) TRANSACOES.clear();
   p.transacoes.forEach(tx => TRANSACOES.set(tx.id, tx));
-  const html = p.transacoes.map(linha).join("");
-  if (mais) corpo.insertAdjacentHTML("beforeend", html); else corpo.innerHTML = html;
+  // Recria a lista inteira mesmo no "Carregar mais": o grupo do último dia
+  // pode continuar na página seguinte e o total dele precisa somar tudo.
+  corpo.innerHTML = htmlLista();
 
-  renderMetricas(p.resumo, p.evolucaoMensal);
+  renderMetricas(p.resumo, p.evolucaoMensal, p.porCategoria);
   renderCategorias(p.porCategoria);
   renderFiltrosAtivos();
 
-  const n = corpo.querySelectorAll("tr").length;
+  const n = corpo.querySelectorAll("tr[data-tx]").length;
   document.getElementById("contador").textContent = `${n} de ${p.totalFiltrado}`;
   document.getElementById("vazio").innerHTML = p.totalFiltrado
     ? "" : `<div class="vazio">Nenhuma transação com esses filtros.</div>`;

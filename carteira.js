@@ -574,6 +574,19 @@ function fecharCarteira() {
 
 el("btnCarteira").addEventListener("click", abrirCarteira);
 
+/* Vindo do Planejamento: "#calculadora&aporte=1500.00" abre a calculadora
+   com o valor que falta para o aporte planejado do mês. */
+if (location.hash.startsWith("#calculadora")) {
+  const valor = Number(new URLSearchParams(location.hash.slice(1)).get("aporte"));
+  history.replaceState(null, "", location.pathname + location.search);
+  abrirCarteira().then(() => {
+    if (!valor) return;
+    const campo = el("cartAporte");
+    campo.value = valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    campo.dispatchEvent(new Event("input"));
+  });
+}
+
 /* Meus fundos usa os mesmos formulários: cadastro (com conferência do CNPJ)
    e substituição. Eles precisam dos dados da carteira carregados. */
 window.carteiraCadastrar = async perfil => {

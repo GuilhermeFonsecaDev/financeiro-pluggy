@@ -322,7 +322,7 @@
       // médias e a previsão de hábitos. Um controle só, sem dois meses
       // diferentes na mesma tela.
       if (mes !== estado.mes) await carregar(mes);
-      const fixas = await pedir(`/fixas?month=${encodeURIComponent(mes)}`);
+      const fixas = await pedir(`/f2/fixas?month=${encodeURIComponent(mes)}`);
       const novas = SimuladorMes.prepararItens(fixas.itens || [], estado.cartoesPayload);
       estado.itens = estado.itens.concat(novas);
       render();

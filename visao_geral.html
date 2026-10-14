@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Visão geral</title>
 <link rel="stylesheet" href="tema.css" />
+<link rel="stylesheet" href="visual.css" />
 <style>
 .vg-filtros { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
 .vg-filtros input[type="month"] { min-height:34px; }
@@ -20,12 +21,12 @@
 .vg-kpi { grid-column:span 3; }
 @media (max-width:1240px) { .vg-kpi { grid-column:span 6; } }
 @media (max-width:700px) { .vg-kpi { grid-column:span 12; } }
-.vg-kpi { background:var(--surface); border:1px solid var(--line); border-radius:var(--raio-g); padding:14px 16px; }
-.vg-kpi .rot { color:var(--text-3); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
-.vg-kpi .val { margin-top:6px; font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
+.vg-kpi { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+.vg-kpi .rot { color:var(--text-3); font-size:13px; font-weight:500; }
+.vg-kpi .val { margin-top:6px; font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; font-variant-numeric:tabular-nums; }
 .vg-kpi .val.verde { color:var(--verde); }
 .vg-kpi .val.vermelho { color:var(--vermelho); }
-.vg-kpi .pe { margin-top:5px; color:var(--text-3); font-size:12px; line-height:1.55; }
+.vg-kpi .pe { margin-top:8px; color:var(--text-3); font-size:13px; line-height:1.55; }
 .vg-kpi .pe b { font-weight:650; }
 .vg-kpi[data-ir] { cursor:pointer; transition:border-color .15s ease, background .15s ease; }
 .vg-kpi[data-ir]:hover { border-color:var(--line-forte); background:var(--surface-2); }
@@ -44,22 +45,19 @@
    desalinhado, nao a altura dos cards. Aqui tudo divide em 12 colunas e as
    duplas partem sempre no meio. */
 .vg-grade { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; margin-bottom:14px; align-items:stretch; }
-.vg-grade > .painel { display:flex; flex-direction:column; padding:0; }
-.vg-grade > .painel > .mini,
-.vg-grade > .painel > .dist,
-.vg-grade > .painel > .top-lista,
-.vg-grade > .painel > .vg-insights { flex:1 1 auto; align-content:start; }
-/* A rosca e a lista sao um bloco so, de altura menor que o painel vizinho.
-   Ancoradas no topo sobrava um vazio embaixo; centralizadas, a sobra se
-   divide em cima e embaixo e o painel deixa de parecer cortado. */
-.vg-grade > .painel > .dist { align-content:center; }
+.vg-grade { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; margin-bottom:14px; align-items:stretch; }
+/* Cada card no visual minimalista (visual.css): título pequeno, legenda com
+   os números, gráfico sem eixo, uma frase de rodapé. Em coluna para o
+   rodapé descer junto quando o vizinho da dupla é mais alto. */
+.vg-grade > .v-cartao { display:flex; flex-direction:column; }
+.vg-grade > .v-cartao > .v-rodape { margin-top:auto; padding-top:10px; }
+.v-tit .nota { color:var(--text-3); font-size:11.5px; font-weight:400; text-align:right; }
 /* Toda dupla parte exatamente no meio. Uma linha em 8/4 continuava "na
    grade", mas quebrava num x diferente das outras tres e era isso que dava a
    sensacao de tela desencaixada. */
 .c6 { grid-column:span 6; } .c12 { grid-column:span 12; }
-
 /* Sankey "Para onde foi": receita -> despesas/restante -> categoria -> sub. */
-.vg-sankey { padding:10px 18px 16px; position:relative; }
+.vg-sankey { padding:10px 18px 0; margin:0 -18px; position:relative; }
 .vg-sankey svg { display:block; width:100%; overflow:visible; }
 .vg-sankey .lk { fill:none; stroke-opacity:.22; transition:stroke-opacity .12s ease; }
 .vg-sankey .nd rect { rx:3; }
@@ -78,165 +76,30 @@
 
 .painel-topo { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:12px 14px 0; }
 .painel-topo h2 { margin:0; font-size:15px; }
-.painel-topo .nota { color:var(--text-3); font-size:11.5px; text-align:right; }
 
-/* --- gráficos de barra --------------------------------------------------- */
-.vg-graf { display:flex; align-items:flex-end; gap:2px; height:150px; padding:26px 14px 0; flex:0 0 auto; margin-top:auto; }
-.vg-mes { flex:1 1 0; min-width:0; display:flex; align-items:flex-end; justify-content:center; height:100%; border-radius:6px 6px 0 0; position:relative; }
-.vg-mes.dentro { background:var(--azul-suave); }
-.vg-barra { width:60%; max-width:22px; min-height:2px; border-radius:3px 3px 0 0; transition:height .25s ease; }
-.vg-mes.estimado .vg-barra { opacity:.45; }
-/* Barra que passou do teto: topo serrilhado e valor por cima, para a altura
-   truncada não virar mentira. Sem o corte, um mês atípico achata os outros. */
-.vg-barra.estourou { border-radius:0; clip-path:polygon(0 6px,12% 0,25% 6px,38% 0,50% 6px,62% 0,75% 6px,88% 0,100% 6px,100% 100%,0 100%); }
-/* Valor sobre a barra, ancorado no topo DELA (bottom em %), nao no topo do
-   grafico: assim a etiqueta acompanha a altura de cada mes em vez de flutuar
-   solta. Fica fora do fluxo para nao roubar altura da barra. */
-.vg-mes .fora { position:absolute; left:-5px; right:-5px; text-align:center; font-size:9.5px;
-                color:var(--text-3); font-variant-numeric:tabular-nums; pointer-events:none; }
-.vg-mes.dentro .fora { color:var(--text-2); font-weight:650; }
-/* Variante linha: mesma altura e mesmo padding das barras, para os dois
-   paineis da dupla continuarem espelhados. */
-.vg-graf.linha { display:block; padding:16px 14px 0; position:relative; }
-.vg-graf.linha svg { display:block; width:100%; height:100%; overflow:hidden; }
-.vg-ponto { fill:var(--surface); stroke-width:2; }
-.vg-ponto.dentro { fill:var(--laranja); }
-/* Sem faixa de mes selecionado aqui: num grafico de area a faixa vira um
-   bloco solto por cima do desenho. Quem marca o periodo na linha e o ponto
-   cheio e o rotulo em negrito -- o suficiente, sem competir com a curva. */
-/* Balao em HTML por cima do SVG, para nao depender do <title>
-   nativo (que so aparece depois de um segundo parado e sai com a cara do
-   sistema, nao do tema). */
-.linha-guia { position:absolute; top:16px; bottom:0; width:1px; background:var(--line-forte); pointer-events:none; }
-.linha-marca { position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px; border-radius:999px; pointer-events:none; border:2px solid var(--surface); }
-.linha-dica { position:absolute; z-index:3; pointer-events:none; transform:translate(-50%,-100%);
-              background:var(--surface-3); border:1px solid var(--line-forte); border-radius:8px;
-              padding:6px 10px; box-shadow:var(--sombra); white-space:nowrap; font-size:12px; line-height:1.5; }
-.linha-dica .m { color:var(--text-3); font-size:11px; }
-.linha-dica b { font-variant-numeric:tabular-nums; }
-.vg-rotulos { display:flex; gap:2px; padding:6px 14px 14px; }
-.vg-rotulo { flex:1 1 0; min-width:0; text-align:center; color:var(--text-3); font-size:10px; text-transform:capitalize; }
-.vg-rotulo.dentro { color:var(--text-2); font-weight:650; }
-.vg-rotulo small { display:block; font-size:9px; opacity:.7; }
-
-/* --- distribuição -------------------------------------------------------- */
-.dist { display:grid; grid-template-columns:200px minmax(0,1fr); gap:22px; padding:16px 14px 18px; align-items:center; }
-@media (max-width:640px) { .dist { grid-template-columns:minmax(0,1fr); } }
-.dist-rosca { position:relative; }
-.dist-rosca svg { display:block; width:200px; height:200px; margin:0 auto; transform:rotate(-90deg); }
-.dist-centro { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
-.dist-centro .r { color:var(--text-3); font-size:11.5px; }
-.dist-centro .v { font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; }
-/* Uma coluna: em meia largura sobram ~560px para a lista, o bastante para
-   nome, participacao, valor e variacao numa linha confortavel. Espalhar em
-   duas colunas aqui espremeria o nome ate o "..." . */
-.dist-lista { display:grid; gap:10px; align-content:center; }
-.dist-item { display:grid; grid-template-columns:12px minmax(0,1fr) auto auto auto; gap:9px; align-items:center; font-size:13px; }
-.dist-item .pt { width:9px; height:9px; border-radius:3px; }
-.dist-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.dist-item .pc { color:var(--text-3); font-size:11px; font-variant-numeric:tabular-nums; }
-.dist-item .vl { font-variant-numeric:tabular-nums; color:var(--text-2); min-width:70px; text-align:right; }
-.dist-item .dif { font-size:10.5px; font-variant-numeric:tabular-nums; min-width:50px; text-align:right; }
-
-/* --- comparativo por categoria ------------------------------------------- */
-/* Barras horizontais, nao verticais: com 8 categorias de nome comprido, a
-   barra em pe obriga a girar o rotulo ou cortar o nome. Deitada, o nome fica
-   na horizontal e as duas barras da mesma categoria ficam uma sobre a outra,
-   que e a comparacao que interessa. */
-/* Cinco categorias visiveis, o resto rola. A altura e medida no render a
-   partir da 5a linha renderizada (ver renderComparativo) -- um valor fixo em
-   CSS erra assim que a fonte, o gap ou o tamanho do texto mudam, e foi o que
-   aconteceu: 63px de chute deixavam 4 linhas visiveis, nao 5. */
-.cmp { padding:10px 14px 4px; display:grid; gap:12px; align-content:start;
-       overflow-y:auto; scrollbar-gutter:stable; }
-.cmp::-webkit-scrollbar { width:8px; }
-.cmp::-webkit-scrollbar-thumb { background:var(--line-forte); border-radius:99px; }
-.cmp::-webkit-scrollbar-track { background:transparent; }
-.cmp-linha { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 10px; }
-.cmp-nome { display:flex; align-items:center; gap:7px; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cmp-nome .pt { width:8px; height:8px; border-radius:999px; flex:none; }
-.cmp-dif { font-size:11.5px; font-variant-numeric:tabular-nums; }
-.cmp-barras { grid-column:1/-1; display:grid; gap:3px; }
-.cmp-b { display:grid; grid-template-columns:minmax(0,1fr) 62px; gap:8px; align-items:center; }
-.cmp-trilha { height:9px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
-.cmp-trilha span { display:block; height:100%; border-radius:3px; }
-.cmp-v { font-size:11px; font-variant-numeric:tabular-nums; color:var(--text-3); text-align:right; }
-.cmp-b.atual .cmp-v { color:var(--text-2); font-weight:600; }
-.cmp-leg { display:flex; gap:14px; padding:0 14px 12px; color:var(--text-3); font-size:11.5px; }
-.cmp-leg i { width:10px; height:9px; border-radius:3px; display:inline-block; vertical-align:middle; margin-right:6px; background:var(--text-2); }
-/* A legenda mostra a convencao em vez de nomea-la: mesma cor, cheia para o
-   periodo atual e clara para o anterior. */
-.cmp-leg i.clara { opacity:.38; }
-.cmp-rolar { margin-left:auto; opacity:.8; }
-.corta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-/* --- cartões e contas fixas ---------------------------------------------- */
-.mini { padding:10px 14px 14px; display:grid; gap:10px; }
-.mini-linha { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 10px; padding-bottom:9px; border-bottom:1px solid var(--line); }
-.mini-linha:last-child { border-bottom:0; padding-bottom:0; }
-.mini-nome { font-size:13px; font-weight:600; }
-.mini-val { font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums; }
-.mini-sub { grid-column:1/-1; display:flex; justify-content:space-between; gap:8px; color:var(--text-3); font-size:11px; }
-.mini-trilha { grid-column:1/-1; height:5px; border-radius:999px; background:var(--surface-3); overflow:hidden; margin-top:3px; }
-.mini-trilha span { display:block; height:100%; border-radius:999px; }
-
-/* A cor acompanha a identidade do cartão ou da tag em todas as telas. */
-.cartao-linha { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:4px 11px; align-items:center; padding:11px; border-radius:var(--raio); border:1px solid var(--line); background:var(--surface-2); }
-.cartao-selo { grid-row:span 2; width:34px; height:34px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; }
-.cartao-nome { font-size:13px; font-weight:650; letter-spacing:.02em; overflow-wrap:anywhere; }
-.cartao-val { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
-.cartao-sub { grid-column:2/-1; display:flex; justify-content:space-between; gap:8px; color:var(--text-3); font-size:11px; }
-.cartao-trilha { grid-column:2/-1; height:5px; border-radius:999px; background:var(--surface-3); overflow:hidden; margin-top:3px; }
-.cartao-trilha span { display:block; height:100%; border-radius:999px; }
-
-.fx-topo { position:relative; padding-bottom:10px; border-bottom:1px solid var(--line); }
-/* O detalhe do progresso virou dica de hover: em texto fixo ele ocupava duas
-   linhas do painel para dizer o que a propria barra ja mostra. */
-.fx-dica { position:absolute; z-index:3; left:50%; top:calc(100% + 2px); transform:translateX(-50%);
-           display:none; white-space:nowrap; pointer-events:none;
-           background:var(--surface-3); border:1px solid var(--line-forte); border-radius:8px;
-           padding:6px 10px; box-shadow:var(--sombra); font-size:11.5px; color:var(--text-2); }
-.fx-dica b { color:var(--text); font-weight:650; font-variant-numeric:tabular-nums; }
-.fx-topo:hover .fx-dica { display:block; }
-.fx-barra { cursor:default; }
-/* So a lista rola -- a barra de "quanto ja foi pago" fica ancorada no topo,
-   senao a leitura de progresso do mes sumiria ao rolar. */
-.fx-lista { display:grid; gap:0; overflow-y:auto; scrollbar-gutter:stable; padding-right:2px; }
-.fx-lista::-webkit-scrollbar { width:8px; }
-.fx-lista::-webkit-scrollbar-thumb { background:var(--line-forte); border-radius:99px; }
-.fx-lista::-webkit-scrollbar-track { background:transparent; }
-/* O aviso de rolagem saiu daqui: o cabecalho do painel ja diz "N em aberto
-   de M", entao a contagem que faltava ja esta na tela.
-   Uma linha por conta. Com a forma de pagamento fora, o que sobrava na
-   segunda linha era so a etiqueta -- e ela cabe ao lado do nome. Cada item
-   passou de duas linhas para uma, que era o ponto: caber mais em menos. */
-.fx-linha { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); }
-.fx-linha:last-child { border-bottom:0; }
-.fx-nome { display:flex; align-items:baseline; gap:8px; min-width:0; font-size:13px; font-weight:600; }
-.fx-nome em { flex:none; font-style:normal; font-weight:500; font-size:11px; color:var(--text-3); }
-.fx-val { flex:none; font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums; }
-.fx-barra { display:flex; height:9px; border-radius:999px; overflow:hidden; background:var(--surface-3); margin:5px 0 7px; }
-.fx-barra span { display:block; height:100%; }
-
-/* --- maiores gastos ------------------------------------------------------ */
-/* Cinco lancamentos visiveis, o resto rola -- mesma medicao usada no
-   comparativo e nas contas fixas. */
-.top-lista { padding:8px 14px 14px; display:grid; gap:1px; overflow-y:auto; scrollbar-gutter:stable; }
-.top-lista::-webkit-scrollbar { width:8px; }
-.top-lista::-webkit-scrollbar-thumb { background:var(--line-forte); border-radius:99px; }
-.top-lista::-webkit-scrollbar-track { background:transparent; }
-.top-item { display:grid; grid-template-columns:16px minmax(0,1fr) auto; gap:9px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
-.top-item:last-child { border-bottom:0; }
-.top-item .marca { width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
-.top-item .pt { width:8px; height:8px; border-radius:999px; }
+/* --- listas em barra de fundo ------------------------------------------- */
+/* Cinco linhas visiveis, o resto rola. A altura e medida no render a partir
+   da 5a linha renderizada (ver travarCinco) -- um valor fixo em CSS erra
+   assim que a fonte ou o gap mudam. */
+.vg-rola { overflow-y:auto; scrollbar-gutter:stable; padding-right:2px; }
+.vg-rola::-webkit-scrollbar { width:8px; }
+.vg-rola::-webkit-scrollbar-thumb { background:var(--line-forte); border-radius:99px; }
+.vg-rola::-webkit-scrollbar-track { background:transparent; }
 /* Caixa alta: o extrato mistura "cp parc loja online" com "POSTO CENTRAL" --
    uniformizar tira o ruido de leitura da lista. */
-.top-item .d { text-transform:uppercase; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.top-item .s { color:var(--text-3); font-size:11px; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.top-item .v { font-size:13px; font-weight:650; font-variant-numeric:tabular-nums; }
+#top .v-nome { text-transform:uppercase; font-size:12.5px; }
+#top .v-nome small { text-transform:none; }
+
+/* --- contas em aberto ---------------------------------------------------- */
+/* So a lista rola -- a barra de "quanto ja foi pago" fica ancorada no topo,
+   senao a leitura de progresso do mes sumiria ao rolar. O detalhe do
+   progresso fica no title da barra. */
+.fx-barra { display:flex; height:6px; border-radius:999px; overflow:hidden; background:var(--surface-3); margin:12px 0 0; cursor:default; }
+.fx-barra span { display:block; height:100%; }
+.fx-barra span + span { opacity:.55; }
 
 /* --- insights ------------------------------------------------------------ */
-.vg-insights { padding:6px 14px 14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:0 24px; }
+.vg-insights { padding:6px 0 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:0 24px; }
 .vg-ins { display:flex; gap:9px; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--line); }
 .vg-ins .marca { width:6px; height:6px; border-radius:999px; flex:none; background:var(--text-3); }
 .vg-ins.bom .marca { background:var(--verde); }
@@ -245,6 +108,17 @@
 .vg-ins .txt b { color:var(--text); font-weight:650; }
 
 .vazio { padding:22px 10px; color:var(--text-3); font-size:13px; text-align:center; }
+/* Comparativo: duas barras finas por categoria (período e anterior). */
+.vg-cmp { display:grid; gap:5px; padding:10px 12px; border-radius:10px; background:var(--surface-2); }
+.vg-cmp-topo { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13.5px; }
+.vg-cmp-topo .v-nome { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vg-cmp-topo .v-chip { margin:0; vertical-align:0; }
+.vg-cmp-b { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:10px; align-items:center; font-size:12px; font-variant-numeric:tabular-nums; }
+.vg-cmp-b b { text-align:right; font-weight:600; }
+.vg-cmp-b span:last-child { text-align:right; color:var(--text-3); }
+.vg-trilha { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+.vg-trilha i { display:block; height:100%; border-radius:3px; }
+.vg-cmp-b.ant .vg-trilha i { opacity:.35; }
 </style>
 </head>
 <body>
@@ -272,95 +146,74 @@
   <div class="vg-kpis" id="kpis"></div>
 
   <div class="vg-grade">
-    <section class="painel c12">
-      <div class="painel-topo">
-        <h2>Para onde foi</h2>
-        <span class="nota" id="notaSankey"></span>
-      </div>
+    <section class="v-cartao c12">
+      <h2 class="v-tit">Para onde foi <span class="nota" id="notaSankey"></span></h2>
       <div class="vg-sankey" id="sankey"></div>
+      <p class="v-rodape">Da receita para as despesas e daí para cada categoria. Passe o mouse para ver o caminho; clique numa categoria para abrir os lançamentos.</p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Gasto geral mês a mês</h2>
-        <span class="nota">cartões + conta · 12 meses</span>
-      </div>
-      <div class="vg-graf" id="grafGeral"></div>
-      <div class="vg-rotulos" id="rotGeral"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Gasto geral mês a mês <span class="nota">cartões + conta · 12 meses</span></h2>
+      <p class="v-legenda" id="legGeral"></p>
+      <svg class="v-graf" id="grafGeral" height="150" role="img" aria-label="Gasto geral por mês"></svg>
+      <p class="v-rodape" id="rodGeral"></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Contas em aberto</h2>
-        <span class="nota" id="notaFixas"></span>
-      </div>
-      <div class="mini" id="fixas"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Contas em aberto <span class="nota" id="notaFixas"></span></h2>
+      <div id="fixas"></div>
+      <p class="v-rodape" id="rodFixas"></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Distribuição dos gastos</h2>
-        <span class="nota" id="notaCats"></span>
-      </div>
-      <div class="dist" id="dist"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Distribuição dos gastos <span class="nota" id="notaCats"></span></h2>
+      <p class="v-legenda" id="legDist"></p>
+      <div class="v-barras" id="dist"></div>
+      <p class="v-rodape" id="rodDist"></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Comparativo por categoria</h2>
-        <span class="nota" id="notaCmp"></span>
-      </div>
-      <div class="cmp" id="cmp"></div>
-      <div class="cmp-leg">
-        <span><i class="cheia"></i><b id="legCmpAtual"></b></span>
-        <span><i class="clara"></i><b id="legCmpAnt"></b></span>
-        <span class="cmp-rolar" id="cmpRolar"></span>
-      </div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Comparativo por categoria <span class="nota" id="notaCmp"></span></h2>
+      <p class="v-legenda"><span><b id="legCmpAtual"></b></span><span class="v-sep">vs</span><span id="legCmpAnt"></span></p>
+      <div class="v-barras vg-rola" id="cmp"></div>
+      <p class="v-rodape">Barra cheia é o período atual, a clara é o anterior, na mesma escala; a variação fica no selo. <span id="cmpRolar"></span></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Gasto cartões</h2>
-        <span class="nota">fatura por competência · 12 meses</span>
-      </div>
-      <div class="vg-graf" id="grafCartao"></div>
-      <div class="vg-rotulos" id="rotCartao"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Gasto cartões <span class="nota">fatura por competência · 12 meses</span></h2>
+      <p class="v-legenda" id="legCartao"></p>
+      <svg class="v-graf" id="grafCartao" height="150" role="img" aria-label="Fatura dos cartões por mês"></svg>
+      <p class="v-rodape" id="rodCartao"></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Fatura cartões</h2>
-        <span class="nota" id="notaCartoes"></span>
-      </div>
-      <div class="mini" id="cartoes"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Fatura cartões <span class="nota" id="notaCartoes"></span></h2>
+      <div class="v-barras" id="cartoes"></div>
+      <p class="v-rodape">A barra é quanto do limite já foi usado; fica vermelha acima de 80%. Clique no cartão para ver os lançamentos.</p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Evolução carteira de investimentos</h2>
-        <span class="nota">investimentos · saldo mensal reconstruído</span>
-      </div>
-      <div class="vg-graf" id="grafInvest"></div>
-      <div class="vg-rotulos" id="rotInvest"></div>
-      <div class="cmp-leg" id="legInvest"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Evolução carteira de investimentos <span class="nota">investimentos · saldo mensal reconstruído</span></h2>
+      <p class="v-legenda" id="legInvest"></p>
+      <svg class="v-graf" id="grafInvest" height="150" role="img" aria-label="Saldo da carteira por mês"></svg>
+      <p class="v-rodape" id="rodInvest"></p>
     </section>
 
-    <section class="painel c6">
-      <div class="painel-topo">
-        <h2>Maiores gastos</h2>
-        <span class="nota" id="notaTop"></span>
-      </div>
-      <div class="top-lista" id="top"></div>
+    <section class="v-cartao c6">
+      <h2 class="v-tit">Maiores gastos <span class="nota" id="notaTop"></span></h2>
+      <div class="v-barras vg-rola" id="top"></div>
+      <p class="v-rodape">Os lançamentos que mais pesaram no período; data, conta e parcela no mouse.</p>
     </section>
 
-    <section class="painel c12">
-      <div class="painel-topo"><h2>Leituras rápidas</h2></div>
+    <section class="v-cartao c12">
+      <h2 class="v-tit">Leituras rápidas</h2>
       <div class="vg-insights" id="insights"></div>
     </section>
   </div>
 </main>
 
 <script src="app.js"></script>
+<script src="graficos.js"></script>
 <script>
 /* Período e mês ficam guardados no navegador: abrir a Visão Geral de novo
    volta onde você deixou. Sem storage (janela anônima), só começa do zero. */
@@ -425,121 +278,58 @@ function renderKpis() {
       <div class="val ${c.cls || ""}">${c.val}</div><div class="pe">${c.pe}</div></article>`).join("");
 }
 
-/* ----------------------------------------------------------------- barras */
-function barras(alvoGraf, alvoRot, chave, cor) {
-  const totais = D.serie.map(p => p[chave]).sort((a, b) => b - a);
-  // Corta a escala quando o topo passa de 1,8x o segundo: sem isso um único
-  // lançamento atípico achata os outros onze até não dar para comparar nada.
-  const teto = (totais[1] > 0 && totais[0] > totais[1] * 1.8)
-    ? totais[1] * 1.15 : totais[0];
-  const maximo = Math.max(1, teto);
-  el(alvoGraf).innerHTML = D.serie.map(p => {
-    const v = p[chave];
-    const cortou = v > maximo;
-    const h = Math.min(100, Math.max(v > 0 ? 2 : 0, v / maximo * 100)).toFixed(1);
-    return `<div class="vg-mes ${p.noPeriodo ? "dentro" : ""} ${p.estimativa ? "estimado" : ""}"
-                 title="${esc(labelMes(p.mes))}: ${fmtBRL(v)}${p.estimativa ? " (projetado)" : ""}">
-      ${v > 0 ? `<span class="fora" style="bottom:calc(${h}% + 4px)">${fmtBRLCurto(v)}</span>` : ""}
-      <span class="vg-barra ${cortou ? "estourou" : ""}" style="height:${h}%;background:${cor}"></span>
-    </div>`;
-  }).join("");
-  el(alvoRot).innerHTML = D.serie.map((p, i) => {
-    const virou = i === 0 || p.ano !== D.serie[i - 1].ano;
-    return `<div class="vg-rotulo ${p.noPeriodo ? "dentro" : ""}">${esc(p.rotulo)}
-      ${virou ? `<small>${esc(p.ano)}</small>` : ""}</div>`;
-  }).join("");
+/* ------------------------------------------------------------- gráficos */
+// Corta a escala quando o topo passa de 1,8x o segundo: sem isso um único
+// lançamento atípico achata os outros onze até não dar para comparar nada.
+// O valor real continua na dica; só o desenho é cortado.
+function tetoEscala(valores) {
+  const ord = [...valores].sort((a, b) => b - a);
+  return Math.max(1, (ord[1] > 0 && ord[0] > ord[1] * 1.8) ? ord[1] * 1.15 : ord[0] || 0);
 }
+const linhaLeg = (cor, txt) => `<span><i style="background:${cor}"></i>${txt}</span>`;
+const SEP = `<span class="v-sep">·</span>`;
 
-/* Linha, nao barra: dois graficos de barra lado a lado com escalas diferentes
-   se confundem. A forma distingue a serie antes de o rotulo ser lido.
-   Coordenadas em pixel (nao viewBox esticado) para o ponto sair redondo -- por
-   isso o redesenho ao mudar a largura, la embaixo no ResizeObserver. */
-/* Um desenhador para as duas curvas da tela (fatura do cartão e saldo da
-   carteira). Recebe a série pronta em vez de ler `D` direto -- foi o que
-   permitiu reaproveitar o mesmo hover e a mesma régua nas duas. */
-function linhaGrafico(alvoGraf, alvoRot, serie, cor, { zero = true } = {}) {
-  const cont = el(alvoGraf);
-  const W = Math.max(240, Math.round(cont.clientWidth) - 28);
-  const H = 134, base = H - 8, topo = 14;
-  const n = serie.length;
-  if (!n) { cont.innerHTML = `<div class="vazio">Sem histórico.</div>`; return; }
-
-  const vals = serie.map(p => p.v);
-  const ord = [...vals].sort((a, b) => b - a);
-  // Saldo de carteira nunca encosta no zero, então partir de zero espremeria a
-  // curva numa faixa fina no topo. Já o gasto começa do zero de propósito.
-  const piso = zero ? 0 : Math.min(...vals) * 0.97;
-  const teto = (zero && ord[1] > 0 && ord[0] > ord[1] * 1.8) ? ord[1] * 1.15 : ord[0];
-  const faixa = Math.max(1, teto - piso);
-  const px = i => (n === 1 ? W / 2 : (i / (n - 1)) * (W - 12) + 6);
-  const py = v => base - Math.min(1, Math.max(0, (v - piso) / faixa)) * (base - topo);
-
-  const pontos = serie.map((p, i) => ({ ...p, x: px(i), y: py(p.v) }));
-  const d = pontos.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const area = `${d} L${pontos[n - 1].x.toFixed(1)},${base} L${pontos[0].x.toFixed(1)},${base} Z`;
-
-  cont.classList.add("linha");
-  cont.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">
-    <path d="${area}" fill="${cor}" opacity=".13" />
-    <path d="${d}" fill="none" stroke="${cor}" stroke-width="2.2"
-          stroke-linejoin="round" stroke-linecap="round" />
-    ${pontos.map(p => `
-      <circle class="vg-ponto ${p.noPeriodo ? "dentro" : ""}" cx="${p.x.toFixed(1)}"
-              cy="${p.y.toFixed(1)}" r="${p.noPeriodo ? 4 : 3}" stroke="${cor}"
-              opacity="${p.estimativa ? .5 : 1}" />`).join("")}
-  </svg>`;
-
-  cont.insertAdjacentHTML("beforeend",
-    `<span class="linha-guia" hidden></span>
-     <span class="linha-marca" hidden style="background:${cor}"></span>
-     <div class="linha-dica" hidden></div>`);
-  // O viewBox tem a MESMA largura em px do elemento, entao a coordenada do
-  // desenho vale direto como posicao do overlay -- sem conversao de escala.
-  LINHA.set(alvoGraf, { pontos, topo: 16, padding: 14 });
-
-  el(alvoRot).innerHTML = pontos.map((p, i) => {
-    const virou = i === 0 || p.ano !== pontos[i - 1].ano;
-    return `<div class="vg-rotulo ${p.noPeriodo ? "dentro" : ""}">${esc(p.rotulo)}
-      ${virou && p.ano ? `<small>${esc(p.ano)}</small>` : ""}</div>`;
-  }).join("");
-}
-
-/* Hover do gráfico de linha. O <title> do SVG até
-   mostrava o valor, mas só depois de um segundo parado e com a aparência do
-   sistema -- na prática ninguém via. */
-function ligarHoverLinha(alvoGraf) {
-  const cont = el(alvoGraf);
-  const esconder = () => {
-    for (const c of [".linha-guia", ".linha-marca", ".linha-dica"]) {
-      const e = cont.querySelector(c); if (e) e.hidden = true;
-    }
-  };
-
-  cont.addEventListener("mousemove", ev => {
-    const est = LINHA.get(alvoGraf);
-    const guia = cont.querySelector(".linha-guia");
-    const marca = cont.querySelector(".linha-marca");
-    const dica = cont.querySelector(".linha-dica");
-    if (!est || !guia || !marca || !dica) return;
-    const rel = ev.clientX - cont.getBoundingClientRect().left - est.padding;
-    let perto = est.pontos[0];
-    for (const p of est.pontos) {
-      if (Math.abs(p.x - rel) < Math.abs(perto.x - rel)) perto = p;
-    }
-    const esq = est.padding + perto.x;
-    guia.hidden = false; guia.style.left = `${esq.toFixed(1)}px`;
-    marca.hidden = false;
-    marca.style.left = `${esq.toFixed(1)}px`;
-    marca.style.top = `${(est.topo + perto.y).toFixed(1)}px`;
-    dica.hidden = false;
-    dica.innerHTML = `<div class="m">${esc(labelMes(perto.mes))}${
-      perto.estimativa ? " · projetado" : ""}</div><b>${fmtBRL(perto.v)}</b>`;
-    const meia = dica.offsetWidth / 2;
-    dica.style.left = `${Math.min(Math.max(esq, meia + 2), cont.clientWidth - meia - 2).toFixed(1)}px`;
-    dica.style.top = `${Math.max(dica.offsetHeight + 4, est.topo + perto.y - 12).toFixed(1)}px`;
+function renderGeral() {
+  const s = D.serie, r = D.resumo, svg = el("grafGeral");
+  const teto = tetoEscala(s.map(p => p.geral));
+  const dentro = s.map((p, i) => p.noPeriodo ? i : -1).filter(i => i >= 0);
+  vBarras(svg, s.map(p => ({
+    rotulo: p.rotulo,
+    valor: Math.min(p.geral, teto),
+    dica: `${labelMes(p.mes)}: ${fmtBRL(p.geral)}${p.estimativa ? " (projetado)" : ""}${p.geral > teto ? " · passou da escala" : ""}`,
+  })), { destaque: dentro.length ? dentro.at(-1) : -1, cor: "var(--azul)" });
+  // Período de vários meses: todos os de dentro ficam cheios, não só o último.
+  // Mês projetado fica mais apagado que os outros.
+  svg.querySelectorAll(".v-col").forEach(g => {
+    const p = s[Number(g.dataset.vI)];
+    const op = p.noPeriodo ? (p.estimativa ? .6 : 1) : (p.estimativa ? .2 : .4);
+    g.querySelectorAll(".v-bar").forEach(b => b.setAttribute("opacity", op));
+    g.querySelector(".v-mes")?.classList.toggle("sel", p.noPeriodo);
   });
+  el("legGeral").innerHTML = linhaLeg("var(--azul)", `${esc(D.periodo.rotulo)} <b>${fmtBRL(r.gasto)}</b>`)
+    + SEP + `<span>média <b>${fmtBRLCurto(r.media)}</b>/mês</span>`;
+  const cortados = s.filter(p => p.geral > teto).map(p => labelMes(p.mes));
+  el("rodGeral").innerHTML = `Barras cheias são o período escolhido; as apagadas, o resto da janela.`
+    + (cortados.length ? ` ${esc(cortados.join(", "))} passou da escala e foi cortado no desenho.` : "");
+}
 
-  cont.addEventListener("mouseleave", esconder);
+function renderCartaoLinha() {
+  const s = D.serie, r = D.resumo, cor = "var(--laranja)";
+  const teto = tetoEscala(s.map(p => p.cartao));
+  const v = s.map(p => Math.min(p.cartao, teto));
+  // Mês projetado vai numa série tracejada, ligada ao último mês fechado.
+  const real = v.map((x, i) => s[i].estimativa ? null : x);
+  const proj = v.map((x, i) => s[i].estimativa || s[i + 1]?.estimativa ? x : null);
+  const series = [{ valores: real, cor }];
+  if (s.some(p => p.estimativa)) series.push({ valores: proj, cor, tracejada: true });
+  vLinhas(el("grafCartao"), s.map(p => p.rotulo), series, {
+    dica: i => `${labelMes(s[i].mes)}: ${fmtBRL(s[i].cartao)}${s[i].estimativa ? " (projetado)" : ""}`,
+  });
+  el("legCartao").innerHTML = linhaLeg(cor, `cartões no período <b>${fmtBRL(r.cartao)}</b>`)
+    + SEP + `<span><b>${pct(r.shareCartao)}</b> do gasto</span>`;
+  el("rodCartao").textContent = s.some(p => p.estimativa)
+    ? "Fatura por mês de competência; o trecho tracejado é projeção de parcela."
+    : "Fatura por mês de competência; o ponto vazado é o mês mais recente.";
 }
 
 /* Saldo da carteira mês a mês. Vem de /investimentos, não do payload da tela:
@@ -550,71 +340,76 @@ async function renderInvestimentos() {
     catch { INVEST = { erro: true }; }
   }
   if (INVEST.erro) {
-    el("grafInvest").innerHTML = `<div class="vazio">Investimentos indisponíveis.</div>`;
+    el("grafInvest").innerHTML = "";
+    el("legInvest").innerHTML = "";
+    el("rodInvest").textContent = "Investimentos indisponíveis.";
     return;
   }
   const serie = serieSaldoInvestimentos(INVEST).map(x => ({
     mes: x.mes, v: x.valor, ano: x.mes.slice(0, 4),
     rotulo: MESES[Number(x.mes.slice(5, 7)) - 1].slice(0, 3).toLowerCase(),
-    noPeriodo: false, estimativa: false,
   }));
-  // zero:false -- o saldo nunca chega perto de zero, e partir do zero
-  // espremeria a curva inteira numa faixa fina no topo do painel.
-  linhaGrafico("grafInvest", "rotInvest", serie, "var(--verde)", { zero: false });
-  const ini = serie[0], fim = serie.at(-1);
-  const dif = fim && ini ? fim.v - ini.v : 0;
-  el("legInvest").innerHTML = serie.length
-    ? `<span>${esc(ini.rotulo)}/${esc(ini.ano)} <b>${fmtBRLCurto(ini.v)}</b></span>
-       <span>hoje <b>${fmtBRL(fim.v)}</b></span>
-       <span class="cmp-rolar ${dif >= 0 ? "desce" : "sobe"}">${dif >= 0 ? "+" : "−"}${
-         fmtBRL(Math.abs(dif))} no período</span>` : "";
+  if (!serie.length) {
+    el("grafInvest").innerHTML = "";
+    el("rodInvest").textContent = "Sem histórico.";
+    return;
+  }
+  vLinhas(el("grafInvest"), serie.map(p => p.rotulo), [{ valores: serie.map(p => p.v), cor: "var(--verde)" }], {
+    dica: i => `${labelMes(serie[i].mes)}: ${fmtBRL(serie[i].v)}`,
+  });
+  const ini = serie[0], fim = serie.at(-1), dif = fim.v - ini.v;
+  el("legInvest").innerHTML = linhaLeg("var(--verde)", `hoje <b>${fmtBRL(fim.v)}</b>`)
+    + SEP + `<span>${esc(ini.rotulo)}/${esc(ini.ano)} <b>${fmtBRLCurto(ini.v)}</b></span>`
+    + `<span class="v-chip ${dif >= 0 ? "bom" : "ruim"}">${dif >= 0 ? "+" : "−"}${fmtBRL(Math.abs(dif))} no período</span>`;
+  el("rodInvest").textContent = "Saldo reconstruído mês a mês a partir das movimentações da carteira.";
+}
+
+// Trava a caixa no fim da 5ª linha renderizada: medir evita o número mágico
+// e continua certo se a linha mudar de altura.
+function travarCinco(caixa) {
+  caixa.style.maxHeight = "";
+  const linhas = caixa.querySelectorAll(".v-bl, .vg-cmp");
+  if (linhas.length > VISIVEIS_CMP) {
+    caixa.style.maxHeight = `${Math.round(linhas[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
+      - caixa.getBoundingClientRect().top)}px`;
+  }
+}
+
+// Variação em selo: texto e tom (subir gasto é ruim).
+function chipVar(atual, anterior) {
+  if (!(anterior > 0)) return atual > 0 ? { chip: "novo", chipTipo: "ruim" } : {};
+  if (!atual) return { chip: "zerou", chipTipo: "bom" };
+  const d = (atual - anterior) / anterior * 100;
+  return { chip: `${d > 0 ? "▲" : "▼"} ${pct(d)}`, chipTipo: d > 0 ? "ruim" : "bom" };
 }
 
 /* ----------------------------------------------------------- distribuição */
+/* Lista com barra de fundo no lugar da rosca: o tamanho da barra já mostra a
+   fatia, e a variação contra o período anterior fica no mouse. */
 function renderDist() {
   const cats = D.categorias.slice(0, 8);
   el("notaCats").textContent = D.categorias.length > 8
     ? `top 8 de ${D.categorias.length}` : `${D.categorias.length} categorias`;
-  if (!cats.length) { el("dist").innerHTML = `<div class="vazio">Sem gasto no período.</div>`; return; }
-
-  const total = D.resumo.gasto || 1;
-  const R = 52, C = 2 * Math.PI * R;
-  let volta = 0;
-  const arcos = cats.map(c => {
-    const frac = c.total / total;
-    const arco = `<circle r="${R}" cx="75" cy="75" fill="none" stroke="${esc(c.cor)}"
-      stroke-width="20" stroke-dasharray="${(frac * C).toFixed(2)} ${C.toFixed(2)}"
-      stroke-dashoffset="${(-volta * C).toFixed(2)}"><title>${esc(c.nome)}</title></circle>`;
-    volta += frac;
-    return arco;
-  }).join("");
-  const resto = 1 - volta;
-
-  el("dist").innerHTML = `
-    <div class="dist-rosca">
-      <svg viewBox="0 0 150 150">
-        <circle r="${R}" cx="75" cy="75" fill="none" stroke="var(--surface-3)" stroke-width="20" />
-        ${arcos}
-        ${resto > 0.001 ? `<circle r="${R}" cx="75" cy="75" fill="none" stroke="var(--line-forte)"
-          stroke-width="20" stroke-dasharray="${(resto * C).toFixed(2)} ${C.toFixed(2)}"
-          stroke-dashoffset="${(-volta * C).toFixed(2)}"><title>Demais categorias</title></circle>` : ""}
-      </svg>
-      <div class="dist-centro">
-        <span class="r">Total</span>
-        <span class="v">${fmtBRLCurto(D.resumo.gasto)}</span>
-      </div>
-    </div>
-    <div class="dist-lista">${cats.map(c => {
-      const dif = c.anterior > 0 ? (c.total - c.anterior) / c.anterior * 100 : null;
-      return `<div class="dist-item">
-        <span class="pt" style="background:${esc(c.cor)}"></span>
-        <span class="nm">${c.emoji ? esc(c.emoji) + " " : ""}${esc(c.nome)}</span>
-        <span class="pc">${pct(c.share)}</span>
-        <span class="vl">${fmtBRLCurto(c.total)}</span>
-        <span class="dif">${dif === null ? "" : seta(Number(dif.toFixed(1)))}</span>
-      </div>`;
-    }).join("")}</div>`;
+  el("legDist").innerHTML = linhaLeg("var(--text-3)", `total <b>${fmtBRL(D.resumo.gasto)}</b>`);
+  if (!cats.length) {
+    el("dist").innerHTML = `<div class="vazio">Sem gasto no período.</div>`;
+    el("rodDist").textContent = "";
+    return;
+  }
+  const maior = Math.max(1, ...cats.map(c => c.total));
+  el("dist").innerHTML = vListaBarras(cats.map(c => {
+    const dif = c.anterior > 0 ? (c.total - c.anterior) / c.anterior * 100 : null;
+    return {
+      nome: `${c.emoji ? c.emoji + " " : ""}${c.nome}`,
+      ponto: c.cor, cor: c.cor, fracao: c.total / maior,
+      valor: fmtBRLCurto(c.total), chip: pct(c.share),
+      dica: `${c.nome}: ${fmtBRL(c.total)}${dif === null ? "" : ` · ${dif > 0 ? "▲" : "▼"} ${pct(dif)} vs ${D.periodo.anteriorRotulo}`}`,
+    };
+  }));
+  el("rodDist").textContent = "Selo é a fatia do gasto do período; variação contra o anterior no mouse."
+    + (D.categorias.length > 8 ? " As categorias menores ficam fora da lista." : "");
 }
+
 
 /* Sankey em SVG puro. Cada coluna soma o mesmo total (a receita, ou o gasto
    quando ele passa da receita e entra um nó "Déficit"), então as faixas
@@ -772,8 +567,7 @@ function ligarSankey(alvo, lks, receita, gasto) {
    com mês, trimestre com trimestre. O backend já entrega `anterior` em cada
    categoria, inclusive nas que zeraram agora. */
 function renderComparativo() {
-  // Sem corte na quantidade: quem limita a altura agora e a rolagem, entao
-  // esconder categoria no top 8 so tiraria informacao sem ganhar espaco.
+  // Sem corte na quantidade: quem limita a altura e a rolagem.
   const cats = D.categorias.filter(c => c.total > 0 || c.anterior > 0);
   el("legCmpAtual").textContent = D.periodo.rotulo;
   el("legCmpAnt").textContent = D.periodo.anteriorRotulo;
@@ -781,80 +575,57 @@ function renderComparativo() {
   // Diz quantas ficaram fora da janela visivel -- sem isso a lista parece
   // completa e ninguem descobre que da para rolar.
   el("cmpRolar").textContent = cats.length > VISIVEIS_CMP
-    ? `role para ver as outras ${cats.length - VISIVEIS_CMP}` : "";
+    ? `Role para ver as outras ${cats.length - VISIVEIS_CMP}.` : "";
   if (!cats.length) {
     el("cmp").innerHTML = `<div class="vazio">Sem gasto para comparar.</div>`;
     return;
   }
-  // A régua é o maior valor entre as DUAS séries: com escalas separadas, uma
-  // categoria que caiu pela metade desenharia duas barras do mesmo tamanho.
+  // A régua é o maior valor entre as DUAS séries, para a barra de uma
+  // categoria que caiu pela metade sair de fato menor.
   const maior = Math.max(1, ...cats.map(c => Math.max(c.total, c.anterior)));
-  const larg = v => `${Math.max(v > 0 ? 1.5 : 0, v / maior * 100).toFixed(1)}%`;
+  // Duas barras por categoria, na mesma régua: o período (cor cheia) e o
+  // anterior (a mesma cor, clara). A diferença se vê no tamanho.
   el("cmp").innerHTML = cats.map(c => {
-    const dif = c.anterior > 0 ? (c.total - c.anterior) / c.anterior * 100 : null;
-    return `
-      <div class="cmp-linha">
-        <span class="cmp-nome">
-          <span class="pt" style="background:${esc(c.cor)}"></span>
-          ${c.emoji ? esc(c.emoji) + " " : ""}${esc(c.nome)}
-        </span>
-        <span class="cmp-dif">${c.anterior === 0 ? '<span class="sobe">novo</span>'
-          : c.total === 0 ? '<span class="desce">zerou</span>'
-          : seta(Number(dif.toFixed(1)))}</span>
-        <span class="cmp-barras">
-          <span class="cmp-b atual">
-            <span class="cmp-trilha"><span style="width:${larg(c.total)};background:${esc(c.cor)}"></span></span>
-            <span class="cmp-v">${fmtBRLCurto(c.total)}</span>
-          </span>
-          <span class="cmp-b">
-            <span class="cmp-trilha"><span style="width:${larg(c.anterior)};background:${esc(c.cor)};opacity:.38"></span></span>
-            <span class="cmp-v">${fmtBRLCurto(c.anterior)}</span>
-          </span>
-        </span>
-      </div>`;
+    const v = chipVar(c.total, c.anterior);
+    return `<div class="vg-cmp" title="${esc(`${c.nome}: ${fmtBRL(c.total)} em ${D.periodo.rotulo} · ${fmtBRL(c.anterior)} em ${D.periodo.anteriorRotulo}`)}">
+      <div class="vg-cmp-topo"><span class="v-nome"><i class="v-ponto-cor" style="background:${c.cor}"></i>${esc(`${c.emoji ? c.emoji + " " : ""}${c.nome}`)}</span>
+        ${v.chip ? `<span class="v-chip ${v.chipTipo || ""}">${esc(v.chip)}</span>` : ""}</div>
+      <div class="vg-cmp-b"><span class="vg-trilha"><i style="width:${c.total / maior * 100}%;background:${c.cor}"></i></span><b>${fmtBRLCurto(c.total)}</b></div>
+      <div class="vg-cmp-b ant"><span class="vg-trilha"><i style="width:${c.anterior / maior * 100}%;background:${c.cor}"></i></span><span>${fmtBRLCurto(c.anterior)}</span></div>
+    </div>`;
   }).join("");
-
-  // Trava a caixa exatamente no fim da 5a linha. Medir o que foi renderizado
-  // evita o numero magico e continua certo se a linha mudar de altura.
-  const caixa = el("cmp");
-  caixa.style.maxHeight = "";
-  const linhas = caixa.querySelectorAll(".cmp-linha");
-  if (linhas.length > VISIVEIS_CMP) {
-    const corte = linhas[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
-                - caixa.getBoundingClientRect().top;
-    const recheio = parseFloat(getComputedStyle(caixa).paddingBottom) || 0;
-    caixa.style.maxHeight = `${Math.round(corte + recheio)}px`;
-  }
+  travarCinco(el("cmp"));
 }
 
 /* --------------------------------------------------------------- cartões */
+/* A cor acompanha a identidade do cartão em todas as telas. A barra de
+   fundo é o limite usado; limite, origem e cartões do grupo ficam no mouse. */
 function renderCartoes() {
   const cs = D.cartoes || [];
   el("notaCartoes").textContent = `fatura de ${labelMes(D.mesFoco)}`;
   if (!cs.length) { el("cartoes").innerHTML = `<div class="vazio">Nenhum cartão.</div>`; return; }
-  el("cartoes").innerHTML = cs.map(c => {
+  el("cartoes").innerHTML = vListaBarras(cs.map(c => {
     const cor = corInstrumento(c);
     const usoValido = c.usoPct !== null && c.usoPct !== undefined && Number.isFinite(Number(c.usoPct));
     const apertado = usoValido && c.usoPct > 80;
     const membros = c.membros || [];
-    const nome = nomeInstrumento(c);
     const origem = { projecao: "projetada", mista: "fechada + aberta" }[c.origem] || `${c.quantidade || 0} lançamentos`;
     const link = `transacoes.html?${new URLSearchParams({ month: D.mesFoco, card: c.id })}`;
-    return `
-      <div class="cartao-linha" style="border-color:${cor}44">
-        <span class="cartao-selo" style="background:${cor}">${esc(nome.trim().charAt(0))}</span>
-        <a class="cartao-nome" style="color:${cor}" href="${esc(link)}">${esc(nome)}</a>
-        <span class="cartao-val">${fmtBRL(c.valor)}</span>
-        ${!usoValido ? "" : `<span class="cartao-trilha"><span style="width:${
-          Math.min(100, c.usoPct)}%;background:${apertado ? "var(--vermelho)" : cor}"></span></span>`}
-        <span class="cartao-sub">
-          <span>${!usoValido ? (membros.length > 1 ? "limites por cartão" : "sem limite informado")
-            : `limite ${pct(c.usoPct)} usado · ${fmtBRLCurto(c.disponivel)} livre`}</span>
-          <span>${esc(origem)}</span>
-        </span>
-        ${membros.length > 1 ? `<details style="grid-column:2/-1;font-size:11px;color:var(--text-3)"><summary>${membros.length} cartões${(c.vencimentos || []).length > 1 ? " · múltiplos vencimentos" : ""}</summary>${membros.map(m => `<div style="margin-top:6px">${esc(m.nomeOriginal || nomeInstrumento(m))}${(m.limiteCredito ?? m.limite) == null ? " · limite —" : ` · limite ${fmtBRL(m.limiteCredito ?? m.limite)}`}${m.vencimento ? ` · vencimento ${esc(m.vencimento)}` : ""}</div>`).join("")}</details>` : ""}
-      </div>`;
-  }).join("");
+    const limite = !usoValido ? (membros.length > 1 ? "limites por cartão" : "sem limite informado")
+      : `limite ${pct(c.usoPct)} usado · ${fmtBRLCurto(c.disponivel)} livre`;
+    const grupo = membros.length > 1
+      ? `\n${membros.length} cartões${(c.vencimentos || []).length > 1 ? " · múltiplos vencimentos" : ""}:`
+        + membros.map(m => `\n${m.nomeOriginal || nomeInstrumento(m)}${(m.limiteCredito ?? m.limite) == null ? " · limite —" : ` · limite ${fmtBRL(m.limiteCredito ?? m.limite)}`}${m.vencimento ? ` · vencimento ${m.vencimento}` : ""}`).join("")
+      : "";
+    return {
+      nome: nomeInstrumento(c), sub: origem, ponto: cor,
+      cor: apertado ? "var(--vermelho)" : cor, fracao: usoValido ? c.usoPct / 100 : 0,
+      valor: fmtBRL(c.valor),
+      chip: usoValido ? pct(c.usoPct) : "", chipTipo: apertado ? "ruim" : "",
+      dica: `${limite}${grupo}`,
+      attrs: `data-ir="${esc(link)}" role="link" tabindex="0"`,
+    };
+  }));
 }
 
 /* ---------------------------------------------------------- contas fixas */
@@ -869,38 +640,23 @@ function renderFixas() {
     el("fixas").innerHTML = total
       ? `<div class="vazio">Todas as ${f.quantidade} contas fixas do mês já foram pagas.</div>`
       : `<div class="vazio">Sem contas fixas no mês.</div>`;
+    el("rodFixas").textContent = "";
     return;
   }
   el("fixas").innerHTML = `
-    <div class="fx-topo">
-      <div class="fx-barra">
-        <span style="width:${(f.pago / total * 100).toFixed(1)}%;background:var(--verde)"></span>
-        <span style="width:${(f.pendente / total * 100).toFixed(1)}%;background:var(--laranja)"></span>
-      </div>
-      <div class="fx-dica">
-        <b>${fmtBRL(f.pago)}</b> de ${fmtBRL(total)} já pago ·
-        <b>${abertas.length}</b> em aberto de ${f.quantidade}
-      </div>
+    <p class="v-legenda">${linhaLeg("var(--verde)", `pago <b>${fmtBRL(f.pago)}</b>`)}${SEP}${
+      linhaLeg("var(--laranja)", `a pagar <b>${fmtBRL(f.pendente)}</b>`)}</p>
+    <div class="fx-barra" title="${esc(`${fmtBRL(f.pago)} de ${fmtBRL(total)} já pago · ${abertas.length} em aberto de ${f.quantidade}`)}">
+      <span style="width:${(f.pago / total * 100).toFixed(1)}%;background:var(--verde)"></span>
+      <span style="width:${(f.pendente / total * 100).toFixed(1)}%;background:var(--laranja)"></span>
     </div>
-    <div class="fx-lista" id="fxLista">
-      ${abertas.map(a => `
-        <div class="fx-linha">
-          <span class="fx-nome"><span class="corta">${esc(a.nome)}</span>
-            ${a.dia ? `<em>vence dia ${a.dia}</em>` : ""}</span>
-          <span class="fx-val sobe">${fmtBRL(a.valor)}</span>
-        </div>`).join("")}
-    </div>
-`;
-
-  // Mesma medição do comparativo: trava no rodapé da 5ª linha renderizada em
-  // vez de chutar uma altura em CSS.
-  const caixa = el("fxLista");
-  const linhas = caixa.querySelectorAll(".fx-linha");
-  if (linhas.length > VISIVEIS_CMP) {
-    caixa.style.maxHeight = `${Math.round(
-      linhas[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
-      - caixa.getBoundingClientRect().top)}px`;
-  }
+    <div class="v-barras vg-rola" id="fxLista">${vListaBarras(abertas.map(a => ({
+      nome: a.nome, sub: a.dia ? `vence dia ${a.dia}` : "",
+      valor: fmtBRL(a.valor), cor: "var(--laranja)", fracao: 0,
+      dica: `${a.nome}: ${fmtBRL(a.valor)}${a.dia ? ` · vence dia ${a.dia}` : ""}`,
+    })))}</div>`;
+  el("rodFixas").innerHTML = `<b>${abertas.length}</b> de ${f.quantidade} contas fixas do mês ainda em aberto.`;
+  travarCinco(el("fxLista"));
 }
 
 /* -------------------------------------------------------- maiores gastos */
@@ -908,28 +664,15 @@ function renderTop() {
   const t = D.maiores, d = D.detalhe;
   el("notaTop").textContent = `${d.quantidade} lançamentos · ticket médio ${fmtBRL(d.ticket)}`;
   if (!t.length) { el("top").innerHTML = `<div class="vazio">Sem gasto no período.</div>`; return; }
-  el("top").innerHTML = t.map(x => `
-    <div class="top-item">
-      <span class="marca">${x.emoji ? esc(x.emoji)
-        : `<span class="pt" style="background:${esc(x.cor)}"></span>`}</span>
-      <span style="min-width:0">
-        <div class="d">${esc(x.descricao)}</div>
-        <div class="s">${fmtData(x.data)} · ${esc(x.categoria)} · ${esc(x.conta)}${
-          x.parcela ? ` · parcela ${esc(x.parcela)}` : ""}</div>
-      </span>
-      <span class="v">${fmtBRL(x.valor)}</span>
-    </div>`).join("");
-
-  const caixa = el("top");
-  caixa.style.maxHeight = "";
-  const itens = caixa.querySelectorAll(".top-item");
-  if (itens.length > VISIVEIS_CMP) {
-    const recheio = parseFloat(getComputedStyle(caixa).paddingBottom) || 0;
-    caixa.style.maxHeight = `${Math.round(
-      itens[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
-      - caixa.getBoundingClientRect().top + recheio)}px`;
-  }
+  el("top").innerHTML = vListaBarras(t.map(x => ({
+    nome: `${x.emoji ? x.emoji + " " : ""}${x.descricao}`, sub: x.categoria,
+    ponto: x.emoji ? "" : x.cor, cor: x.cor, fracao: 0,
+    valor: fmtBRL(x.valor),
+    dica: `${fmtData(x.data)} · ${x.categoria} · ${x.conta}${x.parcela ? ` · parcela ${x.parcela}` : ""}`,
+  })));
+  travarCinco(el("top"));
 }
+
 
 /* --------------------------------------------------------------- insights */
 function renderInsights() {
@@ -1019,9 +762,8 @@ async function carregar() {
     b.classList.toggle("ativo", b.dataset.periodo === PERIODO);
   }
   renderKpis();
-  barras("grafGeral", "rotGeral", "geral", "var(--azul)");
-  linhaGrafico("grafCartao", "rotCartao",
-    D.serie.map(p => ({ ...p, v: p.cartao })), "var(--laranja)");
+  renderGeral();
+  renderCartaoLinha();
   renderCartoes();
   renderComparativo();
   renderFixas();
@@ -1045,8 +787,6 @@ async function recarregar() {
   // O Sankey é desenhado em pixels da largura atual; redimensionar redesenha.
   let tSankey = null;
   window.addEventListener("resize", () => { clearTimeout(tSankey); tSankey = setTimeout(() => D && renderSankey(), 150); });
-  ligarHoverLinha("grafCartao");
-  ligarHoverLinha("grafInvest");
   // Card com destino vira link de verdade: clique e Enter/Espaço pelo teclado.
   const abrir = e => {
     const card = e.target.closest("[data-ir]");
@@ -1057,6 +797,8 @@ async function recarregar() {
   };
   el("kpis").addEventListener("click", abrir);
   el("kpis").addEventListener("keydown", abrir);
+  el("cartoes").addEventListener("click", abrir);
+  el("cartoes").addEventListener("keydown", abrir);
 
   el("segPeriodo").addEventListener("click", e => {
     const b = e.target.closest("[data-periodo]");
@@ -1072,12 +814,10 @@ async function recarregar() {
     guardarFiltro();
     recarregar();
   });
-  // O grafico de linha usa pixels, entao precisa ser redesenhado quando o
-   // painel muda de largura -- o de barras se ajusta sozinho por ser flex.
-  new ResizeObserver(() => {
-    if (D) linhaGrafico("grafCartao", "rotCartao",
-      D.serie.map(p => ({ ...p, v: p.cartao })), "var(--laranja)");
-  }).observe(el("grafCartao"));
+  // Os gráficos desenham em pixels da largura atual (graficos.js), então
+  // redesenham quando o painel muda de largura.
+  new ResizeObserver(() => { if (D) renderGeral(); }).observe(el("grafGeral"));
+  new ResizeObserver(() => { if (D) renderCartaoLinha(); }).observe(el("grafCartao"));
   new ResizeObserver(() => { if (INVEST && !INVEST.erro) renderInvestimentos(); })
     .observe(el("grafInvest"));
 

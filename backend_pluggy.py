@@ -14,6 +14,7 @@ import fixas2
 import argparse
 import json
 import re
+import threading
 import time
 import webbrowser
 from datetime import datetime
@@ -47,6 +48,7 @@ from extrato_camada import (
     remover_regra,
 )
 import carteira
+import planejamento
 import emprestimos
 import contas_bancos
 import fixas
@@ -320,6 +322,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"series": indices.estado(), "catalogo": indices.SERIES})
             elif path == "/api/fundos":
                 self.send_json(fundos.payload(query.get("consulta", [""])[0]))
+            elif path == "/api/planejamento":
+                self.send_json(planejamento.payload(query.get("mes", [""])[0]))
             elif path == "/api/carteira":
                 self.send_json(carteira.payload(query.get("aporte", ["0"])[0]))
             elif path == "/api/pluggy-connect-token":
@@ -444,6 +448,15 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(carteira.substituir(
                     str(payload.get("origem") or ""), str(payload.get("destino") or ""),
                     str(payload.get("data") or ""), str(payload.get("motivo") or "")))
+                return
+            if parsed.path == "/api/planejamento/meta":
+                self.send_json(planejamento.salvar_meta(payload))
+                return
+            if parsed.path == "/api/planejamento/meta/arquivar":
+                self.send_json(planejamento.arquivar_meta(str(payload.get("id") or ""), payload.get("arquivada", True)))
+                return
+            if parsed.path == "/api/planejamento/meta/excluir":
+                self.send_json(planejamento.excluir_meta(str(payload.get("id") or "")))
                 return
             if parsed.path == "/api/carteira/meta-cdb":
                 self.send_json(carteira.salvar_meta_cdb(str(payload.get("grupo") or ""), payload.get("meta")))
@@ -618,6 +631,10 @@ def run_server(host: str = HOST, port: int = PORT, open_browser: bool = False,
         atualizar_em_background()
 
     coleta_de_fim_de_mes()
+    # A previsão de 24 meses do Planejamento projeta uma fatura por mês e leva
+    # alguns segundos na primeira vez; calcular já deixa a tela pronta.
+    threading.Thread(target=lambda: _silencioso(planejamento.payload), daemon=True,
+                     name="aquecer-planejamento").start()
     if open_browser:
         webbrowser.open(url)
     try:
@@ -637,6 +654,14 @@ def _ultimo_dia_util(hoje) -> bool:
     while proximo.weekday() >= 5:
         proximo += timedelta(days=1)
     return proximo.month != hoje.month
+
+
+def _silencioso(funcao) -> None:
+    """Roda em segundo plano sem derrubar o backend se falhar."""
+    try:
+        funcao()
+    except Exception as exc:
+        print(f"Aviso: {exc}")
 
 
 def coleta_de_fim_de_mes(intervalo_s: int = 1800) -> None:

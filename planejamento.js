@@ -1,7 +1,7 @@
 /* Planejamento: só o que vem pela frente. Quanto dá para gastar no próximo
    mês, quanto da renda já está comprometido, quanto dá para aportar nos
-   próximos meses, se uma compra cabe, para onde o ritmo leva, as parcelas de
-   cartão e as metas. O histórico fica na Visão Geral.
+   próximos meses, para onde o ritmo leva, as metas e as parcelas de
+   cartão. O histórico fica na Visão Geral.
 
    Visual minimalista: cada card tem título, uma linha de legenda com os
    números, o gráfico sem eixo nem grade e uma frase de rodapé. O detalhe
@@ -57,7 +57,7 @@ function desenhar() {
   document.querySelectorAll("[data-periodo]").forEach(b => b.classList.toggle("marcado", Number(b.dataset.periodo) === N));
   $("avisos").hidden = !P.avisos.length;
   $("avisos").textContent = P.avisos.join(" · ");
-  kpis(); fluxo(); projecao(); compra(); parcelas(); metas();
+  kpis(); fluxo(); projecao(); parcelas(); metas();
 }
 
 /* ------------------------------------------------------------ gráfico de linha */
@@ -89,12 +89,22 @@ function linhas(svg, meses, series, { dica, rotulos = [], marcas = [] } = {}) {
   for (const s of series) {
     const pts = s.valores.map((v, i) => [x(i), y(v)]);
     h += `<path class="linha ${s.tracejada ? "tracejada" : ""}" stroke="${s.cor}" d="${curva(pts)}"/>`;
-    // Uma bolinha por mês; a do último é maior.
-    if (!s.tracejada) h += pts.map((p, i) => `<circle class="fim" stroke="${s.cor}" cx="${p[0]}" cy="${p[1]}" r="${i === pts.length - 1 ? 4 : 2.5}"/>`).join("");
+    // Uma bolinha por mês, nas duas linhas; a do último é maior. O primeiro
+    // ponto da tracejada (o "e se") é o de hoje, que a principal já marca.
+    h += pts.map((p, i) => s.tracejada && i === 0 ? "" : `<circle class="fim" stroke="${s.cor}" cx="${p[0]}" cy="${p[1]}" r="${i === pts.length - 1 ? 4 : 2.5}"/>`).join("");
+  }
+  // Série com dica própria: cada bolinha mostra só o valor daquela linha
+  // (área de toque maior que a bolinha). Sem isso, uma dica por mês.
+  const porSerie = series.some(s => s.dica);
+  if (porSerie) {
+    for (const s of series) {
+      if (!s.dica) continue;
+      h += s.valores.map((v, i) => s.tracejada && i === 0 ? "" : `<circle class="hover" cx="${x(i)}" cy="${y(v)}" r="10"><title>${esc(s.dica(i))}</title></circle>`).join("");
+    }
   }
   h += rotulos.map(i => `<text class="eixo-m" x="${x(i)}" y="${H - 4}" text-anchor="${i === 0 ? "start" : i === meses.length - 1 ? "end" : "middle"}">${i === 0 && meses[0] === P.corrente ? "hoje" : mesCurto(meses[i])}</text>`).join("");
   const w = (W - L - R) / Math.max(1, meses.length - 1);
-  h += meses.map((m, i) => `<rect class="hover" x="${x(i) - w / 2}" y="0" width="${w}" height="${H}"><title>${esc(dica(i))}</title></rect>`).join("");
+  if (!porSerie) h += meses.map((m, i) => `<rect class="hover" x="${x(i) - w / 2}" y="0" width="${w}" height="${H}"><title>${esc(dica(i))}</title></rect>`).join("");
   svg.innerHTML = h;
 }
 
@@ -167,68 +177,37 @@ function projecao() {
   const pontos = pr.pontos.slice(0, N);
   const meses = [pr.inicio, ...pontos.map(p => p.mes)];
   const base = [pr.saldo, ...pontos.map(p => p.saldo)];
-  const ese = extra ? [pr.saldo, ...serie(pr.saldo, pr.aporte + extra, pr.taxaMes, pontos.length)] : null;
+  // "E se": o valor digitado é o aporte mensal inteiro (substitui o ritmo).
+  const ese = extra ? [pr.saldo, ...serie(pr.saldo, extra, pr.taxaMes, pontos.length)] : null;
   const quando = (s, alvo) => { const i = s.findIndex(v => v >= alvo); return i < 0 ? null : i; };
   $("marcos").innerHTML = `<span><i style="background:var(--pl-azul)"></i>Hoje <b>${curto(pr.saldo)}</b></span>`
     + `<span class="sep">·</span><span>Em ${mesCurto(meses.at(-1))} <b>${curto(base.at(-1))}</b></span>`
     + pr.marcos.map(m => { const i = quando(base, m.valor); return i == null ? "" : `<span class="sep">·</span><span>${curto(m.valor).replace("R$ ", "")} <b>${mesCurto(meses[i])}</b></span>`; }).join("");
-  const series = [{ valores: base, cor: "var(--pl-azul)" }];
-  if (ese) series.push({ valores: ese, cor: "var(--pl-verde)", tracejada: true });
+  // Segunda linha de legenda, em verde, para o "e se" (só com valor digitado).
+  $("marcosEse").hidden = !ese;
+  if (ese) {
+    $("marcosEse").innerHTML = `<span><i style="background:var(--pl-verde)"></i>Aportando <b>${curto(extra)}/mês</b></span>`
+      + `<span class="sep">·</span><span>Em ${mesCurto(meses.at(-1))} <b>${curto(ese.at(-1))}</b></span>`
+      + pr.marcos.map(m => { const i = quando(ese, m.valor); return i == null ? "" : `<span class="sep">·</span><span>${curto(m.valor).replace("R$ ", "")} <b>${mesCurto(meses[i])}</b></span>`; }).join("");
+  }
+  const series = [{ valores: base, cor: "var(--pl-azul)", dica: i => `${mesCurto(meses[i])} · no seu ritmo (${curto(pr.aporte)}/mês): ${fmtBRL(base[i])}` }];
+  if (ese) series.push({ valores: ese, cor: "var(--pl-verde)", tracejada: true,
+    // Cada linha mostra só o próprio valor: a comparação fica na frase do rodapé.
+    dica: i => `${mesCurto(meses[i])} · aportando ${curto(extra)}/mês: ${fmtBRL(ese[i])}` });
   linhas($("grafico"), meses, series, {
     rotulos: marcasDe(meses.length),
-    dica: i => `${mesCurto(meses[i])}: ${fmtBRL(base[i])}${ese ? ` · com o extra ${fmtBRL(ese[i])}` : ""}`,
+    dica: i => `${mesCurto(meses[i])}: ${fmtBRL(base[i])}${ese ? ` · aportando ${fmtBRL(extra)}/mês ${fmtBRL(ese[i])}` : ""}`,
   });
-  // "E se": quantos meses antes o primeiro marco chega com o extra.
+  // "E se": o primeiro marco chega antes ou depois do que no seu ritmo.
   const m = pr.marcos.find(x => quando(base, x.valor) != null);
   if (ese && m) {
     const a = quando(base, m.valor), b = quando(ese, m.valor);
-    $("eseTxt").innerHTML = b != null && b < a ? `<b>${curto(m.valor)}</b> chega <b>${emMeses(a - b)}</b> antes.` : "";
+    $("eseTxt").innerHTML = b == null ? `<b>${curto(m.valor)}</b> não chega no período.`
+      : b < a ? `<b>${curto(m.valor)}</b> chega <b>${emMeses(a - b)}</b> antes.`
+      : b > a ? `<b>${curto(m.valor)}</b> chega <b>${emMeses(b - a)}</b> depois.`
+      : `<b>${curto(m.valor)}</b> chega no mesmo mês.`;
   } else $("eseTxt").innerHTML = "";
   $("projTit").title = `Aporte de ${fmtBRL(pr.aporte)}/mês (mediana de 6 meses) e ${pr.taxaMes.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% a.m. (${pr.origemTaxa}).`;
-}
-
-/* ------------------------------------------------------------ posso comprar? */
-
-function compra() {
-  const valor = lerValor($("cValor").value), n = Number($("cParcelas").value);
-  if (!valor || !P.fluxo.length) {
-    $("compra").innerHTML = `<p class="rodape">Digite um valor para ver quanto a compra tira dos seus aportes e quanto atrasa o próximo marco.</p>`;
-    return;
-  }
-  // Tudo o que sobra vira aporte: cada parcela sai direto do aporte do mês.
-  // Primeira parcela na próxima fatura; depois do 6º mês vale o último previsto.
-  const parcela = valor / n;
-  const aporteDe = i => (P.fluxo[i] || P.fluxo.at(-1)).sobra;
-  const mesDe = i => P.fluxo[i]?.mes || mesMais(P.fluxo.at(-1).mes, i - P.fluxo.length + 1);
-  let piorI = 0, piorDepois = Infinity, resgate = 0;
-  for (let i = 0; i < n; i++) {
-    const depois = aporteDe(i) - parcela;
-    if (depois < piorDepois) { piorDepois = depois; piorI = i; }
-    resgate += Math.max(0, -depois);
-  }
-  const pr = P.projecao, marco = pr.marcos[0];
-  let atraso = 0;
-  if (marco && pr.aporte > 0) {
-    const sem = serie(pr.saldo, pr.aporte, pr.taxaMes, 120), com = serie(pr.saldo - valor, pr.aporte, pr.taxaMes, 120);
-    const a = sem.findIndex(v => v >= marco.valor), b = com.findIndex(v => v >= marco.valor);
-    if (a >= 0 && b >= 0) atraso = b - a;
-  }
-  const ind = P.indicadores, entrada = P.fluxo[0].entrada;
-  const parcPct = (P.fluxo[0].parcelas + (n > 1 ? parcela : 0)) / entrada * 100;
-  const pesoAporte = parcela / Math.max(1, aporteDe(piorI)) * 100;
-  const tipo = resgate > 0 ? "nao" : pesoAporte > 50 ? "aperta" : "ok";
-  const cor = { ok: "var(--verde)", aperta: "var(--laranja)", nao: "var(--vermelho)" }[tipo];
-  const atrasoTxt = atraso > 0 ? `${curto(marco.valor)} atrasa ${emMeses(atraso)}` : `${curto(marco?.valor || 0)} não muda de mês`;
-  const frase = tipo === "nao"
-    ? `<b>Não cabe nos aportes.</b> Em ${mesCurto(mesDe(piorI))} faltam ${fmtBRL(-piorDepois)}: ${fmtBRL(resgate)} viriam de resgate.${n < 10 ? " Parcelar mais ajuda." : ""}`
-    : `<b>${tipo === "ok" ? "Cabe." : "Cabe, mas pesa."}</b> ${n > 1 ? `Tira ${fmtBRL(parcela)} do aporte por ${n} meses` : `Tira ${fmtBRL(valor)} do aporte de ${mesCurto(mesDe(0))}`} e ${atrasoTxt}.`;
-  const linha = (nome, val, fracao, c) => `<div class="bl"><span class="f" style="width:${Math.max(0, Math.min(100, fracao * 100))}%;background:${c}"></span><span class="nome">${nome}</span><span class="val">${val}</span></div>`;
-  $("compra").innerHTML = `<p class="veredito"><i style="background:${cor}"></i>${frase}</p>
-    <div class="barras">
-      ${linha(`Aporte de ${mesCurto(mesDe(piorI))}`, `${curto(aporteDe(piorI))} → <span class="${piorDepois < 0 ? "ruim" : ""}">${curto(piorDepois)}</span>`, Math.max(0, piorDepois) / Math.max(1, aporteDe(piorI)), "var(--pl-verde)")}
-      ${n > 1 ? linha("Parcelas sobre a renda", `${pct(ind.parcelasPct)} → <span class="${parcPct > ind.refParcelas ? "ruim" : ""}">${pct(parcPct)}</span>`, parcPct / ind.refParcelas, parcPct > ind.refParcelas ? "var(--vermelho)" : "var(--laranja)") : ""}
-      ${n > 1 ? linha(`${n}x de ${fmtBRL(parcela)}`, `até ${mesCurto(mesDe(n - 1))}`, 0, "transparent") : ""}
-    </div>`;
 }
 
 /* ------------------------------------------------------------ parcelas de cartão */
@@ -414,8 +393,6 @@ $("metaSalvar").addEventListener("click", async () => {
 /* ------------------------------------------------------------ eventos */
 
 $("extra").addEventListener("input", () => P && projecao());
-$("cValor").addEventListener("input", () => P && compra());
-$("cParcelas").addEventListener("change", () => P && compra());
 document.addEventListener("click", e => {
   if (e.target.closest("#btnMeta")) return abrirMeta();
   const em = e.target.closest("[data-emoji]");

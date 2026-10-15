@@ -486,7 +486,10 @@ def _parcelamentos(corrente: str) -> dict[str, Any]:
                               WHERE f.conta_id = t.conta_id AND f.fatura_id = t.fatura_id), {competencia}) AS mes
             FROM pluggy_transacoes t
             JOIN pluggy_contas c ON c.conta_id = t.conta_id AND c.subtipo = 'CREDIT_CARD'
-            WHERE t.tipo = 'DEBIT' AND t.parcela_total > 1 AND t.parcela_numero IS NOT NULL"""):
+            WHERE t.tipo = 'DEBIT' AND t.parcela_total > 1 AND t.parcela_numero IS NOT NULL
+              -- Parcela tirada dos cálculos (compra estornada) não é compromisso.
+              AND NOT EXISTS (SELECT 1 FROM extrato_ajustes a
+                               WHERE a.transacao_id = t.transacao_id AND a.calculo_override = 0)"""):
             if not l["mes"] or l["mes"] < meses[0] or l["conta_id"] not in conta_cartao:
                 continue
             reais.append({"compra": "|".join(str(p) for p in px.chave_compra(l)), "mes": l["mes"],

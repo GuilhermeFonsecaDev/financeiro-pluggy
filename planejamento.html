@@ -63,12 +63,8 @@
 #parcLista .bl { padding:8px 12px; }
 .barras.rolar { max-height:252px; overflow-y:auto; padding-right:4px; }
 
-/* Posso comprar? */
-.compra-campos { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:8px; margin-top:12px; }
-.compra-campos input, .compra-campos select { width:100%; font-variant-numeric:tabular-nums; }
-.veredito { margin:12px 0 0; font-size:14px; color:var(--text-2); line-height:1.5; }
-.veredito b { color:var(--text); }
-.veredito i { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:1px; }
+/* Metas ao lado da projeção: a lista rola se crescer. */
+#metas { max-height: 360px; overflow-y: auto; padding-right: 4px; }
 .ese { width:110px; text-align:right; padding:3px 8px; font-size:13px; }
 
 /* Parcelas */
@@ -119,20 +115,15 @@
       <article class="cartao" aria-labelledby="projTit">
         <p class="tit" id="projTit">Para onde o seu ritmo leva</p>
         <p class="legenda" id="marcos"></p>
+        <p class="legenda" id="marcosEse" hidden style="margin-top:2px"></p>
         <svg class="graf" id="grafico" height="150" role="img" aria-label="Projeção do patrimônio"></svg>
-        <p class="rodape">E se eu aportar mais <input class="ese" id="extra" inputmode="decimal" autocomplete="off" placeholder="0,00" /> por mês? <span id="eseTxt"></span></p>
+        <p class="rodape">E se eu aportar <input class="ese" id="extra" inputmode="decimal" autocomplete="off" placeholder="0,00" /> por mês? <span id="eseTxt"></span></p>
       </article>
 
-      <article class="cartao" aria-labelledby="compraTit">
-        <p class="tit" id="compraTit">Posso comprar?</p>
-        <div class="compra-campos">
-          <input id="cValor" inputmode="decimal" autocomplete="off" placeholder="Valor da compra" aria-label="Valor da compra" />
-          <select id="cParcelas" aria-label="Pagamento">
-            <option value="1">À vista</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
-            <option value="5">5x</option><option value="6">6x</option><option value="10">10x</option><option value="12">12x</option>
-            <option value="18">18x</option><option value="24">24x</option></select>
-        </div>
-        <div id="compra"><p class="rodape">Digite um valor para ver quanto a compra tira dos seus aportes e quanto atrasa o próximo marco.</p></div>
+      <article class="cartao" aria-labelledby="metasTit">
+        <p class="tit"><span id="metasTit">Metas</span><button class="sutil" id="btnMeta">+ Nova meta</button></p>
+        <p class="legenda" id="plano" hidden></p>
+        <div class="barras" id="metas"></div>
       </article>
     </section>
 
@@ -147,11 +138,6 @@
       <p class="rodape" id="parcFrase"></p>
     </section>
 
-    <section class="cartao" aria-labelledby="metasTit">
-      <p class="tit"><span id="metasTit">Metas</span><button class="sutil" id="btnMeta">+ Nova meta</button></p>
-      <p class="legenda" id="plano" hidden></p>
-      <div class="barras" id="metas"></div>
-    </section>
   </div>
 </main>
 

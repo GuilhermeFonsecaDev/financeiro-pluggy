@@ -549,9 +549,53 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
 
 /* ------------------------------------------------------------ alternador */
 /* Seletor no topo de telas que dividem uma entrada do menu (Cartões | Contas). */
-.alternador { display:inline-flex; gap:4px; padding:4px; margin:0 0 16px; border-radius:14px; background:var(--surface-2); border:1px solid var(--line); }
-.alternador a { display:inline-flex; align-items:center; gap:8px; min-width:140px; justify-content:center; padding:9px 18px; border-radius:10px; color:var(--text-3); font-size:14px; font-weight:550; text-decoration:none; }
+.alternador { display:flex; align-items:center; width:max-content; height:37px; box-sizing:border-box; gap:2px; padding:2px; margin:0; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); }
+.alternador a { display:inline-flex; align-items:center; gap:7px; min-width:104px; height:31px; box-sizing:border-box; justify-content:center; padding:0 14px; border-radius:8px; color:var(--text-3); font-size:13.5px; font-weight:550; text-decoration:none; }
 .alternador a:hover { color:var(--text-2); }
 .alternador a.ativo { background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.25); }
-.alternador .ic { font-size:15px; opacity:.85; }
-@media (max-width:560px) { .alternador { display:flex; } .alternador a { flex:1; min-width:0; } }
+.alternador .ic { font-size:13px; opacity:.85; }
+@media (max-width:560px) { .alternador { width:auto; } .alternador a { flex:1; min-width:0; } }
+
+/* -------------------------------------------------------- select com busca */
+.sb-botao { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; font-weight:500; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sb-botao::after { content:"▾"; color:var(--text-3); flex:none; }
+.sb-pop { padding:8px; max-width:min(420px, 92vw); }
+.sb-busca { width:100%; margin-bottom:6px; }
+.sb-lista { max-height:320px; overflow-y:auto; padding-right:2px; }
+.sb-grupo { margin-top:12px; padding:4px 10px; font-size:11px; font-weight:650; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); }
+.sb-grupo:first-child { margin-top:2px; }
+.sb-grupo.sb-item { cursor:pointer; border-radius:8px; }
+.sb-item.sb-filho { padding:7px 10px 7px 22px; border-radius:8px; font-size:13.5px; cursor:pointer; }
+.sb-item.ativo, .sb-item:hover { background:var(--surface-3); color:var(--text); }
+.sb-item[aria-selected="true"] { color:var(--azul); font-weight:600; }
+.sb-vazio { padding:10px; color:var(--text-3); font-size:13px; }
+
+/* --------------------------------------------------------------- checkbox */
+/* Caixa própria em todas as telas: cantos arredondados, azul quando marcada,
+   com o visto desenhado. Vem depois de "input, select, textarea" para não
+   herdar a altura e o padding dos campos de texto. */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  flex: none; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0;
+  border: 1.5px solid var(--line-forte); border-radius: 6px;
+  background: var(--surface-2) center / 12px 12px no-repeat;
+  vertical-align: -4px; cursor: pointer;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+input[type="checkbox"]:hover { border-color: var(--text-3); }
+input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(74,149,234,.3); border-color: var(--azul); }
+input[type="checkbox"]:checked {
+  border-color: var(--azul); background-color: var(--azul);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.6 3.6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:indeterminate {
+  border-color: var(--azul); background-color: var(--azul);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:disabled { opacity: .45; cursor: not-allowed; }
+label:has(> input[type="checkbox"]) { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+
+/* Título escondido quando o seletor de telas ocupa o lugar dele. */
+.titulo-oculto { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+/* Com o seletor no lugar do título, a frase de descrição sai: o topo fica só com o seletor e as ações. */
+.topo .alternador ~ .sub { display:none; }

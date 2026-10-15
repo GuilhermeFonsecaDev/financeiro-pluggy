@@ -36,6 +36,51 @@
 .gastos-cel .valor { min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; flex: none; }
 .gastos-cel .valor.muted { font-weight: 450; }
 .gastos-cel .barra { flex: 1; min-width: 48px; }
+/* Visão anual: uma coluna a mais com os 12 meses em barrinhas. */
+.ano .linha-cat, .ano .cabec { grid-template-columns: 20px 28px minmax(0,1fr) 150px minmax(150px,240px) 24px; }
+/* Pizza (rosca) à esquerda da lista; empilha em tela estreita. */
+.cat-grade { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .cat-grade { grid-template-columns: minmax(0, 1fr); } }
+.pizza-card { position: sticky; top: 16px; padding: 18px 20px; }
+.pizza-tit { margin: 0 0 8px; color: var(--text-3); font-size: 13px; font-weight: 500; }
+.pizza { width: 100%; max-width: 240px; display: block; margin: 0 auto; }
+.pizza path { cursor: pointer; transition: opacity .15s; }
+.pizza:hover path { opacity: .55; }
+.pizza path:hover { opacity: 1; }
+.pizza .centro-v { fill: var(--text); font-size: 17px; font-weight: 700; }
+.pizza .centro-r { fill: var(--text-3); font-size: 10.5px; }
+.pizza-leg { display: grid; gap: 4px; margin-top: 14px; }
+.pizza-leg button { all: unset; display: grid; grid-template-columns: 10px minmax(0,1fr) auto 44px; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.pizza-leg button:hover { background: var(--surface-2); }
+.pizza-leg i { width: 10px; height: 10px; border-radius: 3px; }
+.pizza-leg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pizza-leg b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.pizza-leg small { color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+.so-ano { display: none; }
+/* Na visão anual, total, média e os títulos das colunas ficam centralizados. */
+.ano .gastos-cel { justify-content: center; }
+.ano .gastos-cel .valor { text-align: center; min-width: 0; }
+.ano .cabec #cabecGastos, .ano .cabec #cabecMeses { text-align: center; }
+/* Tela estreita: as barrinhas descem para uma linha própria, embaixo do nome. */
+@media (max-width: 900px) {
+  .ano .linha-cat { grid-template-columns: 20px 28px minmax(0,1fr) 130px 24px; }
+  .ano .linha-cat .meses-cat { grid-column: 3 / 5; grid-row: 2; height: 20px; }
+  .ano .cabec { grid-template-columns: 20px 28px minmax(0,1fr) 130px 24px; }
+  .ano .cabec #cabecMeses { display: none; }
+}
+.ano .so-ano { display: block; }
+.meses-cat { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; align-items: end; height: 26px; }
+.meses-cat button { all: unset; display: block; height: 100%; cursor: pointer; border-radius: 3px; position: relative; }
+.meses-cat button i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; min-height: 2px; opacity: .75; }
+.meses-cat button:hover i { opacity: 1; }
+.meses-cat button.vazio i { background: var(--surface-3) !important; opacity: 1; }
+.gastos-cel .media { display: block; font-size: 11.5px; color: var(--text-3); font-weight: 450; }
+.seg { display: inline-flex; border: 1px solid var(--line-forte); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 7px 14px; background: transparent; color: var(--text-2); }
+.seg button.ativo { background: var(--azul); color: #fff; }
+.ano-sel { display: inline-flex; align-items: center; gap: 8px; }
+.ano-sel[hidden] { display: none; }
+.ano-sel b { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .cabec { display: grid; grid-template-columns: 20px 28px 1fr 200px 24px; gap: 10px; padding: 0 6px 8px; color: var(--text-3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .cabec .r { text-align: right; }
 .cat-modal { width:min(520px,100%); }
@@ -104,20 +149,35 @@
     <!-- O mês sai do popover: é o filtro que se troca o tempo todo, e enterrá-lo
          atrás de "Filtros → Aplicar" custava três cliques para uma escolha que
          é a principal da tela. -->
-    <input id="fMes" type="month" aria-label="Mês" />
+    <div class="seg" role="group" aria-label="Visão">
+      <button type="button" data-visao="mes">Mês</button><button type="button" data-visao="ano">Ano</button>
+    </div>
+    <span id="campoMesBox"><input id="fMes" type="month" aria-label="Mês" /></span>
+    <span class="ano-sel" id="anoSel" hidden>
+      <button type="button" class="icone" data-ano="-1" aria-label="Ano anterior">‹</button>
+      <b id="anoTxt"></b>
+      <button type="button" class="icone" data-ano="1" aria-label="Próximo ano">›</button>
+    </span>
     <span id="resumoFiltro" class="muted" style="font-size:12.5px"></span>
     <label class="check" style="margin-left:auto"><input type="checkbox" id="chkTodas" /> Mostrar sem gasto</label>
     <span id="totalGeral" hidden></span>
   </div>
 
+  <div class="cat-grade">
+  <section class="painel pizza-card" aria-labelledby="pizzaTit">
+    <p class="pizza-tit" id="pizzaTit">Para onde foi</p>
+    <svg class="pizza" id="pizza" viewBox="0 0 200 200" role="img" aria-label="Gastos por categoria"></svg>
+    <div class="pizza-leg" id="pizzaLeg"></div>
+  </section>
   <section class="painel">
     <div class="cabec">
       <span></span><span></span><span>Categoria</span>
-      <span class="r">Gastos</span><span></span>
+      <span class="r" id="cabecGastos">Gastos</span><span class="r so-ano" id="cabecMeses">Mês a mês</span><span></span>
     </div>
     <div id="arvore"></div>
     <div id="vazio"></div>
   </section>
+  </div>
 </main>
 
 <div class="pop" id="popFiltros" hidden style="min-width:250px">
@@ -205,6 +265,12 @@ let expandiuPadrao = false;
 let editandoCat = null;
 let voltarParaLista = false;
 const CHAVE_ULTIMO_MES = "financeiroPluggy.categorias.ultimoMes";
+const CHAVE_VISAO = "financeiroPluggy.categorias.visao";
+// "mes" (o de sempre) ou "ano": total do ano, média e os 12 meses por categoria.
+let VISAO = (() => { try { return localStorage.getItem(CHAVE_VISAO) === "ano" ? "ano" : "mes"; } catch { return "mes"; } })();
+let ANO = Number(String(new Date().getFullYear()));
+let MENSAL = null;   // { categoriaId: [12 valores] } na visão anual
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 function ultimoMesSalvo() {
   try {
     const mes = localStorage.getItem(CHAVE_ULTIMO_MES) || "";
@@ -241,15 +307,59 @@ function linhaCat(cat, total, ehFilho = false) {
       ${iconeCat(cat)}
       <span class="nome">${esc(cat.nome)}${cat.quantidade
         ? `<span class="qtd" style="background:${esc(cat.cor)}22;color:${esc(cat.cor)}">${cat.quantidade}</span>` : ""}</span>
-      <div class="gastos-cel" title="${cat.total ? share.toFixed(1) + "% do total" : "Sem gasto no filtro atual"}">
+      ${VISAO === "ano" ? celulasAno(cat, share) : `<div class="gastos-cel" title="${cat.total ? share.toFixed(1) + "% do total" : "Sem gasto no filtro atual"}">
         <span class="valor ${cat.total ? "" : "muted"}">${cat.total ? fmtBRL(cat.total) : "—"}</span>
         <span class="barra"><span style="width:${Math.max(share, cat.total ? 2 : 0)}%;background:${esc(cat.cor)}"></span></span>
-      </div>
+      </div>`}
       <button class="icone" data-editar="${esc(cat.id)}" aria-label="Editar categoria">✎</button>
     </div>`;
 }
 
+/** Visão anual: total do ano com a média por mês, e uma barrinha por mês
+ * na cor da categoria (clicar abre aquele mês). */
+function celulasAno(cat, share) {
+  const meses = MENSAL?.[cat.id] || Array(12).fill(0);
+  const max = Math.max(...meses, 1), comGasto = meses.filter(v => v > 0).length;
+  const media = comGasto ? cat.total / comGasto : 0;
+  return `<div class="gastos-cel" title="${cat.total ? `${share.toFixed(1)}% do ano · média nos meses com gasto` : "Sem gasto no ano"}">
+      <span class="valor ${cat.total ? "" : "muted"}">${cat.total ? fmtBRL(cat.total) : "—"}${cat.total ? `<span class="media">${fmtBRL(media)}/mês</span>` : ""}</span>
+    </div>
+    <div class="meses-cat">${meses.map((v, i) => `<button type="button" class="${v ? "" : "vazio"}" data-abrir-mes="${ANO}-${String(i + 1).padStart(2, "0")}"
+      title="${esc(cat.nome)} · ${MESES_ABREV[i]}/${String(ANO).slice(2)}: ${v ? fmtBRL(v) : "sem gasto"}"><i style="height:${v ? Math.max(8, v / max * 100) : 8}%;background:${esc(cat.cor)}"></i></button>`).join("")}</div>`;
+}
+
+/** Rosca dos gastos do período: as maiores categorias e o resto em "Outras". */
+const FATIAS = 7;
+function renderPizza(p) {
+  const cats = p.categorias.filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+  const fatias = cats.slice(0, FATIAS);
+  const resto = cats.slice(FATIAS).reduce((a, c) => a + c.total, 0);
+  if (resto > 0) fatias.push({ id: "", nome: "Outras", cor: "#5d6675", total: resto });
+  const total = p.total || 1;
+  const svg = document.getElementById("pizza"), R = 92, r = 62, cx = 100, cy = 100;
+  const periodo = VISAO === "ano" ? `em ${ANO}` : labelMes(filtros.month || MES_ATUAL).toLowerCase();
+  document.getElementById("pizzaTit").textContent = `Para onde foi · ${periodo}`;
+  if (!fatias.length) { svg.innerHTML = ""; document.getElementById("pizzaLeg").innerHTML = `<p class="muted" style="margin:0">Sem gasto no período.</p>`; return; }
+  const ponto = (ang, raio) => [cx + raio * Math.sin(ang), cy - raio * Math.cos(ang)];
+  let ini = 0;
+  const arcos = fatias.map(f => {
+    const fim = ini + Math.min(f.total / total, .9999) * Math.PI * 2;
+    const grande = fim - ini > Math.PI ? 1 : 0;
+    const [x1, y1] = ponto(ini, R), [x2, y2] = ponto(fim, R), [x3, y3] = ponto(fim, r), [x4, y4] = ponto(ini, r);
+    const d = `M${x1},${y1} A${R},${R} 0 ${grande} 1 ${x2},${y2} L${x3},${y3} A${r},${r} 0 ${grande} 0 ${x4},${y4} Z`;
+    ini = fim;
+    return `<path d="${d}" fill="${esc(f.cor)}" ${f.id ? `data-pizza-cat="${esc(f.id)}"` : ""} stroke="var(--surface)" stroke-width="1.5"><title>${esc(f.nome)}: ${fmtBRL(f.total)} (${(f.total / total * 100).toFixed(1)}%)</title></path>`;
+  }).join("");
+  const curto = v => v >= 1000 ? `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : fmtBRL(v);
+  svg.innerHTML = arcos + `<text class="centro-v" x="100" y="100" text-anchor="middle">${curto(p.total)}</text>
+    <text class="centro-r" x="100" y="117" text-anchor="middle">${cats.length} categorias</text>`;
+  document.getElementById("pizzaLeg").innerHTML = fatias.map(f => `
+    <button type="button" ${f.id ? `data-pizza-cat="${esc(f.id)}"` : "disabled"} title="${esc(f.nome)}: ${fmtBRL(f.total)}">
+      <i style="background:${esc(f.cor)}"></i><span>${esc(f.nome)}</span><b>${curto(f.total)}</b><small>${(f.total / total * 100).toFixed(0)}%</small></button>`).join("");
+}
+
 function render(p) {
+  renderPizza(p);
   const alvo = document.getElementById("arvore");
   const todas = document.getElementById("chkTodas").checked;
   const visiveis = todas ? p.categorias : p.categorias.filter(c => c.total > 0);
@@ -282,13 +392,44 @@ function render(p) {
   document.getElementById("totalGeral").textContent = `Total ${fmtBRL(p.total)}`;
 }
 
-async function carregar() {
-  setEstado("estado", "Carregando…");
-  const q = new URLSearchParams();
-  if (filtros.month) q.set("month", filtros.month);
+function consulta(extra) {
+  const q = new URLSearchParams(extra);
   if (filtros.account) q.set("account", filtros.account);
   if (filtros.card) q.set("card", filtros.card);
-  const p = await pedir(`/extrato/categorias-resumo?${q}`);
+  return `/extrato/categorias-resumo?${q}`;
+}
+
+function sincronizarVisao() {
+  document.querySelectorAll("[data-visao]").forEach(b => b.classList.toggle("ativo", b.dataset.visao === VISAO));
+  document.getElementById("campoMesBox").hidden = VISAO === "ano";
+  document.getElementById("anoSel").hidden = VISAO !== "ano";
+  document.getElementById("anoTxt").textContent = ANO;
+  document.querySelector("main").classList.toggle("ano", VISAO === "ano");
+  document.getElementById("cabecGastos").textContent = VISAO === "ano" ? `Gastos em ${ANO}` : "Gastos";
+}
+
+async function carregar() {
+  setEstado("estado", "Carregando…");
+  sincronizarVisao();
+  let p;
+  if (VISAO === "ano") {
+    const meses = Array.from({ length: 12 }, (_, i) => `${ANO}-${String(i + 1).padStart(2, "0")}`);
+    const [ano, ...porMes] = await Promise.all([
+      pedir(consulta({ from: meses[0], to: meses[11] })),
+      ...meses.map(m => pedir(consulta({ month: m }))),
+    ]);
+    // Valor de cada categoria (pai e filhas) em cada mês.
+    MENSAL = {};
+    porMes.forEach((r, i) => {
+      for (const c of r.categorias) {
+        for (const x of [c, ...(c.filhos || [])]) (MENSAL[x.id] ||= Array(12).fill(0))[i] = x.total || 0;
+      }
+    });
+    p = ano;
+  } else {
+    MENSAL = null;
+    p = await pedir(consulta(filtros.month ? { month: filtros.month } : {}));
+  }
   render(p);
 
   const conta = CONTAS.find(c => c.id === filtros.account)?.nome;
@@ -562,6 +703,41 @@ function ligar() {
     carregar().catch(err => setEstado("estado", err.message, "erro"));
   });
 
+  document.querySelectorAll("[data-visao]").forEach(b => b.addEventListener("click", () => {
+    if (VISAO === b.dataset.visao) return;
+    VISAO = b.dataset.visao;
+    if (VISAO === "ano" && filtros.month) ANO = Number(filtros.month.slice(0, 4));
+    try { localStorage.setItem(CHAVE_VISAO, VISAO); } catch { /* opcional */ }
+    carregar().catch(err => setEstado("estado", err.message, "erro"));
+  }));
+  document.querySelectorAll("[data-ano]").forEach(b => b.addEventListener("click", () => {
+    ANO += Number(b.dataset.ano);
+    carregar().catch(err => setEstado("estado", err.message, "erro"));
+  }));
+  // Barrinha de um mês na visão anual: abre aquele mês.
+  document.getElementById("arvore").addEventListener("click", e => {
+    const m = e.target.closest("[data-abrir-mes]");
+    if (!m) return;
+    e.stopPropagation();
+    VISAO = "mes";
+    try { localStorage.setItem(CHAVE_VISAO, VISAO); } catch { /* opcional */ }
+    filtros.month = m.dataset.abrirMes;
+    document.getElementById("fMes").value = filtros.month;
+    salvarUltimoMes(filtros.month);
+    carregar().catch(err => setEstado("estado", err.message, "erro"));
+  }, true);
+
+  document.querySelector(".pizza-card").addEventListener("click", e => {
+    const f = e.target.closest("[data-pizza-cat]");
+    if (!f) return;
+    const q = new URLSearchParams({ category: f.dataset.pizzaCat });
+    if (VISAO === "ano") { q.set("from", `${ANO}-01`); q.set("to", `${ANO}-12`); }
+    else if (filtros.month) q.set("month", filtros.month);
+    if (filtros.account) q.set("account", filtros.account);
+    if (filtros.card) q.set("card", filtros.card);
+    location.href = `transacoes.html?${q}`;
+  });
+
   document.getElementById("chkTodas").addEventListener("change", () =>
     carregar().catch(e => setEstado("estado", e.message, "erro")));
 
@@ -642,7 +818,9 @@ function ligar() {
     const linha = e.target.closest("[data-cat]");
     if (linha) {
       const q = new URLSearchParams({ category: linha.dataset.cat });
-      if (filtros.month) q.set("month", filtros.month);
+      // Na visão anual, as transações do ano inteiro; senão, as do mês.
+      if (VISAO === "ano") { q.set("from", `${ANO}-01`); q.set("to", `${ANO}-12`); }
+      else if (filtros.month) q.set("month", filtros.month);
       if (filtros.account) q.set("account", filtros.account);
       if (filtros.card) q.set("card", filtros.card);
       location.href = `transacoes.html?${q}`;
@@ -662,6 +840,7 @@ function ligar() {
     filtros.month = ultimoMesSalvo() || MES_ATUAL;
     document.getElementById("fMes").value = filtros.month;
     salvarUltimoMes(filtros.month);
+    ANO = Number(filtros.month.slice(0, 4));
     await carregar();
   } catch (e) {
     setEstado("estado", `Backend fora do ar: ${e.message}`, "erro");

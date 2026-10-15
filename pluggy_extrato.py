@@ -432,6 +432,11 @@ def _completar_faturas_abertas_e_parcelas(
             origens[conta_id][indice] = "aberta"
 
     series: dict[tuple[Any, ...], sqlite3.Row] = {}
+    # Bancos de teste podem não ter a camada de ajustes.
+    ignorada = ("(SELECT a.calculo_override FROM extrato_ajustes a "
+                "WHERE a.transacao_id = t.transacao_id)"
+                if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'extrato_ajustes'").fetchone()
+                else "NULL")
     # Em que meses cada COMPRA ja tem parcela de verdade. Projetar uma
     # parcela num mes que ja a contem duplicaria parte da fatura.
     meses_reais: dict[tuple[Any, ...], set[int]] = {}
@@ -450,7 +455,10 @@ def _completar_faturas_abertas_e_parcelas(
           {COMPETENCIA} AS competencia_ciclo,
           (SELECT f.competencia FROM pluggy_faturas f
             WHERE f.conta_id = t.conta_id
-              AND f.fatura_id = t.fatura_id) AS competencia_fatura
+              AND f.fatura_id = t.fatura_id) AS competencia_fatura,
+          -- Parcela marcada "fora dos cálculos" (compra estornada, por
+          -- exemplo): as seguintes também não devem ser projetadas.
+          {ignorada} AS calculo_override
         FROM pluggy_transacoes t
         WHERE t.conta_id IN ({marcadores})
           AND t.tipo = 'DEBIT'
@@ -479,6 +487,10 @@ def _completar_faturas_abertas_e_parcelas(
         atual = int(linha["parcela_numero"])
         total = int(linha["parcela_total"])
         if atual >= total:
+            continue
+        # A última parcela real foi tirada dos cálculos: a compra foi
+        # estornada ou não vale mais, então não sobra parcela a projetar.
+        if linha["calculo_override"] == 0:
             continue
 
         conta_id = linha["conta_id"]

@@ -994,8 +994,11 @@ function abrirModalEdicao(tx) {
   document.getElementById("eConta").innerHTML = opcoesInstrumentos(contas, tx.contaId);
   document.getElementById("eConta").value = tx.contaId;
 
+  // Categoria pai vira título de grupo (também escolhível); subcategorias
+  // recuadas embaixo. A lista tem busca (selectComBusca, app.js).
   document.getElementById("eCategoria").innerHTML = CATEGORIAS.map(c =>
-    `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.emoji)} ${esc(c.nome)}</option>`).join("");
+    `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${c.paiId ? `${esc(c.emoji)} ` : ""}${esc(c.nome)}</option>`).join("");
+  selectComBusca(document.getElementById("eCategoria"), { placeholder: "Buscar categoria…" });
   document.getElementById("eCategoria").value = tx.categoria.id;
   document.getElementById("editarRestaurar").hidden = !tx.editadaManualmente;
   document.getElementById("modalEditar").hidden = false;

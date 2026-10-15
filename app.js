@@ -549,6 +549,13 @@ const GRUPOS_TELAS = {
 function montarAlternador(grupo, atual, alvo = document.getElementById("alternador")) {
   const telas = GRUPOS_TELAS[grupo] || [];
   if (alvo) {
+    // O seletor ocupa o lugar do título, na mesma linha das ações da tela.
+    // O <h1> continua no HTML (leitor de tela, título da aba), só escondido.
+    const h1 = document.querySelector("header.topo h1");
+    if (h1 && !h1.parentElement.contains(alvo)) {
+      h1.classList.add("titulo-oculto");
+      h1.insertAdjacentElement("afterend", alvo);
+    }
     alvo.className = "alternador";
     alvo.setAttribute("role", "tablist");
     alvo.innerHTML = telas.map(t => `
@@ -556,6 +563,101 @@ function montarAlternador(grupo, atual, alvo = document.getElementById("alternad
         <span class="ic" aria-hidden="true">${t.ic}</span>${esc(t.nome)}</a>`).join("");
   }
   return telas[0]?.href || atual;
+}
+
+/* --------------------------------------------------------- select com busca */
+/* Troca a lista nativa de um <select> por um botão que abre uma lista com
+ * campo de busca. O <select> continua sendo a fonte da verdade (value,
+ * change), só fica escondido: quem preenche as opções não muda nada.
+ *
+ * Opções com data-grupo="1" viram títulos de grupo (não selecionáveis se
+ * data-escolhivel="0"); as demais ficam recuadas embaixo do último título. */
+function selectComBusca(select, { placeholder = "Buscar…" } = {}) {
+  if (!select || select.dataset.comBusca) return;
+  select.dataset.comBusca = "1";
+  select.style.display = "none";
+  const botao = document.createElement("button");
+  botao.type = "button";
+  botao.className = "sb-botao";
+  botao.setAttribute("data-abre-pop", "");
+  botao.setAttribute("aria-haspopup", "listbox");
+  select.insertAdjacentElement("afterend", botao);
+  const pop = document.createElement("div");
+  pop.className = "pop sb-pop";
+  pop.hidden = true;
+  pop.innerHTML = `<input class="sb-busca" type="search" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}" />
+    <div class="sb-lista" role="listbox"></div>`;
+  document.body.appendChild(pop);
+  const busca = pop.querySelector(".sb-busca"), lista = pop.querySelector(".sb-lista");
+  let ativo = -1;
+
+  const rotulo = () => {
+    const o = select.options[select.selectedIndex];
+    botao.textContent = o ? o.textContent.trim() : "—";
+  };
+  const semAcento = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const desenhar = () => {
+    const termo = semAcento(busca.value.trim());
+    let grupo = "", html = "", visiveis = 0;
+    const itens = [...select.options].map(o => ({ o, grupo: o.dataset.grupo === "1" }));
+    // Um grupo aparece se o título ou algum filho casa com a busca.
+    const blocos = [];
+    for (const it of itens) {
+      if (it.grupo || !blocos.length) blocos.push({ titulo: it.grupo ? it : null, filhos: [] });
+      if (!it.grupo) blocos.at(-1).filhos.push(it);
+    }
+    for (const b of blocos) {
+      const tituloCasa = b.titulo && semAcento(b.titulo.o.textContent).includes(termo);
+      const filhos = b.filhos.filter(f => !termo || tituloCasa || semAcento(f.o.textContent).includes(termo));
+      if (termo && !tituloCasa && !filhos.length) continue;
+      if (b.titulo) {
+        const escolhivel = b.titulo.o.dataset.escolhivel !== "0";
+        html += `<div class="sb-grupo ${escolhivel ? "sb-item" : ""}" ${escolhivel ? `role="option" data-v="${esc(b.titulo.o.value)}"` : ""}
+          aria-selected="${b.titulo.o.value === select.value}">${esc(b.titulo.o.textContent.trim())}</div>`;
+        if (escolhivel) visiveis++;
+      }
+      html += filhos.map(f => `<div class="sb-item sb-filho" role="option" data-v="${esc(f.o.value)}" aria-selected="${f.o.value === select.value}">${esc(f.o.textContent.trim())}</div>`).join("");
+      visiveis += filhos.length;
+    }
+    lista.innerHTML = html || `<div class="sb-vazio">Nada encontrado.</div>`;
+    const itensDom = [...lista.querySelectorAll(".sb-item")];
+    ativo = termo ? 0 : itensDom.findIndex(e => e.getAttribute("aria-selected") === "true");
+    marcar();
+  };
+  const marcar = () => {
+    const itensDom = [...lista.querySelectorAll(".sb-item")];
+    itensDom.forEach((e, i) => e.classList.toggle("ativo", i === ativo));
+    itensDom[ativo]?.scrollIntoView({ block: "nearest" });
+  };
+  const escolher = valor => {
+    select.value = valor;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    rotulo();
+    fecharPop();
+    botao.focus();
+  };
+  botao.addEventListener("click", () => {
+    busca.value = "";
+    desenhar();
+    pop.style.minWidth = `${botao.getBoundingClientRect().width}px`;
+    if (abrirPop(pop, botao)) setTimeout(() => busca.focus(), 0);
+  });
+  busca.addEventListener("input", desenhar);
+  busca.addEventListener("keydown", e => {
+    const n = lista.querySelectorAll(".sb-item").length;
+    if (e.key === "ArrowDown") { ativo = Math.min(n - 1, ativo + 1); marcar(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { ativo = Math.max(0, ativo - 1); marcar(); e.preventDefault(); }
+    else if (e.key === "Enter") { const el = lista.querySelectorAll(".sb-item")[ativo]; if (el) escolher(el.dataset.v); e.preventDefault(); }
+  });
+  lista.addEventListener("mousedown", e => e.preventDefault());
+  lista.addEventListener("click", e => { const el = e.target.closest(".sb-item"); if (el) escolher(el.dataset.v); });
+  // O valor pode mudar por código (abrir o modal com outra transação).
+  const nativo = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  Object.defineProperty(select, "value", { configurable: true,
+    get() { return nativo.get.call(this); }, set(v) { nativo.set.call(this, v); rotulo(); } });
+  select.addEventListener("change", rotulo);
+  rotulo();
+  return { atualizar: rotulo };
 }
 
 /* ------------------------------------------------------------- estados */

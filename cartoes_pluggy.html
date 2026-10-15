@@ -53,11 +53,13 @@
 /* --- seletor de ano ----------------------------------------------------- */
 /* Antes eram duas setas e um input numerico com spinner: tres alvos para uma
    escolha entre tres valores que a propria API informa. */
-.anos { display:flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
+.anos { display:flex; align-items:center; gap:2px; padding:2px; height:40px; box-sizing:border-box; border:1px solid var(--line); border-radius:var(--raio); background:var(--surface-2); }
 .anos button {
   border:0; background:transparent; color:var(--text-3); font:inherit; font-size:13px;
-  padding:5px 13px; border-radius:7px; cursor:pointer; font-variant-numeric:tabular-nums;
+  padding:0 13px; height:34px; min-height:0; border-radius:7px; cursor:pointer; font-variant-numeric:tabular-nums;
 }
+/* Anos, agrupamento e Tags na mesma altura. */
+#groupSelect, #btnIdentificar { height:40px; min-height:40px; box-sizing:border-box; }
 .anos button:hover { color:var(--text); }
 .anos button[aria-pressed="true"] { background:var(--surface-3); color:var(--text); font-weight:600; }
 
@@ -138,6 +140,8 @@ th small { display:block; font-size:10px; font-weight:400; text-transform:none; 
 th, td { text-align: right; white-space: nowrap; font-size: 13.5px; padding: 11px 12px; }
 th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; text-align: left; background: var(--surface); }
 th { background: var(--surface-2); }
+/* A coluna "Mês" fica fixa ao rolar; no cabeçalho ela tem a mesma cor dos outros. */
+th:first-child { background: var(--surface-2); }
 /* Linha de total no mesmo cinza da selecao. O que a distingue e o peso da
    fonte e a borda de cima, nao uma cor propria -- azul aqui competia com o
    azul da interface e com as cores das tags. */

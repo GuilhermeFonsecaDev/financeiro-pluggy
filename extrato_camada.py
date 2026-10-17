@@ -1890,13 +1890,18 @@ def _parcelas_irmas(conn: sqlite3.Connection, original: sqlite3.Row) -> list[str
     total = int(original["parcela_total"] or 0)
     if total <= 1:
         return []
+    # Muitos lojistas põem o contador na descrição ("Loja 7/10", "Loja 8/10")
+    # e às vezes trocam maiúsculas entre as parcelas ("MLP*" e "Mlp*"): a
+    # comparação ignora as duas coisas, senão nenhuma irmã é encontrada.
+    def base(descricao: str) -> str:
+        return normalizar(re.sub(r"\d+\s*/\s*\d+", " ", descricao or ""))
+    alvo = base(original["descricao"])
     linhas = conn.execute(
-        "SELECT transacao_id FROM pluggy_transacoes "
-        "WHERE conta_id = ? AND parcela_total = ? AND transacao_id != ? "
-        "  AND norm(descricao) = norm(?)",
-        (original["conta_id"], total, original["transacao_id"], original["descricao"]),
+        "SELECT transacao_id, descricao FROM pluggy_transacoes "
+        "WHERE conta_id = ? AND parcela_total = ? AND transacao_id != ?",
+        (original["conta_id"], total, original["transacao_id"]),
     ).fetchall()
-    return [l["transacao_id"] for l in linhas]
+    return [l["transacao_id"] for l in linhas if base(l["descricao"]) == alvo]
 
 
 def _definir_categoria_manual(conn: sqlite3.Connection, transacao_id: str,
@@ -2059,7 +2064,11 @@ def ajustar_transacao(transacao_id: str, dados: dict) -> dict:
         # rápido do chip manda só isso; a edição completa manda o formulário
         # inteiro, e ali valor/data de uma parcela não deve arrastar as outras.
         irmas_atualizadas = 0
-        if set(dados.keys()) == {"categoriaId"}:
+        # Na edição completa, só a categoria acompanha as irmãs, e só quando
+        # ela de fato mudou (valor, data e descrição continuam desta parcela).
+        mudou_categoria = "categoriaId" in dados and (
+            (existente["categoria_id_manual"] if existente else None) != categoria_id)
+        if set(dados.keys()) == {"categoriaId"} or mudou_categoria:
             for irma_id in _parcelas_irmas(conn, original):
                 _definir_categoria_manual(conn, irma_id, categoria_id)
                 irmas_atualizadas += 1

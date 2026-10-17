@@ -181,10 +181,15 @@ def _contas_da_referencia(conn: sqlite3.Connection, referencia: str) -> set[str]
 
     Cartão: a tag ou o cartão (cartoes.resolver_contas). Conta bancária: o
     banco inteiro ("contas:<tag>"), já que corrente e poupança do mesmo banco
-    são o mesmo lugar. Referência desconhecida vale só por ela mesma.
+    são o mesmo lugar, e também os cartões da mesma tag. Referência
+    desconhecida vale só por ela mesma.
     """
     if str(referencia).startswith("contas:"):
-        return set(px._grupos_contas(conn, None).get(referencia, set())) or {referencia}
+        # O banco inclui os cartões dele: a conta "paga pelo BTG" casa tanto
+        # com o PIX da corrente quanto com a cobrança no cartão BTG.
+        banco = set(px._grupos_contas(conn, None).get(referencia, set()))
+        cartoes_do_banco = set(cartoes.resolver_contas(conn, referencia[len("contas:"):]))
+        return (banco | cartoes_do_banco) or {referencia}
     return set(cartoes.resolver_contas(conn, referencia)) or {referencia}
 
 
@@ -1301,6 +1306,44 @@ def remover_do_mes(fixa_id: str, mes_ref: str) -> dict:
         )
         conn.commit()
     return {"ok": True, "id": fixa_id, "mesRef": mes_ref, "escopo": "mes"}
+
+
+def encerrar(fixa_id: str, mes_ref: str) -> dict:
+    """Tira a conta do mês `mes_ref` em diante; os meses anteriores ficam.
+
+    A 2.0 guarda uma cópia do cadastro por mês. Por isso encerra todas as
+    cópias da mesma conta (mesmo nome e termo): as que começam no mês ou
+    depois saem inteiras; as que vinham de antes passam a terminar no mês
+    anterior, e os ajustes e subdescontos do mês em diante vão junto.
+    """
+    if not re.fullmatch(r"\d{4}-\d{2}", mes_ref or ""):
+        raise ValueError("Mês inválido.")
+    ano, mes = map(int, mes_ref.split("-"))
+    anterior = f"{ano - 1}-12" if mes == 1 else f"{ano}-{mes - 1:02d}"
+    with _abrir() as conn:
+        base = conn.execute("SELECT nome, termo FROM fixas_contas WHERE id = ?", (fixa_id,)).fetchone()
+        if not base:
+            raise ValueError("Conta fixa não encontrada.")
+        conn.execute("PRAGMA foreign_keys = ON")
+        copias = conn.execute(
+            "SELECT id, desde, ate FROM fixas_contas WHERE nome = ? AND termo = ?",
+            (base["nome"], base["termo"])).fetchall()
+        removidas = encerradas = 0
+        for c in copias:
+            if c["ate"] and c["ate"] < mes_ref:
+                continue                      # já terminava antes: não muda
+            if c["desde"] and c["desde"] >= mes_ref:
+                conn.execute("DELETE FROM fixas_descontos WHERE fixa_id = ?", (c["id"],))
+                conn.execute("DELETE FROM fixas_mes WHERE fixa_id = ?", (c["id"],))
+                conn.execute("DELETE FROM fixas_contas WHERE id = ?", (c["id"],))
+                removidas += 1
+            else:
+                conn.execute("UPDATE fixas_contas SET ate = ? WHERE id = ?", (anterior, c["id"]))
+                conn.execute("DELETE FROM fixas_descontos WHERE fixa_id = ? AND mes_ref >= ?", (c["id"], mes_ref))
+                conn.execute("DELETE FROM fixas_mes WHERE fixa_id = ? AND mes_ref >= ?", (c["id"], mes_ref))
+                encerradas += 1
+        conn.commit()
+    return {"ok": True, "id": fixa_id, "aPartirDe": mes_ref, "removidas": removidas, "encerradas": encerradas}
 
 
 def remover(fixa_id: str) -> dict:

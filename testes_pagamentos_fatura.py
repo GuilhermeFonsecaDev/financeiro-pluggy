@@ -54,10 +54,14 @@ class PagamentosFatura(unittest.TestCase):
         self.pagamento('extra2',65,'09')
         self.assertEqual(self.calcular()[0],1323.68)
 
-    def test_extra_apenas_pendente_aguarda_confirmacao(self):
+    def test_extra_pendente_sem_par_ja_abate(self):
+        # Adiantamento ainda pendente no banco (sem cópia confirmada) já
+        # desconta da fatura aberta: é o que resta a pagar no vencimento.
         self.pagamento('quitacao',3709.99,'01')
         self.pagamento('extra',65,'05','PENDING')
-        self.assertEqual(self.calcular()[0],1453.68)
+        saldo, audit = self.calcular()
+        self.assertEqual(saldo,1388.68)
+        self.assertEqual(audit[0]['pagamentos'],[{'data':'2026-09-05','valor':65,'pendente':True}])
 
     def test_oficial_tem_prioridade(self):
         self.completo()

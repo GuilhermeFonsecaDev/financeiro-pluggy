@@ -165,7 +165,11 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 # ?month= exclui a conta so daquele mes; sem ele, o cadastro
                 # inteiro sai, como sempre saiu.
                 mes = (parse_qs(parsed.query).get("month", [""])[0] or "").strip()
-                self.send_json(fixas.remover_do_mes(fixa.group(1), mes) if mes
+                # ?from= encerra a conta daquele mês em diante (meses
+                # anteriores ficam).
+                desde = (parse_qs(parsed.query).get("from", [""])[0] or "").strip()
+                self.send_json(fixas.encerrar(fixa.group(1), desde) if desde
+                               else fixas.remover_do_mes(fixa.group(1), mes) if mes
                                else fixas.remover(fixa.group(1)))
                 return
             emprestimo = re.fullmatch(r"/api/emprestimos/([\w-]+)", parsed.path)

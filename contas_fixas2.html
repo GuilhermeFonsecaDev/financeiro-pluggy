@@ -19,6 +19,45 @@
 .fatura-barra { height:3px; margin:0 0 10px; }
 .fatura-linhas { font-size:12.5px; flex-wrap:wrap; }
 .fatura-topo .selo-previsto.v-chip { border:0; margin:0; vertical-align:0; cursor:pointer; min-height:0; }
+/* Seleção em lote: uma coluna para a caixa antes da seta. */
+.modo-sel #lista .colunas, .modo-sel .cabec.colunas { grid-template-columns: 20px 22px 1fr 128px 112px 106px 120px 100px 158px 50px; }
+@media (max-width: 1700px) { .modo-sel #lista .colunas, .modo-sel .cabec.colunas { grid-template-columns: 20px 22px minmax(220px, 1fr) 112px 120px 100px 50px; } }
+@media (max-width: 1180px) { .modo-sel #lista .colunas, .modo-sel .cabec.colunas { grid-template-columns: 20px 22px 1fr 106px 112px 96px 50px; } }
+.sel-cel { display:none; align-items:center; justify-content:center; }
+.modo-sel .sel-cel { display:flex; }
+/* O ☐ fica na coluna das setinhas, do mesmo tamanho delas; some no modo seleção. */
+.sel-liga { display:flex; align-items:center; }
+.modo-sel .sel-liga #btnSelecionar { display:none; }
+/* Setinha minimalista: só o chevron, sem caixa; gira ao abrir. */
+#lista .seta { border:0; background:transparent; font-size:17px; font-weight:400; line-height:1; color:var(--text-3); }
+#lista .seta:hover { background:transparent; color:var(--text); }
+#lista .seta.aberta { color:var(--azul); }
+/* Visual de caixa de seleção vazia (igual às do app). */
+.sel-liga #btnSelecionar { width:18px; height:18px; min-height:0; margin:2px; padding:0; border:1.5px solid var(--line-forte); border-radius:6px; background:var(--surface-2); font-size:0; cursor:pointer; }
+.sel-liga #btnSelecionar:hover { border-color:var(--text-3); }
+.lote { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 4px 10px; padding:8px 10px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); font-size:13px; }
+.lote[hidden] { display:none; }
+.lote #loteTexto { margin-right:auto; color:var(--text-2); }
+.lote button { height:32px; min-height:0; padding:0 14px; font-size:12.5px; border:1px solid var(--line-forte); border-radius:8px; background:transparent; color:var(--text-2); }
+.lote button:hover { background:var(--surface-3); color:var(--text); }
+.lote #loteCadastro { color:var(--vermelho); }
+.lote button:disabled { opacity:.45; cursor:not-allowed; background:transparent; }
+.lote #loteCadastro:hover { background:rgba(240,106,106,.12); }
+.fixa.selecionada > .colunas { background:rgba(74,149,234,.08); border-radius:8px; }
+.fatura-selos { display:inline-flex; gap:6px; align-items:center; }
+/* Detalhe da fatura em duas tabelas, cada uma com título e subtotal. */
+.card-modal-secoes { display:grid; gap:18px; }
+.card-modal-secoes[hidden], #cardModalTabela[hidden] { display:none; }
+.card-modal-secao header { margin:0 4px 8px; font-size:13px; color:var(--text-2); font-weight:600; }
+.card-modal-total { background:var(--surface-2); font-weight:650; padding-top:8px; padding-bottom:8px; }
+.card-modal-total span:first-child { color:var(--text-2); text-transform:uppercase; font-size:10.5px; letter-spacing:.06em; }
+
+/* Ícone de informação da fatura: cinza; laranja quando há valor previsto. */
+.fatura-info { width:18px; height:18px; min-height:0; padding:0; border-radius:50%; border:1.3px solid var(--text-3);
+  background:transparent; color:var(--text-3); font:italic 700 10.5px/1 Georgia, serif; display:grid; place-items:center; cursor:pointer; }
+.fatura-info:hover { color:var(--text); border-color:var(--text); }
+.fatura-info.previsto { border-color:var(--laranja); color:var(--laranja); }
+.fatura-info.previsto:hover { background:rgba(232,149,74,.14); }
 .fatura-topo .selo-previsto.v-chip:hover { background:rgba(232,149,74,.24); }
 .composicao { grid-column:span 1; }
 .composicao-saldo { gap:0; margin:10px 0 0; }
@@ -69,8 +108,15 @@
   <section class="contas-composicao" aria-label="Contas fixas e composição do mês">
     <div class="contas-coluna">
       <div class="painel" style="padding:14px 10px 6px">
+        <div class="lote" id="lote" hidden>
+          <span id="loteTexto"></span>
+          <button class="sutil" id="loteMes">Excluir do mês</button>
+          <button class="perigo" id="loteCadastro">Excluir cadastro</button>
+          <button class="sutil" id="loteLimpar">Cancelar</button>
+        </div>
         <div class="cabec colunas">
-          <span></span>
+          <span class="sel-cel sel-cab"><input type="checkbox" id="selTodas" aria-label="Selecionar todas as contas" /></span>
+          <span class="sel-liga"><button class="icone" id="btnSelecionar" title="Selecionar contas" aria-label="Selecionar contas"></button></span>
           <span>Item</span>
           <span class="c col-tag">Tag</span>
           <span class="c">Valor bruto</span>
@@ -182,10 +228,11 @@
       <button class="icone" id="cardModalFechar" aria-label="Fechar">×</button>
     </div>
     <div class="card-modal-resumo" id="cardModalResumo"></div>
-    <div class="card-modal-lista">
+    <div class="card-modal-lista" id="cardModalTabela">
       <div class="card-modal-cabec"><span>Item</span><span>Tipo</span><span>Valor</span></div>
       <div id="cardModalLista"></div>
     </div>
+    <div class="card-modal-secoes" id="cardModalSecoes" hidden></div>
   </div>
 </div>
 
@@ -236,7 +283,7 @@
 
     <div class="modal-rodape">
       <button class="perigo" id="btnExcluir" hidden style="margin-right:auto"
-              title="Remove o cadastro e todos os meses. Para tirar de um mês só, use o menu da linha.">Excluir cadastro</button>
+              title="Tira a conta deste mês em diante; os meses anteriores ficam. Para tirar de um mês só, use o menu da linha.">Excluir cadastro</button>
       <button class="sutil" id="btnCancelar">Cancelar</button>
       <button class="primario" id="btnSalvar">Criar</button>
     </div>
@@ -561,8 +608,9 @@ function linha(i) {
   return `
     <div class="fixa ${i.incluidaCalculos ? "" : "informativa"}" data-fixa="${esc(i.id)}">
       <div class="colunas">
+        <span class="sel-cel"><input type="checkbox" data-sel="${esc(i.id)}" ${SELECIONADAS.has(i.id) ? "checked" : ""} aria-label="Selecionar ${esc(i.nome)}" /></span>
         <button class="icone seta ${aberta ? "aberta" : ""}" data-abre-desc="${esc(i.id)}"
-                aria-expanded="${aberta}" aria-label="${aberta ? "Fechar" : "Abrir"} descontos">▶</button>
+                aria-expanded="${aberta}" aria-label="${aberta ? "Fechar" : "Abrir"} descontos">›</button>
         <div class="nome" title="${esc(i.nome)}">${esc(i.nome)}</div>
         <div class="col-tag">
           <button class="pilula ${i.tag === "Contas Empresa" ? "tag-empresa" : "tag-pessoais"}"
@@ -746,6 +794,88 @@ function calcularCards() {
   };
 }
 
+/** Pagamentos antecipados já descontados da fatura do mês (conciliação do
+ * backend, ver pluggy_extrato._conciliar_pagamentos_adicionais). */
+function adiantamentosDoCartao(grupoId) {
+  const indice = Number(MES.slice(5, 7)) - 1;
+  const cartao = (FATURAS?.cartoes || []).find(c => c.id === grupoId);
+  const contas = new Set([grupoId, ...(cartao?.contas || []).map(c => typeof c === "string" ? c : c.contaId || c.id)]);
+  const lista = (FATURAS?.conciliacoesPagamentos || []).filter(x => x.mes === indice + 1 && contas.has(x.contaId));
+  const pagamentos = lista.flatMap(x => x.pagamentos || []);
+  return { total: lista.reduce((a, x) => a + (x.credito || 0), 0), cobrancas: lista.reduce((a, x) => a + (x.cobrancas || 0), 0), pagamentos };
+}
+
+/** O modal das faturas tem dois formatos: a tabela única (itens vinculados,
+ * previstos, sem vínculo) e as seções separadas do detalhe da fatura. */
+function modalEmSecoes(sim) {
+  el("cardModalTabela").hidden = sim;
+  el("cardModalSecoes").hidden = !sim;
+}
+
+function secaoModal(titulo, linhas, total) {
+  if (!linhas.length) return "";
+  return `<section class="card-modal-secao">
+    <header>${esc(titulo)}</header>
+    <div class="card-modal-lista">
+      <div class="card-modal-cabec"><span>Item</span><span>Tipo</span><span>Valor</span></div>
+      ${linhas.map(l => `<div class="card-modal-linha"><span>${esc(l.titulo)}</span><span>${esc(l.tipo)}</span><strong>${l.valor}</strong></div>`).join("")}
+      <div class="card-modal-linha card-modal-total"><span>Total</span><span></span><strong>${total}</strong></div>
+    </div></section>`;
+}
+
+/** Detalhe da fatura: o que é previsão e o que já foi pago antes. */
+function abrirInfoFatura(grupoId) {
+  const card = calcularCards().cartoes.find(c => c.id === grupoId);
+  if (!card) return;
+  const estimativas = previsoesDoCartao(grupoId, Number(MES.slice(5, 7)) - 1);
+  const previstos = [...card.detalhes.filter(d => !d.lancado).map(d => ({ ...d,
+    tipo: d.tipo === "Conta fixa paga no cartão" ? "Conta fixa pendente" : d.tipo })), ...estimativas];
+  const estimado = estimativas.reduce((s, i) => s + Math.round(i.valor * 100), 0);
+  const faturaHoje = (Math.round(card.original * 100) - estimado) / 100;
+  const previstoALancar = (Math.round(card.aLancar * 100) + estimado) / 100;
+  const a = adiantamentosDoCartao(grupoId);
+  el("cardModalTitulo").textContent = `Fatura · ${card.nome}`;
+  el("cardModalSub").textContent = [
+    previstos.length ? "Previsto: contas fixas e hábitos que ainda não foram lançados." : "",
+    a.total ? "Adiantamentos: pagamentos feitos antes do vencimento, descontados do total." : "",
+  ].filter(Boolean).join(" ");
+  el("cardModalResumo").innerHTML = `
+    <div><span>Fatura hoje</span><strong>${fmtBRL(faturaHoje + a.total)}</strong></div>
+    <div><span>Previsto a lançar</span><strong>${fmtBRL(previstoALancar)}</strong></div>
+    <div><span>Adiantamentos</span><strong>${a.total ? `−${fmtBRL(a.total)}` : fmtBRL(0)}</strong></div>
+    <div><span>Total a pagar</span><strong>${fmtBRL(card.previsto)}</strong></div>`;
+  const previstoHtml = secaoModal("Previsto a lançar",
+    previstos.map(d => ({ titulo: d.titulo, tipo: d.tipo, valor: fmtBRL(d.valor) })), fmtBRL(previstoALancar));
+  const pagoHtml = secaoModal("Adiantamentos",
+    a.pagamentos.map(p => ({ titulo: `Pagamento em ${fmtData(p.data)}`,
+      tipo: p.pendente ? "Aguardando o banco confirmar" : "Confirmado", valor: `−${fmtBRL(p.valor)}` })),
+    a.total ? `−${fmtBRL(a.total)}` : "");
+  el("cardModalSecoes").innerHTML = previstoHtml + pagoHtml
+    || '<div class="card-modal-vazio">Nada previsto e nenhum pagamento antecipado.</div>';
+  modalEmSecoes(true);
+  el("modalCard").hidden = false;
+}
+
+function abrirAdiantamentos(grupoId) {
+  modalEmSecoes(false);
+  const card = calcularCards().cartoes.find(c => c.id === grupoId);
+  const a = adiantamentosDoCartao(grupoId);
+  if (!card || !a.total) return;
+  el("cardModalTitulo").textContent = `Já pago antecipado · ${card.nome}`;
+  el("cardModalSub").textContent =
+    "Pagamentos feitos depois da quitação da fatura anterior. Eles já estão descontados: o card mostra o que resta pagar no vencimento.";
+  el("cardModalResumo").innerHTML = `
+    <div><span>Fatura (compras)</span><strong>${fmtBRL(card.previsto + a.total)}</strong></div>
+    <div><span>Já pago</span><strong>−${fmtBRL(a.total)}</strong></div>
+    <div><span>Resta pagar</span><strong>${fmtBRL(card.previsto)}</strong></div>
+    <div><span>Mês</span><strong>${esc(labelMes(MES))}</strong></div>`;
+  el("cardModalLista").innerHTML = a.pagamentos.map(p => `
+    <div class="card-modal-linha">
+      <span>Pagamento em ${esc(fmtData(p.data))}</span><span>${p.pendente ? "Aguardando o banco confirmar" : "Confirmado"}</span><strong>${fmtBRL(p.valor)}</strong>
+    </div>`).join("") || '<div class="card-modal-vazio">Sem pagamentos antecipados.</div>';
+  el("modalCard").hidden = false;
+}
+
 function renderCardsFaturas() {
   const t = calcularCards();
   // A barra compara previsto: senão o cartão que ainda vai receber cobrança
@@ -756,14 +886,19 @@ function renderCardsFaturas() {
       // Conta fixa deste cartão que ainda não foi cobrada entra no valor
       // exibido para o card virar previsão do mês. O selo "≈ previsto" abre a
       // lista do que foi somado -- o número não pode parecer vindo do banco.
-      const selo = c.aLancar > 0 || previsoesDoCartao(c.id, Number(MES.slice(5, 7)) - 1).length > 0
-        ? `<button class="v-chip aviso selo-previsto" data-previstos="${esc(c.id)}"
-                   title="Ver o que está somado como previsto">≈ previsto</button>`
+      const temPrevisao = c.aLancar > 0 || previsoesDoCartao(c.id, Number(MES.slice(5, 7)) - 1).length > 0;
+      // Adiantamento já descontado: o valor é o que resta pagar; o ⓘ mostra
+      // quanto já foi pago.
+      const adiantado = adiantamentosDoCartao(c.id).total;
+      const info = temPrevisao || adiantado > 0
+        ? `<button class="fatura-info ${temPrevisao ? "previsto" : ""}" data-info-fatura="${esc(c.id)}"
+                   title="${esc([temPrevisao ? "Tem valor previsto" : "", adiantado > 0 ? `adiantamentos ${fmtBRL(adiantado)}` : ""].filter(Boolean).join(" · "))}"
+                   aria-label="Detalhes da fatura de ${esc(c.nome)}">i</button>`
         : "";
       return `
         <article class="fatura-card banco" data-card-id="${esc(c.id)}"
                  tabindex="0" role="link" aria-label="Abrir transações de ${esc(c.nome)} em ${esc(labelMes(MES))}">
-          <div class="fatura-topo"><span class="fatura-rotulo">${esc(c.nome)}</span>${selo}</div>
+          <div class="fatura-topo"><span class="fatura-rotulo">${esc(c.nome)}</span><span class="fatura-selos">${info}</span></div>
           <div class="fatura-valor">${fmtBRL(c.previsto)}</div>
           <div class="fatura-barra"><span style="width:${pct.toFixed(1)}%;background:${c.cor}"></span></div>
           <div class="fatura-linhas"><span>Fatura de ${esc(labelMes(MES))}</span><span>${c.detalhes.length} ${c.detalhes.length === 1 ? "vínculo reconhecido" : "vínculos reconhecidos"}</span></div>
@@ -825,6 +960,7 @@ function abrirTransacoesDoCartao(grupoId) {
 }
 
 function abrirDetalhesCard(grupoId) {
+  modalEmSecoes(false);
   const card = calcularCards().cartoes.find(c => c.id === grupoId);
   if (!card) return;
   el("cardModalTitulo").textContent = `Itens vinculados · ${card.nome}`;
@@ -845,6 +981,7 @@ function abrirDetalhesCard(grupoId) {
  *  que vão ser cobradas mas ainda não apareceram na fatura. Reusa o modal dos
  *  itens vinculados -- é a mesma pergunta ("o que compõe este número?"). */
 function abrirPrevistos(grupoId) {
+  modalEmSecoes(false);
   const card = calcularCards().cartoes.find(c => c.id === grupoId);
   if (!card) return;
   const estimativas = previsoesDoCartao(grupoId, Number(MES.slice(5, 7)) - 1);
@@ -884,6 +1021,7 @@ function render(p) {
   renderComposicao(r);
 
   el("lista").innerHTML = ITENS.map(linha).join("");
+  atualizarLote();
   el("vazio").innerHTML = ITENS.length ? ""
     : `<div class="vazio">
         <div>Nenhuma conta fixa neste mês.</div>
@@ -1744,13 +1882,54 @@ async function salvar() {
  *  fecharam. Quase sempre o que se quer dizer é "esta conta não existiu neste
  *  mês" -- e isso não cabe na janela desde/ate, que só sabe cortar as pontas.
  */
+/* ---------------------------------------------------------- seleção em lote */
+const SELECIONADAS = new Set();
+
+function atualizarLote() {
+  // Some da seleção o que não está mais na lista (outro mês, conta excluída).
+  const visiveis = new Set((ITENS || []).map(i => i.id));
+  for (const id of [...SELECIONADAS]) if (!visiveis.has(id)) SELECIONADAS.delete(id);
+  const n = SELECIONADAS.size;
+  const modo = document.querySelector(".contas-coluna").classList.contains("modo-sel");
+  el("lote").hidden = !modo;
+  el("loteTexto").textContent = n ? `${n} conta${n === 1 ? "" : "s"} selecionada${n === 1 ? "" : "s"}` : "Selecionar contas";
+  el("loteMes").disabled = el("loteCadastro").disabled = !n;
+  const todas = el("selTodas");
+  todas.checked = n > 0 && n === visiveis.size;
+  todas.indeterminate = n > 0 && n < visiveis.size;
+  document.querySelectorAll("[data-fixa]").forEach(f => f.classList.toggle("selecionada", SELECIONADAS.has(f.dataset.fixa)));
+}
+
+async function excluirSelecionadas({ somenteEsteMes }) {
+  const itens = (ITENS || []).filter(i => SELECIONADAS.has(i.id));
+  if (!itens.length) return;
+  const nomes = itens.slice(0, 8).map(i => `• ${i.nome}`).join("\n") + (itens.length > 8 ? `\n… e mais ${itens.length - 8}` : "");
+  const pergunta = somenteEsteMes
+    ? `Excluir ${itens.length} conta(s) de ${labelMes(MES)}? Os outros meses continuam como estão.\n\n${nomes}`
+    : `Excluir ${itens.length} conta(s) de ${labelMes(MES)} em diante? Os meses anteriores continuam com o histórico.\n\n${nomes}`;
+  if (!window.confirm(pergunta)) return;
+  setEstado("estado", "Excluindo…");
+  try {
+    for (const item of itens) {
+      const alvo = `/fixas/${encodeURIComponent(item.id)}`;
+      await pedir(`${alvo}?${somenteEsteMes ? "month" : "from"}=${encodeURIComponent(MES)}`, "DELETE");
+      ABERTAS.delete(item.id);
+      SELECIONADAS.delete(item.id);
+    }
+  } catch (e) {
+    setEstado("estado", e.message, "erro");
+  }
+  await carregar();
+}
+
 async function excluirConta(item, { somenteEsteMes = false } = {}) {
   const pergunta = somenteEsteMes
     ? `Excluir “${item.nome}” de ${labelMes(MES)}? Os outros meses continuam como estão.`
-    : `Excluir “${item.nome}” de TODOS os meses? O histórico mensal e os subdescontos dela vão junto.`;
+    : `Excluir “${item.nome}” de ${labelMes(MES)} em diante? Os meses anteriores continuam com o histórico.`;
   if (!window.confirm(pergunta)) return false;
   const alvo = `/fixas/${encodeURIComponent(item.id)}`;
-  await pedir(somenteEsteMes ? `${alvo}?month=${encodeURIComponent(MES)}` : alvo, "DELETE");
+  // "Excluir cadastro" tira a conta deste mês em diante; o passado fica.
+  await pedir(`${alvo}?${somenteEsteMes ? "month" : "from"}=${encodeURIComponent(MES)}`, "DELETE");
   ABERTAS.delete(item.id);
   await carregar();
   return true;
@@ -1767,6 +1946,7 @@ function alternarDescontos(id, forcar) {
   const abrir = forcar ?? !ABERTAS.has(id);
   if (abrir) ABERTAS.add(id); else ABERTAS.delete(id);
   el("lista").innerHTML = ITENS.map(linha).join("");
+  atualizarLote();
 }
 
 function abrirDesconto(fixaId) {
@@ -2013,6 +2193,33 @@ async function soltarVinculo() {
 /* ---------------------------------------------------------------- eventos */
 
 function ligar() {
+  // Seleção em lote: caixas das linhas, "marcar todas" e a barra de ações.
+  el("lista").addEventListener("change", e => {
+    const c = e.target.closest("[data-sel]");
+    if (!c) return;
+    c.checked ? SELECIONADAS.add(c.dataset.sel) : SELECIONADAS.delete(c.dataset.sel);
+    atualizarLote();
+  });
+  el("lista").addEventListener("click", e => { if (e.target.closest("[data-sel]")) e.stopPropagation(); }, true);
+  el("selTodas").addEventListener("change", e => {
+    SELECIONADAS.clear();
+    if (e.target.checked) for (const i of ITENS || []) SELECIONADAS.add(i.id);
+    document.querySelectorAll("[data-sel]").forEach(c => { c.checked = SELECIONADAS.has(c.dataset.sel); });
+    atualizarLote();
+  });
+  // As caixas só aparecem no modo seleção, ligado pelo botão "Selecionar".
+  const modoSelecao = ligar => {
+    document.querySelector(".contas-coluna").classList.toggle("modo-sel", ligar);
+    if (!ligar) {
+      SELECIONADAS.clear();
+      document.querySelectorAll("[data-sel]").forEach(c => { c.checked = false; });
+    }
+    atualizarLote();
+  };
+  el("btnSelecionar").addEventListener("click", () => modoSelecao(true));
+  el("loteLimpar").addEventListener("click", () => modoSelecao(false));
+  el("loteMes").addEventListener("click", () => excluirSelecionadas({ somenteEsteMes: true }));
+  el("loteCadastro").addEventListener("click", () => excluirSelecionadas({ somenteEsteMes: false }));
   sincronizarModoValores();
   el("modoValores").addEventListener("click", e => {
     const botao = e.target.closest("[data-modo-valores]");
@@ -2034,16 +2241,22 @@ function ligar() {
       abrirPrevistos(selo.dataset.previstos);
       return;
     }
+    const info = e.target.closest("[data-info-fatura]");
+    if (info) {
+      e.stopPropagation();
+      abrirInfoFatura(info.dataset.infoFatura);
+      return;
+    }
     const card = e.target.closest("[data-card-id]");
     if (card) abrirTransacoesDoCartao(card.dataset.cardId);
   });
   el("metricas").addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
-    const selo = e.target.closest("[data-previstos]");
-    if (selo) {
+    const info = e.target.closest("[data-info-fatura]");
+    if (info) {
       e.preventDefault();
       e.stopPropagation();
-      abrirPrevistos(selo.dataset.previstos);
+      abrirInfoFatura(info.dataset.infoFatura);
       return;
     }
     const card = e.target.closest("[data-card-id]");

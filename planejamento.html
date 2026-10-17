@@ -32,6 +32,10 @@
 .ruim { color:var(--vermelho); }
 .pl-avisos { color:var(--laranja); font-size:13px; margin:0; }
 
+/* Legenda de cores à direita do título do card. */
+.leg-dir { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px 14px; font-size:12.5px; color:var(--text-3); font-weight:500; }
+.leg-dir i { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+
 /* Gráficos: só a linha (ou as barras), sem eixo nem grade. */
 .graf { width:100%; display:block; overflow:visible; margin-top:10px; }
 .graf .linha { fill:none; stroke-width:2; stroke-linecap:round; }
@@ -61,10 +65,33 @@
 .bl .nome .prog small { margin-left:6px; }
 .pl-ponto { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; vertical-align:1px; }
 #parcLista .bl { padding:8px 12px; }
+.bl.clicavel { cursor:pointer; }
+.bl.clicavel:hover { background:var(--surface-3); }
 .barras.rolar { max-height:252px; overflow-y:auto; padding-right:4px; }
 
 /* Metas ao lado da projeção: a lista rola se crescer. */
-#metas { max-height: 360px; overflow-y: auto; padding-right: 4px; }
+/* Metas em cards quadrados: emoji no centro, nome e valor, e a cor da meta
+   enche o card de baixo para cima conforme o progresso. */
+.metas-grade { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px; margin-top:12px; }
+#metas { max-height: 520px; overflow-y: auto; padding-right: 4px; }
+.meta-q { position:relative; aspect-ratio:1 / 1; border-radius:16px; background:var(--surface-2); border:1px solid var(--line);
+  overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:14px; }
+.meta-q > * { position:relative; }
+.meta-q .meta-enche { position:absolute; left:0; right:0; bottom:0; opacity:.26; transition:height .4s ease; }
+.meta-q .meta-enche::after { content:""; position:absolute; left:0; right:0; top:0; height:2px; background:inherit; filter:brightness(1.6); }
+.meta-pct { position:absolute; top:10px; left:12px; font-size:11.5px; color:var(--text-3); font-variant-numeric:tabular-nums; }
+.meta-quando { position:absolute; top:8px; right:10px; }
+.meta-quando .pl-chip { margin:0; vertical-align:0; }
+.meta-menu { position:absolute !important; bottom:8px; right:8px; width:26px; height:26px; min-height:0; opacity:0; transition:opacity .15s; }
+.meta-q:hover .meta-menu, .meta-menu:focus-visible { opacity:1; }
+.meta-emoji { font-size:40px; line-height:1; margin-bottom:10px; }
+.meta-nome { font-weight:600; font-size:13.5px; line-height:1.3; max-width:100%; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.meta-valor { font-weight:700; font-size:17px; margin-top:6px; font-variant-numeric:tabular-nums; }
+.meta-alvo { font-size:12px; color:var(--text-3); margin-top:2px; }
+.meta-nova { border:1.5px dashed color-mix(in srgb, var(--text-3) 55%, transparent); background:transparent; color:var(--text-2); font-size:14px; cursor:pointer; gap:6px; }
+.meta-nova:hover { background:var(--surface-2); color:var(--text); }
+.meta-nova small { font-size:11.5px; color:var(--text-3); max-width:120px; }
+.meta-arq { grid-column:1 / -1; }
 .ese { width:110px; text-align:right; padding:3px 8px; font-size:13px; }
 
 /* Parcelas */
@@ -113,7 +140,7 @@
 
     <section class="pl-linha pl-meio">
       <article class="cartao" aria-labelledby="projTit">
-        <p class="tit" id="projTit">Para onde o seu ritmo leva</p>
+        <p class="tit"><span id="projTit">Para onde o seu ritmo leva</span><span class="leg-dir" id="projLeg"></span></p>
         <p class="legenda" id="marcos"></p>
         <p class="legenda" id="marcosEse" hidden style="margin-top:2px"></p>
         <svg class="graf" id="grafico" height="150" role="img" aria-label="Projeção do patrimônio"></svg>
@@ -121,9 +148,9 @@
       </article>
 
       <article class="cartao" aria-labelledby="metasTit">
-        <p class="tit"><span id="metasTit">Metas</span><button class="sutil" id="btnMeta">+ Nova meta</button></p>
+        <p class="tit"><span id="metasTit">Metas</span></p>
         <p class="legenda" id="plano" hidden></p>
-        <div class="barras" id="metas"></div>
+        <div class="metas-grade" id="metas"></div>
       </article>
     </section>
 

@@ -280,6 +280,8 @@ def _assinatura_fixas(conn) -> tuple:
         return ()
 
 
+# Uma carga só: os 24 meses reaproveitam a mesma grade de cartões de cada ano.
+@fin.escopo_leitura
 def _futuro(meses: list[str], hoje: date, assinatura: tuple) -> dict[str, dict[str, float]]:
     """Parcelas de cartão e contas fixas (fora das faturas) de cada mês futuro.
 
@@ -529,6 +531,7 @@ def _metas(conn) -> list[dict[str, Any]]:
 
 # ---------------------------------------------------------------- payload
 
+@fin.escopo_leitura
 def payload(mes: str = "") -> dict[str, Any]:
     hoje = _hoje()
     corrente = hoje.strftime("%Y-%m")

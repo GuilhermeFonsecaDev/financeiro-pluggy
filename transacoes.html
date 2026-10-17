@@ -175,10 +175,10 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 #linhas tr.dia-linha:first-child td { padding-top: 2px; }
 .dia-cab { display: flex; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 12px; font-weight: 550; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
 .dia-cab b { font-weight: 550; font-variant-numeric: tabular-nums; }
-.tx-ic { width: 26px; height: 26px; min-height: 26px; padding: 0; border: 0; border-radius: 7px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; cursor: pointer; }
+.tx-ic { width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 8px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; cursor: pointer; }
 .tx-ic.proj { cursor: default; opacity: .7; }
 .tx-ic.manual { box-shadow: inset 0 0 0 1px rgba(74,149,234,.45); }
-.tx-ic:hover:not(.proj) { background: var(--surface-3); }
+.tx-ic:hover:not(.proj) { filter: brightness(1.25); }
 .tx-ic .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0; }
 #linhas .desc { font-weight: 600; font-size: 13.5px; }
 #linhas .desc small { font-size: 12px; margin-top: 2px; }
@@ -513,6 +513,13 @@ function corDe(id) { return CATEGORIAS.find(c => c.id === id)?.cor || "#9ba1ab";
 
 /** Marca visual da categoria: emoji quando houver, bolinha colorida quando não.
  * A cor sozinha nunca identifica — o nome vem sempre ao lado. */
+/* O emoji não aceita cor; o quadrado dele leva a cor da categoria (fundo
+   suave e borda leve), como na tela de Categorias. */
+function tingeCategoria(cat) {
+  const cor = /^#[0-9a-f]{6}$/i.test(cat?.cor || "") ? cat.cor : "";
+  return cor ? `background:${cor}26;border:1px solid ${cor}59` : "";
+}
+
 function marcaCategoria(cat, tamanho = 13) {
   return cat.emoji
     ? `<span style="font-size:${tamanho}px;line-height:1">${esc(cat.emoji)}</span>`
@@ -523,11 +530,11 @@ function marcaCategoria(cat, tamanho = 13) {
    o nome dela desce pra linha de baixo, junto com a conta. */
 function chipCategoria(tx) {
   if (tx.projetada) {
-    return `<span class="tx-ic proj" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">${marcaCategoria(tx.categoria)}</span>`;
+    return `<span class="tx-ic proj" style="${tingeCategoria(tx.categoria)}" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">${marcaCategoria(tx.categoria, 15)}</span>`;
   }
   const manual = tx.origemCategorizacao === "manual";
   const dica = `${tx.categoria.nome} · original: ${tx.categoriaOriginal || "(vazia)"} · origem: ${tx.origemCategorizacao} · clique para trocar`;
-  return `<button class="tx-ic ${manual ? "manual" : ""}" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}">${marcaCategoria(tx.categoria)}</button>`;
+  return `<button class="tx-ic ${manual ? "manual" : ""}" style="${tingeCategoria(tx.categoria)}" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}">${marcaCategoria(tx.categoria, 15)}</button>`;
 }
 
 function renderPopCategorias(termo = "") {

@@ -180,13 +180,17 @@ function projecao() {
   // "E se": o valor digitado é o aporte mensal inteiro (substitui o ritmo).
   const ese = extra ? [pr.saldo, ...serie(pr.saldo, extra, pr.taxaMes, pontos.length)] : null;
   const quando = (s, alvo) => { const i = s.findIndex(v => v >= alvo); return i < 0 ? null : i; };
-  $("marcos").innerHTML = `<span><i style="background:var(--pl-azul)"></i>Hoje <b>${curto(pr.saldo)}</b></span>`
+  // Linhas de números só com a bolinha; o que cada cor é fica na legenda à
+  // direita do título.
+  $("marcos").innerHTML = `<span><i style="background:var(--pl-azul)"></i><b>${curto(pr.saldo)}</b></span>`
     + `<span class="sep">·</span><span>Em ${mesCurto(meses.at(-1))} <b>${curto(base.at(-1))}</b></span>`
     + pr.marcos.map(m => { const i = quando(base, m.valor); return i == null ? "" : `<span class="sep">·</span><span>${curto(m.valor).replace("R$ ", "")} <b>${mesCurto(meses[i])}</b></span>`; }).join("");
+  $("projLeg").innerHTML = `<span><i style="background:var(--pl-azul)"></i>Seu ritmo · ${curto(pr.aporte)}/mês</span>`
+    + (ese ? `<span><i style="background:var(--pl-verde)"></i>Aportando ${curto(extra)}/mês</span>` : "");
   // Segunda linha de legenda, em verde, para o "e se" (só com valor digitado).
   $("marcosEse").hidden = !ese;
   if (ese) {
-    $("marcosEse").innerHTML = `<span><i style="background:var(--pl-verde)"></i>Aportando <b>${curto(extra)}/mês</b></span>`
+    $("marcosEse").innerHTML = `<span><i style="background:var(--pl-verde)"></i><b>${curto(pr.saldo)}</b></span>`
       + `<span class="sep">·</span><span>Em ${mesCurto(meses.at(-1))} <b>${curto(ese.at(-1))}</b></span>`
       + pr.marcos.map(m => { const i = quando(ese, m.valor); return i == null ? "" : `<span class="sep">·</span><span>${curto(m.valor).replace("R$ ", "")} <b>${mesCurto(meses[i])}</b></span>`; }).join("");
   }
@@ -213,6 +217,7 @@ function projecao() {
 /* ------------------------------------------------------------ parcelas de cartão */
 
 let PARC_MES = null;              // mês escolhido no gráfico
+let PARC_CARTAO = null;           // cartão escolhido em "Por cartão" (filtra as parcelas)
 const CORES_RESERVA = ["#4a95ea", "#e8954a", "#9085e9", "#3fbf7f", "#c9a227", "#e5787a"];
 
 function corCartao(id) {
@@ -261,16 +266,24 @@ function parcelas() {
   const mes = meses.find(m => m.mes === PARC_MES);
   const porCartao = Object.entries(mes.porCartao).sort((a, b) => b[1] - a[1]);
   $("parcCartTit").textContent = `Por cartão · ${nomeMes(PARC_MES)}`;
+  // Cartão escolhido que não tem parcela neste mês: volta para todos.
+  if (PARC_CARTAO && !mes.porCartao[PARC_CARTAO]) PARC_CARTAO = null;
   $("parcCartoes").innerHTML = porCartao.map(([id, v]) => {
     const nome = A.cartoes.find(c => c.id === id)?.nome || "Cartão", fr = mes.total ? v / mes.total : 0;
-    return `<div class="bl"><span class="f" style="width:${fr * 100}%;background:${corCartao(id)}"></span>
+    const apagado = PARC_CARTAO && PARC_CARTAO !== id;
+    return `<div class="bl clicavel" data-parc-cartao="${esc(id)}" role="button" tabindex="0" aria-pressed="${PARC_CARTAO === id}"
+      title="${PARC_CARTAO === id ? "Mostrar todos os cartões" : `Ver só as parcelas de ${esc(nome)}`}" style="${apagado ? "opacity:.45" : ""}${PARC_CARTAO === id ? ";box-shadow:inset 0 0 0 1px " + corCartao(id) : ""}"><span class="f" style="width:${fr * 100}%;background:${corCartao(id)}"></span>
       <span class="nome">${esc(nome)}</span><span class="val">${fmtBRL(v)}${chip(pct(fr * 100))}</span></div>`;
   }).join("") || `<p class="rodape">Sem parcelas neste mês.</p>`;
 
   // Cada parcela do mês, com a fração já paga da compra na barra de fundo.
-  const doMes = A.compras.map(c => ({ c, p: c.parcelas.find(x => x.mes === PARC_MES) })).filter(x => x.p)
-    .sort((a, b) => b.p.valor - a.p.valor);
-  $("parcMesTit").textContent = `Parcelas de ${nomeMes(PARC_MES)} · ${doMes.length}`;
+  const doMes = A.compras.filter(c => !PARC_CARTAO || c.cartao === PARC_CARTAO)
+    .map(c => ({ c, p: c.parcelas.find(x => x.mes === PARC_MES) })).filter(x => x.p)
+    // Quem está acabando vem primeiro: menos parcelas restantes depois desta;
+    // empate, a de maior valor.
+    .sort((a, b) => (a.c.total - a.p.atual) - (b.c.total - b.p.atual) || b.p.valor - a.p.valor);
+  const nomeFiltro = PARC_CARTAO ? A.cartoes.find(c => c.id === PARC_CARTAO)?.nome : "";
+  $("parcMesTit").textContent = `Parcelas de ${nomeMes(PARC_MES)}${nomeFiltro ? ` · ${nomeFiltro}` : ""} · ${doMes.length}`;
   $("parcLista").innerHTML = doMes.map(({ c, p }) => {
     const nome = A.cartoes.find(x => x.id === c.cartao)?.nome || "";
     const fim = p.atual >= c.total;
@@ -298,9 +311,17 @@ function linhaMeta(m) {
     m.precisaPorMes ? `Para o prazo de ${mesCurto(m.prazo)}: ${fmtBRL(m.precisaPorMes)}/mês` : "",
     m.situacao === "atrasada" ? `Faltam ${fmtBRL(m.extraPorMes)}/mês além do ritmo` : "",
   ].filter(Boolean).join("\n");
-  return `<div class="bl" title="${esc(dica)}"><span class="f" style="width:${m.pct}%;background:${cor}"></span>
-    <span class="nome">${m.emoji ? `${esc(m.emoji)} ` : ""}${esc(m.nome)}<small>de ${curto(m.alvo)}</small></span>
-    <span class="val">${curto(m.atual)}${quando}<button class="icone" data-meta="${m.id}" data-abre-pop aria-label="Ações da meta ${esc(m.nome)}">⋯</button></span></div>`;
+  // Card quadrado que se enche de baixo para cima conforme a meta avança.
+  return `<div class="meta-q" title="${esc(dica)}">
+    <span class="meta-enche" style="height:${Math.max(0, Math.min(100, m.pct))}%;background:${cor}"></span>
+    <span class="meta-pct">${Math.round(m.pct)}%</span>
+    <span class="meta-quando">${quando}</span>
+    <button class="icone meta-menu" data-meta="${m.id}" data-abre-pop aria-label="Ações da meta ${esc(m.nome)}">⋯</button>
+    <span class="meta-emoji">${esc(m.emoji || "🎯")}</span>
+    <span class="meta-nome">${esc(m.nome)}</span>
+    <span class="meta-valor">${curto(m.atual)}</span>
+    <span class="meta-alvo">de ${curto(m.alvo)}</span>
+  </div>`;
 }
 
 function plano(ativas) {
@@ -317,9 +338,9 @@ function metas() {
   const ativas = P.metas.filter(m => !m.arquivada), arq = P.metas.filter(m => m.arquivada);
   $("plano").innerHTML = plano(ativas);
   $("plano").hidden = !$("plano").innerHTML;
-  $("metas").innerHTML = (ativas.length ? ativas.map(linhaMeta).join("")
-      : `<p class="rodape">Nenhuma meta ainda. Com prazo, a tela diz quanto guardar por mês e se o seu aporte cobre.</p>`)
-    + (arq.length ? `<details class="rodape"><summary>Arquivadas (${arq.length})</summary><div class="barras" style="opacity:.7">${arq.map(linhaMeta).join("")}</div></details>` : "");
+  $("metas").innerHTML = ativas.map(linhaMeta).join("")
+    + `<button type="button" class="meta-q meta-nova" id="btnMeta">+ Nova meta${ativas.length ? "" : "<small>Com prazo, a tela diz quanto guardar por mês</small>"}</button>`
+    + (arq.length ? `<details class="rodape meta-arq"><summary>Arquivadas (${arq.length})</summary><div class="metas-grade" style="opacity:.7">${arq.map(linhaMeta).join("")}</div></details>` : "");
 }
 
 function abrirMenuMeta(botao) {
@@ -407,6 +428,8 @@ document.addEventListener("click", e => {
     fecharPop();
     return desenhar();
   }
+  const pc = e.target.closest("[data-parc-cartao]");
+  if (pc) { PARC_CARTAO = PARC_CARTAO === pc.dataset.parcCartao ? null : pc.dataset.parcCartao; return parcelas(); }
   const pm = e.target.closest("[data-parc-mes]");
   if (pm) { PARC_MES = pm.dataset.parcMes; return parcelas(); }
   if (e.target.closest("[data-fecha]") || e.target.classList.contains("modal-fundo"))
@@ -414,6 +437,9 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") document.querySelectorAll(".modal-fundo").forEach(x => { x.hidden = true; });
+  // Linha de cartão escolhida pelo teclado.
+  const pc = (e.key === "Enter" || e.key === " ") && e.target.closest?.("[data-parc-cartao]");
+  if (pc) { e.preventDefault(); pc.click(); }
 });
 let redim;
 window.addEventListener("resize", () => { clearTimeout(redim); redim = setTimeout(() => P && (fluxo(), projecao(), parcelas()), 120); });

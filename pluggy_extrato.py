@@ -216,6 +216,27 @@ def _ano_mes(serial: int) -> tuple[int, int]:
     return ano, indice + 1
 
 
+def data_local(valor: Any) -> str:
+    """AAAA-MM-DD no horário de Brasília.
+
+    A Pluggy manda data e hora em UTC: uma compra às 21h05 de 15/10 chega
+    como "2026-10-16T00:05Z", e cortar os 10 primeiros caracteres a jogava
+    para o dia seguinte. Data sem hora (ou já AAAA-MM-DD) fica como está.
+    """
+    texto = str(valor or "")
+    if len(texto) <= 10 or "T" not in texto:
+        return texto[:10]
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        instante = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+        if instante.tzinfo is None:
+            return texto[:10]
+        return instante.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+    except (ValueError, KeyError):
+        return texto[:10]
+
+
 def chave_compra(linha: sqlite3.Row | dict) -> tuple[Any, ...]:
     """Identidade da compra parcelada a que uma transacao pertence.
 
@@ -1475,7 +1496,10 @@ def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
             if len(quitacoes) != 1:
                 continue
             quitacao = quitacoes[0]
-            extras = [m for m in confirmados if m['transacao_id'] != quitacao['transacao_id']
+            # Pagamentos depois da quitação abatem a fatura aberta (adiantamento).
+            # Vale também o pendente que não tem par confirmado: o BTG demora a
+            # confirmar, e o par pendente/confirmado já foi casado acima.
+            extras = [m for m in unicos if m['transacao_id'] != quitacao['transacao_id']
                       and m['data'][:10] > quitacao['data'][:10]]
             credito = round(sum(m['valor'] for m in extras), 2)
             if credito <= 0:
@@ -1487,7 +1511,9 @@ def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
             conciliacoes.append({'contaId': conta, 'mes': indice + 1,
                 'cobrancas': antes, 'credito': credito, 'saldo': valores[conta][indice],
                 'faturaAnteriorId': anterior['fatura_id'], 'quitacaoId': quitacao['transacao_id'],
-                'pagamentosIds': [m['transacao_id'] for m in extras]})
+                'pagamentosIds': [m['transacao_id'] for m in extras],
+                'pagamentos': [{'data': m['data'][:10], 'valor': round(m['valor'], 2),
+                                'pendente': m['status'] == 'PENDING'} for m in extras]})
     return conciliacoes
 
 
@@ -2203,6 +2229,11 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     for item in payload_ano["itens"].get(cartao["id"], []):
                         if filtros.get("conta") or item["contaId"] not in fontes_filtro_cartao:
                             continue
+                        # Hábitos e recorrências são estimativa de gasto, não
+                        # lançamento: ficam nas faturas previstas e em Contas
+                        # Fixas, fora da lista de transações.
+                        if item.get("recorrente"):
+                            continue
                         mes_ref_item = f"{ano_projecao_itens}-{item['mes']:02d}"
                         if busca_termo and busca_termo not in item["descricao"].casefold():
                             continue
@@ -2217,18 +2248,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                             continue
                         pares.append((cartao, item, mes_ref_item))
 
-        if permite_projecao_cartoes:
-            import recorrentes
-            for ano_recorrente in range(int(mes_atual[:4]), int(mes_atual[:4]) + 2):
-                for item in recorrentes.projetados(conn, ano_recorrente):
-                    if item["noCartao"] or filtros.get("cartao") not in (None, "", "nenhum"):
-                        continue
-                    if filtros.get("conta") and item["contaId"] not in grupos.get(filtros["conta"], set()):
-                        continue
-                    if busca_termo and busca_termo not in item["descricao"].casefold():
-                        continue
-                    pares.append(({"nome": apelidos.get(item["contaId"], "Conta")}, item,
-                                  f"{ano_recorrente}-{item['mes']:02d}"))
+        # Recorrentes fora do cartão também não entram na lista (ver acima).
         if pares:
             base_ids = sorted({item["transacaoBaseId"] for _, item, _ in pares})
             categorias_base: dict[str, dict[str, Any]] = {}
@@ -2397,7 +2417,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
     transacoes = [
         {
             "id": linha["transacao_id"],
-            "data": linha["data"][:10],
+            "data": data_local(linha["data"]),
             "mesRef": linha["mes_ref"],
             "descricao": linha["descricao"],
             "valor": linha["valor"],

@@ -86,6 +86,7 @@ function semVinculo() {
 
 /* A lista do aviso laranja, no mesmo modal dos itens de cada cartão. */
 function abrirSemVinculo() {
+  if (typeof modalEmSecoes === "function") modalEmSecoes(false);
   const lista = semVinculo();
   if (!lista.length) return;
   const total = lista.reduce((s, p) => s + Math.round(p.valor * 100), 0) / 100;

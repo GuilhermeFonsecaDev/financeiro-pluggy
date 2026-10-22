@@ -3,7 +3,27 @@
             color: var(--laranja); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; }
 
 /* Tabela de reembolsos: as colunas dos "Itens vinculados", com 4 campos. */
-.vinculos-cabec.f2-reemb, .vinculos-linha.f2-reemb { grid-template-columns: minmax(0, 1fr) 150px 150px 120px 96px; }
+.vinculos-cabec.f2-reemb, .vinculos-linha.f2-reemb { grid-template-columns: minmax(0, 1fr) 150px 150px 150px 120px 96px; }
+/* Pessoa que deve o reembolso: texto como as outras colunas, clicável. */
+/* Mesmo chip do projeto (.v-chip): fundo neutro, cantos arredondados. */
+.vinculos-linha .reemb-pessoa { justify-self:start; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; min-height:0;
+  padding:3px 10px; border-radius:10px; background:var(--surface-3); color:var(--text-2); font-size:12px; font-weight:600; cursor:pointer; }
+.vinculos-linha .reemb-pessoa:hover { filter:brightness(1.25); }
+.reemb-ponto { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:0; }
+.vinculos-linha .reemb-pessoa.vazia { background:transparent; color:var(--text-3); font-weight:500; box-shadow:inset 0 0 0 1px var(--line-forte); }
+/* Mesmo visual dos selects do formulário ("Compra em", "Como voltou"). */
+#rPessoa { height:37px; min-height:0; padding:7px 11px; border:1px solid var(--line-forte); border-radius:10px;
+  background:var(--surface-2); color:var(--text); font-size:14px; font-weight:400; }
+#rPessoa::after { font-size:11px; }
+#rPessoa.sem-pessoa { color:var(--text-3); }
+.sb-tirar { color:var(--text-3); }
+/* No menu as pessoas aparecem como o chip da tabela. */
+.sb-pop .reemb-pessoa { display:inline-block; padding:3px 10px; border-radius:10px; font-size:12px; font-weight:600; }
+.sb-pop .sb-item[aria-selected="true"] .reemb-pessoa { box-shadow:inset 0 0 0 1px currentColor; }
+.vinculos-topo { align-items:center; }
+.reemb-pessoas { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; margin-left:auto; max-width:50%; font-size:12.5px; color:var(--text-3); }
+.reemb-pessoas b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.reemb-pessoas .sep { opacity:.6; }
 .vinculos-linha.f2-sem { grid-template-columns: 1fr; color: var(--text-3); }
 .f2-novo { align-items: center; }
 .f2-novo input, .f2-novo select { width: 100%; min-width: 0; }

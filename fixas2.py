@@ -59,6 +59,9 @@ def _abrir() -> sqlite3.Connection:
     colunas = {l[1] for l in conn.execute("PRAGMA table_info(fixas2_reembolsos)")}
     if "como" not in colunas:
         conn.execute(f"ALTER TABLE fixas2_reembolsos ADD COLUMN como TEXT NOT NULL DEFAULT '{COMO_DINHEIRO}'")
+    # Quem deve o reembolso (tag livre).
+    if "pessoa" not in colunas:
+        conn.execute("ALTER TABLE fixas2_reembolsos ADD COLUMN pessoa TEXT NOT NULL DEFAULT ''")
     _migrar_reembolsos_das_contas(conn)
     return conn
 
@@ -151,7 +154,7 @@ def _reembolsos(conn, mes: str, formas: dict[str, dict]) -> list[dict[str, Any]]
         {"id": l["id"], "descricao": l["descricao"], "forma": l["forma"],
          "formaNome": (formas.get(l["forma"]) or {}).get("nome") or l["forma"] or "—",
          "valor": round(float(l["valor"] or 0), 2), "transacaoId": l["transacao_id"] or "",
-         "como": l["como"] or COMO_DINHEIRO,
+         "como": l["como"] or COMO_DINHEIRO, "pessoa": l["pessoa"] or "",
          # Estorno no cartão já está abatido na fatura: listado, não desconta.
          "desconta": (l["como"] or COMO_DINHEIRO) != COMO_ESTORNO}
         for l in conn.execute(
@@ -244,6 +247,9 @@ def payload(mes: str) -> dict[str, Any]:
 
     with _abrir() as conn:
         reembolsos = _reembolsos(conn, mes, formas)
+        # Todas as pessoas já usadas, de qualquer mês: viram sugestão no campo.
+        pessoas = [l[0] for l in conn.execute(
+            "SELECT pessoa FROM fixas2_reembolsos WHERE pessoa <> '' GROUP BY pessoa ORDER BY COUNT(*) DESC, pessoa")]
     avisos.extend(_divergencias_de_habitos(mes))
 
     def soma(status):
@@ -259,6 +265,7 @@ def payload(mes: str) -> dict[str, Any]:
         "faturas": faturas,
         "reembolsos": reembolsos,
         "reembolsosContas": [],
+        "pessoasReembolso": pessoas,
         "avisos": avisos,
         "formas": [f for f in base.get("formas", []) if f.get("tipo") in ("cartao", "pagamento")],
         "resumo": {
@@ -290,7 +297,8 @@ def _validar_reembolso(dados: dict) -> dict:
     como = str(dados.get("como") or COMO_DINHEIRO)
     if como not in (COMO_DINHEIRO, COMO_ESTORNO):
         raise ValueError("Informe como o reembolso voltou.")
-    return {"descricao": descricao, "valor": valor, "mes": mes, "como": como,
+    pessoa = " ".join(str(dados.get("pessoa") or "").split())[:60]
+    return {"descricao": descricao, "valor": valor, "mes": mes, "como": como, "pessoa": pessoa,
             "forma": str(dados.get("forma") or "")[:120],
             "transacao_id": str(dados.get("transacaoId") or "") or None}
 
@@ -300,10 +308,10 @@ def criar_reembolso(dados: dict) -> dict:
     novo = f"rb_{uuid.uuid4().hex[:10]}"
     with _abrir() as conn:
         conn.execute(
-            "INSERT INTO fixas2_reembolsos (id, mes_ref, descricao, forma, valor, transacao_id, criado_em, como) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO fixas2_reembolsos (id, mes_ref, descricao, forma, valor, transacao_id, criado_em, como, pessoa) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (novo, r["mes"], r["descricao"], r["forma"], r["valor"], r["transacao_id"],
-             datetime.now().isoformat(timespec="seconds"), r["como"]))
+             datetime.now().isoformat(timespec="seconds"), r["como"], r["pessoa"]))
         conn.commit()
     return {"ok": True, "id": novo}
 
@@ -315,8 +323,8 @@ def editar_reembolso(reembolso_id: str, dados: dict) -> dict:
             raise ValueError("Reembolso não encontrado.")
         conn.execute(
             "UPDATE fixas2_reembolsos SET mes_ref = ?, descricao = ?, forma = ?, valor = ?, "
-            "transacao_id = ?, como = ? WHERE id = ?",
-            (r["mes"], r["descricao"], r["forma"], r["valor"], r["transacao_id"], r["como"], reembolso_id))
+            "transacao_id = ?, como = ?, pessoa = ? WHERE id = ?",
+            (r["mes"], r["descricao"], r["forma"], r["valor"], r["transacao_id"], r["como"], r["pessoa"], reembolso_id))
         conn.commit()
     return {"ok": True, "id": reembolso_id}
 

@@ -18,6 +18,10 @@
 .fatura-valor { margin:6px 0 10px; font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .fatura-barra { height:3px; margin:0 0 10px; }
 .fatura-linhas { font-size:12.5px; flex-wrap:wrap; }
+/* Bolinha na cor do cartão, a mesma dos cards de fatura. */
+.vinc-cartao { display:flex; align-items:center; gap:10px; }
+.vinc-cartao i { width:10px; height:10px; border-radius:50%; flex:none; }
+.vinculos-cabec.f2-vinc, .vinculos-linha.f2-vinc { grid-template-columns: minmax(0,1fr) 140px 140px 140px 140px 96px; }
 .fatura-topo .selo-previsto.v-chip { border:0; margin:0; vertical-align:0; cursor:pointer; min-height:0; }
 /* Seleção em lote: uma coluna para a caixa antes da seta. */
 .modo-sel #lista .colunas, .modo-sel .cabec.colunas { grid-template-columns: 20px 22px 1fr 128px 112px 106px 120px 100px 158px 50px; }
@@ -131,24 +135,24 @@
       </div>
       <section class="painel vinculos-painel" aria-labelledby="vinculosTitulo">
         <div class="vinculos-topo">
-          <div><h2 id="vinculosTitulo">Itens vinculados às faturas</h2><p>Valor a ser pago: fatura atual menos os reembolsos vinculados às cobranças já incluídas.</p></div>
-          <div class="vinculos-total"><span>Total bruto dos cartões</span><strong id="vinculosTotal">R$ 0,00</strong></div>
+          <div><h2 id="vinculosTitulo">Contas fixas nas faturas</h2><p>Quanto de cada fatura são contas fixas, quanto volta como reembolso e o que sobra de gasto seu.</p></div>
         </div>
         <div class="vinculos-tabela">
-          <div class="vinculos-cabec"><span>Cartão</span><span>Fatura Bruto</span><span>Valor a ser pago</span><span>Vínculos</span><span>Valor vinculado</span><span></span></div>
+          <div class="vinculos-cabec f2-vinc"><span>Cartão</span><span>Fatura</span><span>Contas fixas</span><span>Reembolsos</span><span>Valor final</span><span></span></div>
           <div id="vinculosLista"></div>
         </div>
       </section>
       <section class="painel vinculos-painel" aria-labelledby="reembolsosTitulo">
         <div class="vinculos-topo">
           <div><h2 id="reembolsosTitulo">Reembolsos</h2><p>PIX ou dinheiro devolvido diminui as despesas. Estorno no cartão só fica listado: a fatura já desconta.</p></div>
-          <div class="vinculos-total"><span>Total de reembolsos</span><strong id="reembolsosTotal">R$ 0,00</strong></div>
+          <div class="reemb-pessoas" id="reembPessoas"></div><div class="vinculos-total"><span>Total de reembolsos</span><strong id="reembolsosTotal">R$ 0,00</strong></div>
         </div>
         <div class="vinculos-tabela">
-          <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
+          <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Pessoa</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
           <div id="reembolsosLista"></div>
           <form class="vinculos-linha f2-reemb f2-novo" id="formReembolso" autocomplete="off">
             <input id="rDescricao" type="text" maxlength="160" placeholder="ex.: INGRESSO DO SHOW" aria-label="Descrição do reembolso" />
+            <button type="button" class="sb-botao sem-pessoa" id="rPessoa" data-abre-pop aria-haspopup="listbox" aria-label="Pessoa que deve">Quem deve</button>
             <select id="rForma" aria-label="Cartão ou conta da compra"></select>
             <select id="rComo" aria-label="Como o dinheiro voltou">
               <option value="dinheiro">PIX / dinheiro</option>
@@ -904,16 +908,22 @@ function renderCardsFaturas() {
           <div class="fatura-linhas"><span>Fatura de ${esc(labelMes(MES))}</span><span>${c.detalhes.length} ${c.detalhes.length === 1 ? "vínculo reconhecido" : "vínculos reconhecidos"}</span></div>
         </article>`;
     }).join("");
+  renderVinculos(t);
+}
 
-  el("vinculosTotal").textContent = fmtBRL(t.totalPrevisto);
+/** Uma linha por cartão: a fatura, quanto dela é conta fixa, quanto volta
+ * como reembolso (só PIX / dinheiro: estorno já sai da própria fatura) e o
+ * que sobra. */
+function renderVinculos(t = calcularCards()) {
   el("vinculosLista").innerHTML = t.cartoes.map(c => {
-    const vinculado = c.detalhes.reduce((s, d) => s + d.valor, 0);
-    return `<div class="vinculos-linha">
-      <strong>${esc(c.nome)}</strong><strong>${fmtBRL(c.previsto)}</strong>
-      <strong title="Sua parte da fatura atual, após os reembolsos cadastrados">${fmtBRL(c.valorAPagar)}</strong>
-      <span>${c.detalhes.length} ${c.detalhes.length === 1 ? "item" : "itens"}</span>
-      <span class="muted">${fmtBRL(vinculado)}</span>
-      <button class="sutil" data-lista-cartao="${esc(c.id)}">Ver lista</button>
+    const fixas = c.detalhes.filter(d => d.tipo !== "Reembolso");
+    const valor = fixas.reduce((s, d) => s + d.valor, 0);
+    const reemb = reembolsosDoCartao(c.id).reduce((s, r) => s + r.valor, 0);
+    return `<div class="vinculos-linha f2-vinc">
+      <strong class="vinc-cartao"><i style="background:${c.cor}"></i>${esc(c.nome)}</strong><strong>${fmtBRL(c.previsto)}</strong>
+      <span>${fmtBRL(valor)}</span><span>${fmtBRL(reemb)}</span>
+      <strong>${fmtBRL(c.previsto - valor - reemb)}</strong>
+      <button class="sutil" data-lista-cartao="${esc(c.id)}" ${fixas.length || reemb ? "" : "disabled"}>Ver lista</button>
     </div>`;
   }).join("");
 }
@@ -959,21 +969,32 @@ function abrirTransacoesDoCartao(grupoId) {
   location.href = `transacoes.html?${q}`;
 }
 
+/** Reembolsos (PIX / dinheiro) de compras feitas neste cartão no mês. */
+function reembolsosDoCartao(grupoId) {
+  return (typeof F2 !== "undefined" && F2?.mes === MES ? F2.reembolsos : [])
+    .filter(r => r.desconta && r.forma === grupoId);
+}
+
+/** O mesmo recorte da tabela: contas fixas e reembolsos, cada um na sua tabela. */
 function abrirDetalhesCard(grupoId) {
-  modalEmSecoes(false);
   const card = calcularCards().cartoes.find(c => c.id === grupoId);
   if (!card) return;
-  el("cardModalTitulo").textContent = `Itens vinculados · ${card.nome}`;
-  el("cardModalSub").textContent = "Lista informativa; o valor da fatura não é alterado.";
+  const fixas = card.detalhes.filter(d => d.tipo !== "Reembolso");
+  const reemb = reembolsosDoCartao(grupoId);
+  const totalFixas = fixas.reduce((s, d) => s + d.valor, 0), totalReemb = reemb.reduce((s, r) => s + r.valor, 0);
+  el("cardModalTitulo").textContent = `Fatura · ${card.nome}`;
+  el("cardModalSub").textContent = `${labelMes(MES)} · contas fixas e reembolsos desta fatura.`;
   el("cardModalResumo").innerHTML = `
-    <div><span>Fatura Bruto</span><strong>${fmtBRL(card.original)}</strong></div>
-    <div><span>Fatura Descontada</span><strong>${fmtBRL(card.descontado)}</strong></div>
-    <div><span>Mês</span><strong>${esc(labelMes(MES))}</strong></div>
-    <div><span>Vínculos reconhecidos</span><strong>${card.detalhes.length}</strong></div>`;
-  el("cardModalLista").innerHTML = card.detalhes.length ? card.detalhes.map(d => `
-    <div class="card-modal-linha">
-      <span>${esc(d.titulo)}</span><span>${esc(d.tipo)}</span><strong>${fmtBRL(d.valor)}</strong>
-    </div>`).join("") : '<div class="card-modal-vazio">Nenhum item vinculado a esta fatura.</div>';
+    <div><span>Fatura</span><strong>${fmtBRL(card.previsto)}</strong></div>
+    <div><span>Contas fixas</span><strong>${fmtBRL(totalFixas)}</strong></div>
+    <div><span>Reembolsos</span><strong>${fmtBRL(totalReemb)}</strong></div>
+    <div><span>Valor final</span><strong>${fmtBRL(card.previsto - totalFixas - totalReemb)}</strong></div>`;
+  el("cardModalSecoes").innerHTML = secaoModal("Contas fixas",
+      fixas.map(d => ({ titulo: d.titulo, tipo: d.tipo, valor: fmtBRL(d.valor) })), fmtBRL(totalFixas))
+    + secaoModal("Reembolsos",
+      reemb.map(r => ({ titulo: r.descricao, tipo: r.pessoa || "PIX / dinheiro", valor: fmtBRL(r.valor) })), fmtBRL(totalReemb))
+    || '<div class="card-modal-vazio">Nenhuma conta fixa nem reembolso nesta fatura.</div>';
+  modalEmSecoes(true);
   el("modalCard").hidden = false;
 }
 
@@ -2264,6 +2285,7 @@ function ligar() {
     e.preventDefault();
     abrirTransacoesDoCartao(card.dataset.cardId);
   });
+
 
   el("vinculosLista").addEventListener("click", e => {
     const botao = e.target.closest("[data-lista-cartao]");

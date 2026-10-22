@@ -149,9 +149,11 @@ function fluxo() {
   linhas(svg, F.map(m => m.mes), [{ valores: F.map(m => m.sobra), cor: "var(--pl-verde)" }], {
     rotulos: marcasDe(F.length),
     marcas: ritmo ? [{ valor: ritmo, rotulo: "seu ritmo" }] : [],
-    dica: i => { const m = F[i]; return `${mesCurto(m.mes)}: aporte previsto ${fmtBRL(m.sobra)}\n`
-      + `entrada ${fmtBRL(m.entrada)} − contas fixas ${fmtBRL(m.fixas)} − parcelas ${fmtBRL(m.parcelas)} − variável médio ${fmtBRL(m.variavel)}`
-      + m.eventos.map(e => `\n${e.texto}: ${e.valor < 0 ? "−" : "+"}${fmtBRL(Math.abs(e.valor))}`).join(""); },
+    // Dica curta: o valor e, quando houver, o evento que mais pesa no mês.
+    dica: i => { const m = F[i];
+      const e = [...m.eventos].sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor))[0];
+      return `${mesCurto(m.mes)}: ${fmtBRL(m.sobra)}`
+        + (e ? `\n${e.texto} ${curto(Math.abs(e.valor))}` : ""); },
   });
   // O porquê, numa frase: o maior evento do mês mais apertado e do melhor.
   const negativos = F.filter(m => m.sobra < 0);
@@ -217,6 +219,7 @@ function projecao() {
 /* ------------------------------------------------------------ parcelas de cartão */
 
 let PARC_MES = null;              // mês escolhido no gráfico
+const PARC_SEL = new Map();        // parcelas marcadas para somar: "compra|mês" → valor
 let PARC_CARTAO = null;           // cartão escolhido em "Por cartão" (filtra as parcelas)
 const CORES_RESERVA = ["#4a95ea", "#e8954a", "#9085e9", "#3fbf7f", "#c9a227", "#e5787a"];
 
@@ -231,6 +234,15 @@ function progresso(atual, total, cor) {
   if (total > 24) return "";
   return Array.from({ length: total }, (_, k) => k + 1 < atual ? '<i class="pago"></i>'
     : k + 1 === atual ? `<i style="background:${cor}"></i>` : "<i></i>").join("");
+}
+
+/** Soma das parcelas marcadas, em verde à direita do total do card. Vale
+ * entre meses: dá para marcar parcelas de dezembro e de janeiro juntas. */
+function somaSelecionadas() {
+  const n = PARC_SEL.size, total = [...PARC_SEL.values()].reduce((a, v) => a + v, 0);
+  $("parcSel").hidden = !n;
+  $("parcSel").innerHTML = n ? `<span class="parc-sel-n">${n} selecionada${n === 1 ? "" : "s"}</span>
+    <b>${fmtBRL(total)}</b><button id="parcSelLimpar" aria-label="Limpar seleção" title="Limpar seleção">×</button>` : "";
 }
 
 function parcelas() {
@@ -287,12 +299,15 @@ function parcelas() {
   $("parcLista").innerHTML = doMes.map(({ c, p }) => {
     const nome = A.cartoes.find(x => x.id === c.cartao)?.nome || "";
     const fim = p.atual >= c.total;
-    return `<div class="bl" title="${esc(nome)} · ${esc(c.descricao)} · ${fim ? "última parcela" : c.terminaEm ? `até ${mesCurto(c.terminaEm)}` : "mais de 12 meses"} · restam ${fmtBRL(c.saldo)}">
+    const chave = `${c.id}|${p.mes}`, marcada = PARC_SEL.has(chave);
+    return `<div class="bl clicavel parc-item ${marcada ? "marcada" : ""}" data-parc-sel="${esc(chave)}" data-valor="${p.valor}"
+      role="button" tabindex="0" aria-pressed="${marcada}" title="${marcada ? "Tirar da soma" : "Somar esta parcela"} · ${esc(nome)} · ${esc(c.descricao)} · ${fim ? "última parcela" : c.terminaEm ? `até ${mesCurto(c.terminaEm)}` : "mais de 12 meses"} · restam ${fmtBRL(c.saldo)}">
       <span class="nome"><i class="pl-ponto" style="background:${corCartao(c.cartao)}"></i>${esc(c.descricao)}
         <span class="prog">${progresso(p.atual, c.total, corCartao(c.cartao))}<small>${p.atual}/${c.total}</small></span></span>
       <span class="val">${fmtBRL(p.valor)}${fim ? chip("última", "bom") : ""}</span></div>`;
   }).join("") || `<p class="rodape">Sem parcelas neste mês.</p>`;
 
+  somaSelecionadas();
   $("parcFrase").innerHTML = `${mesCurto(prox.mes)} tem <b>${curto(prox.total)}</b> em parcelas`
     + (ultima ? `; a última termina em <b>${mesCurto(ultima)}</b>.` : ".")
     + ` Clique num mês para ver as parcelas dele.`;
@@ -427,6 +442,15 @@ document.addEventListener("click", e => {
     try { localStorage.setItem("planejamento.periodo", N); } catch { /* opcional */ }
     fecharPop();
     return desenhar();
+  }
+  if (e.target.closest("#parcSelLimpar")) { PARC_SEL.clear(); return parcelas(); }
+  const ps = e.target.closest("[data-parc-sel]");
+  if (ps) {
+    const k = ps.dataset.parcSel;
+    PARC_SEL.has(k) ? PARC_SEL.delete(k) : PARC_SEL.set(k, Number(ps.dataset.valor));
+    ps.classList.toggle("marcada", PARC_SEL.has(k));
+    ps.setAttribute("aria-pressed", PARC_SEL.has(k));
+    return somaSelecionadas();
   }
   const pc = e.target.closest("[data-parc-cartao]");
   if (pc) { PARC_CARTAO = PARC_CARTAO === pc.dataset.parcCartao ? null : pc.dataset.parcCartao; return parcelas(); }

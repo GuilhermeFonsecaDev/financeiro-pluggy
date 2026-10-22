@@ -17,7 +17,8 @@ import re
 import threading
 import time
 import webbrowser
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -71,6 +72,42 @@ HOST = "127.0.0.1"
 # 8766, não 8765: o dashboard manual continua na 8765 e os dois sobem juntos.
 PORT = 8766
 
+# Respostas das telas pesadas, reaproveitadas enquanto o banco não muda (a
+# sincronização da Pluggy e as edições mudam o arquivo e invalidam tudo).
+CACHE_ROTAS = {"/api/planejamento", "/api/visao-geral", "/api/extrato", "/api/fixas2",
+               "/api/pluggy-cartoes", "/api/investimentos", "/api/extrato/categorias-resumo"}
+_CACHE_RESPOSTAS: dict[tuple, tuple] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+_reaquecendo = threading.Event()
+
+
+def reaquecer_planejamento() -> None:
+    """Depois de uma edição, refaz a previsão de 24 meses em segundo plano,
+    para o Planejamento não pagar esse cálculo quando for aberto."""
+    if _reaquecendo.is_set():
+        return
+    _reaquecendo.set()
+    def rodar():
+        try:
+            time.sleep(1.5)   # várias edições seguidas viram um cálculo só
+            _silencioso(planejamento.payload)
+        finally:
+            _reaquecendo.clear()
+    threading.Thread(target=rodar, daemon=True, name="reaquecer-planejamento").start()
+
+
+def revisao_banco() -> tuple:
+    partes = []
+    for sufixo in ("", "-wal", "-journal"):
+        try:
+            st = Path(str(DATABASE_PATH) + sufixo).stat()
+            partes.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            partes.append(None)
+    return tuple(partes)
+
 
 class PluggyHandler(SimpleHTTPRequestHandler):
     server_version = "BackendPluggy/1.0"
@@ -98,7 +135,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
     # gravando as tabelas próprias da 2.0 (ver fixas.usar_copia_2). Assim a
     # tela de teste nunca altera os dados da tela original.
     def _na_copia_2(self, metodo) -> None:
-        if self.path.startswith("/api/f2/"):
+        self._copia_2 = self.path.startswith("/api/f2/")
+        if self._copia_2:
             self.path = "/api/" + self.path[len("/api/f2/"):]
             with fixas.usar_copia_2():
                 return metodo()
@@ -109,12 +147,15 @@ class PluggyHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         self._na_copia_2(self._do_POST)
+        reaquecer_planejamento()
 
     def do_PUT(self) -> None:
         self._na_copia_2(self._do_PUT)
+        reaquecer_planejamento()
 
     def do_DELETE(self) -> None:
         self._na_copia_2(self._do_DELETE)
+        reaquecer_planejamento()
 
     def _do_GET(self) -> None:
         self.inicio_requisicao = time.perf_counter()
@@ -193,6 +234,11 @@ class PluggyHandler(SimpleHTTPRequestHandler):
 
     def send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if status == HTTPStatus.OK and getattr(self, "_capturada", None) == b"":
+            self._capturada = body
+        self._enviar_corpo(body, status)
+
+    def _enviar_corpo(self, body: bytes, status: HTTPStatus = HTTPStatus.OK) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -257,6 +303,28 @@ class PluggyHandler(SimpleHTTPRequestHandler):
         return mes
 
     def handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
+        # Telas pesadas: a resposta fica guardada enquanto o banco não muda.
+        if path not in CACHE_ROTAS:
+            return self._handle_api_get(path, query)
+        chave = (getattr(self, "_copia_2", False), self.path, date.today().isoformat())
+        guardada = _CACHE_RESPOSTAS.get(chave)
+        if guardada and guardada[0] == revisao_banco():
+            self._capturada = None
+            return self._enviar_corpo(guardada[1])
+        self._capturada = b""
+        try:
+            self._handle_api_get(path, query)
+        finally:
+            corpo, self._capturada = self._capturada, None
+        if corpo:
+            with _CACHE_LOCK:
+                if len(_CACHE_RESPOSTAS) > 200:
+                    _CACHE_RESPOSTAS.clear()
+                # A revisão de DEPOIS do cálculo: a leitura pode atualizar o
+                # extrato materializado, e isso não é mudança de dado.
+                _CACHE_RESPOSTAS[chave] = (revisao_banco(), corpo)
+
+    def _handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
         try:
             ensure_database()
             if path == "/api/health":

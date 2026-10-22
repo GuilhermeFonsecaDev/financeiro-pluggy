@@ -142,6 +142,85 @@ function renderAvisoSemVinculo() {
   conferir.title = lista.join("\n");
 }
 
+/* Pessoa que deve o reembolso: texto simples na tabela, como as outras
+ * colunas; clicar abre a lista de pessoas (a mesma busca dos outros seletores). */
+// Cada pessoa uma cor diferente: a posição dela na lista em ordem alfabética
+// escolhe a cor (sem colisão até acabar a paleta, e estável entre os meses).
+const CORES_PESSOA = ["#4a95ea", "#3fbf7f", "#e8954a", "#b37feb", "#e86a8a", "#3fb8c4", "#d4b83a", "#8a9bf0", "#c97b4a", "#6ccf9a"];
+function corPessoa(nome) {
+  const todas = [...new Set([...(F2?.pessoasReembolso || []), nome])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return CORES_PESSOA[todas.indexOf(nome) % CORES_PESSOA.length];
+}
+const estiloPessoa = nome => { const c = corPessoa(nome); return `background:${c}24;color:${c}`; };
+
+function tagPessoa(r) {
+  return `<button class="reemb-pessoa ${r.pessoa ? "" : "vazia"}" data-pessoa-reembolso="${esc(r.id)}" ${r.pessoa ? `style="${estiloPessoa(r.pessoa)}"` : ""}
+    title="${r.pessoa ? "Trocar a pessoa" : "Definir quem deve"}">${r.pessoa ? esc(r.pessoa) : "+ pessoa"}</button>`;
+}
+
+function renderPessoasReembolso() {
+  // Quanto cada pessoa deve no mês (só o que desconta: PIX / dinheiro).
+  const soma = new Map();
+  for (const r of F2.reembolsos) if (r.pessoa && r.desconta) soma.set(r.pessoa, (soma.get(r.pessoa) || 0) + r.valor);
+  el("reembPessoas").innerHTML = [...soma].sort((a, b) => b[1] - a[1])
+    .map(([p, v]) => `<span><i class="reemb-ponto" style="background:${corPessoa(p)}"></i>${esc(p)} <b>${fmtBRL(v)}</b></span>`).join('<span class="sep">·</span>');
+}
+
+/** Pop com as pessoas já usadas; o que for digitado e não existir vira
+ * "Adicionar …". `aoEscolher` recebe o nome ("" tira a pessoa). */
+let POP_PESSOA = null;
+function escolherPessoa(ancora, atual, aoEscolher) {
+  if (!POP_PESSOA) {
+    POP_PESSOA = document.createElement("div");
+    POP_PESSOA.className = "pop sb-pop";
+    POP_PESSOA.hidden = true;
+    POP_PESSOA.innerHTML = `<input class="sb-busca" type="search" placeholder="Buscar ou adicionar…" aria-label="Pessoa" />
+      <div class="sb-lista" role="listbox"></div>`;
+    document.body.appendChild(POP_PESSOA);
+  }
+  const busca = POP_PESSOA.querySelector(".sb-busca"), lista = POP_PESSOA.querySelector(".sb-lista");
+  const semAcento = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  let ativo = 0;
+  const desenhar = () => {
+    const termo = busca.value.trim(), t = semAcento(termo);
+    const pessoas = (F2.pessoasReembolso || []).filter(p => !t || semAcento(p).includes(t));
+    const nova = termo && !(F2.pessoasReembolso || []).some(p => semAcento(p) === t);
+    lista.innerHTML = [
+      ...pessoas.map(p => `<div class="sb-item sb-filho" role="option" data-v="${esc(p)}" aria-selected="${p === atual}"><span class="reemb-pessoa" style="${estiloPessoa(p)}">${esc(p)}</span></div>`),
+      nova ? `<div class="sb-item sb-filho" role="option" data-v="${esc(termo)}">Adicionar “${esc(termo)}”</div>` : "",
+      atual && !t ? `<div class="sb-item sb-filho sb-tirar" role="option" data-v="">Sem pessoa</div>` : "",
+    ].join("") || `<div class="sb-vazio">Digite um nome.</div>`;
+    const itens = [...lista.querySelectorAll(".sb-item")];
+    ativo = Math.max(0, itens.findIndex(e => e.getAttribute("aria-selected") === "true"));
+    itens.forEach((e, n) => e.classList.toggle("ativo", n === ativo));
+  };
+  const escolher = v => { fecharPop(); aoEscolher(v); };
+  busca.oninput = desenhar;
+  busca.onkeydown = e => {
+    const itens = [...lista.querySelectorAll(".sb-item")];
+    if (e.key === "ArrowDown") ativo = Math.min(itens.length - 1, ativo + 1);
+    else if (e.key === "ArrowUp") ativo = Math.max(0, ativo - 1);
+    else if (e.key === "Enter") { e.preventDefault(); if (itens[ativo]) escolher(itens[ativo].dataset.v); return; }
+    else return;
+    e.preventDefault();
+    itens.forEach((x, n) => x.classList.toggle("ativo", n === ativo));
+  };
+  lista.onmousedown = e => e.preventDefault();
+  lista.onclick = e => { const it = e.target.closest(".sb-item"); if (it) escolher(it.dataset.v); };
+  busca.value = "";
+  desenhar();
+  POP_PESSOA.style.minWidth = "220px";
+  if (abrirPop(POP_PESSOA, ancora, { alinhar: "direita" })) setTimeout(() => busca.focus(), 0);
+}
+
+async function salvarPessoa(r, pessoa) {
+  await pedir(`/fixas2/reembolsos/${encodeURIComponent(r.id)}`, "PUT", {
+    mes: MES, descricao: r.descricao, forma: r.forma, como: r.como, valor: r.valor,
+    transacaoId: r.transacaoId, pessoa });
+  await carregarF2();
+  renderReembolsos();
+}
+
 function renderReembolsos() {
   renderAvisoSemVinculo();
   if (!F2) return;
@@ -150,6 +229,7 @@ function renderReembolsos() {
   // listado mas riscado -- a fatura já o desconta.
   const daTabela = F2.reembolsos.map(r => `<div class="vinculos-linha f2-reemb">
         <strong>${esc(r.descricao)}</strong>
+        ${tagPessoa(r)}
         <span>${esc(r.formaNome)}</span>
         <span>${r.desconta ? "PIX / dinheiro" : "Estorno no cartão · já na fatura"}</span>
         <strong class="${r.desconta ? "" : "f2-nao-desconta"}">${esc(fmtBRL(r.valor))}</strong>
@@ -157,6 +237,8 @@ function renderReembolsos() {
       </div>`).join("");
   el("reembolsosLista").innerHTML = daTabela
     || `<div class="vinculos-linha f2-reemb f2-sem"><span>Nenhum reembolso em ${esc(labelMes(MES))}.</span></div>`;
+  renderPessoasReembolso();
+  if (typeof renderVinculos === "function") renderVinculos();
   const atual = el("rForma").value;
   el("rForma").innerHTML = `<option value="">Compra em</option>`
     + F2.formas.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
@@ -177,8 +259,10 @@ el("formReembolso").addEventListener("submit", async e => {
     await pedir("/fixas2/reembolsos", "POST", {
       mes: MES, descricao: el("rDescricao").value.trim(),
       forma: el("rForma").value, como: el("rComo").value, valor: lerValor(el("rValor").value),
+      pessoa: el("rPessoa").dataset.valor || "",
     });
     el("rDescricao").value = "";
+    definirPessoaForm("");
     el("rValor").value = "";
     await carregarF2();
     renderComposicao();
@@ -187,7 +271,28 @@ el("formReembolso").addEventListener("submit", async e => {
   } catch (erro) { el("reembolsoErro").textContent = erro.message; }
 });
 
+function definirPessoaForm(nome) {
+  el("rPessoa").dataset.valor = nome;
+  el("rPessoa").textContent = nome || "Quem deve";
+  el("rPessoa").classList.toggle("sem-pessoa", !nome);
+}
+el("rPessoa").addEventListener("click", e => {
+  e.stopPropagation();
+  escolherPessoa(el("rPessoa"), el("rPessoa").dataset.valor || "", definirPessoaForm);
+});
+
 el("reembolsosLista").addEventListener("click", async e => {
+  const tag = e.target.closest("[data-pessoa-reembolso]");
+  if (tag) {
+    e.stopPropagation();
+    const r = F2.reembolsos.find(x => x.id === tag.dataset.pessoaReembolso);
+    if (r) escolherPessoa(tag, r.pessoa, async pessoa => {
+      if (pessoa === r.pessoa) return;
+      try { await salvarPessoa(r, pessoa); }
+      catch (erro) { setEstado("estado", erro.message, "erro"); }
+    });
+    return;
+  }
   const b = e.target.closest("[data-remover-reembolso]");
   if (!b || !confirm("Excluir este reembolso?")) return;
   try {

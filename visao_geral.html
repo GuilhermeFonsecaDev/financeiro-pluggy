@@ -18,16 +18,36 @@
 /* Quatro cards de 3 colunas, nao tres de 4: com tres, a emenda do meio caia
    na coluna 4 e na 8, e a linha central que desce a pagina inteira morria no
    topo. Com quatro, a emenda central bate na coluna 6 como todo o resto. */
-.vg-kpi { grid-column:span 3; }
-@media (max-width:1240px) { .vg-kpi { grid-column:span 6; } }
+.vg-kpis { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.vg-kpi { grid-column:span 1; }
+@media (max-width:1240px) { .vg-kpis { grid-template-columns:repeat(6,minmax(0,1fr)); } .vg-kpi { grid-column:span 3; } .vg-kpi.semana { grid-column:span 6; } }
 @media (max-width:700px) { .vg-kpi { grid-column:span 12; } }
-.vg-kpi { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+.vg-kpi { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px 18px; }
 .vg-kpi .rot { color:var(--text-3); font-size:13px; font-weight:500; }
 .vg-kpi .val { margin-top:6px; font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; font-variant-numeric:tabular-nums; }
 .vg-kpi .val.verde { color:var(--verde); }
 .vg-kpi .val.vermelho { color:var(--vermelho); }
-.vg-kpi .pe { margin-top:8px; color:var(--text-3); font-size:13px; line-height:1.55; }
+.vg-kpi .pe { margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-3); font-size:13px; line-height:1.55; }
 .vg-kpi .pe b { font-weight:650; }
+/* Gasto da semana: setas para andar de semana em semana; o card abre a lista. */
+.vg-kpi.semana { cursor:pointer; transition:border-color .15s ease, background .15s ease; }
+.vg-kpi.semana:hover { border-color:var(--line-forte); background:var(--surface-2); }
+.sem-topo { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.sem-setas { display:flex; align-items:center; gap:2px; margin:-4px -6px -4px 0; }
+.sem-setas button { width:24px; height:24px; min-height:0; padding:0; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--text-3); font-size:17px; line-height:1; cursor:pointer; }
+.sem-setas button:hover:not(:disabled) { background:var(--surface-3); color:var(--text); }
+.sem-setas button:disabled { opacity:.3; cursor:default; }
+.sem-num { display:flex; gap:2px; }
+.sem-num button { width:20px; height:20px; min-height:0; padding:0; display:grid; place-items:center; line-height:1; border:0; border-radius:6px; background:transparent; color:var(--text-3); font-size:11.5px; font-weight:600; text-align:center; cursor:pointer; font-variant-numeric:tabular-nums; }
+.sem-num button:hover:not(:disabled) { background:var(--surface-3); color:var(--text); }
+.sem-num button.ativa { background:var(--azul); color:#fff; }
+.sem-num button:disabled { opacity:.35; cursor:default; }
+.sem-dia { margin:14px 8px 4px; font-size:12.5px; color:var(--text-3); display:flex; justify-content:space-between; }
+.sem-dia:first-child { margin-top:0; }
+.sem-lin { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:7px 8px; border-radius:8px; font-size:13.5px; }
+.sem-lin:hover { background:var(--surface-2); }
+.sem-lin small { display:block; color:var(--text-3); font-size:12px; margin-top:1px; }
+.sem-lin strong { font-variant-numeric:tabular-nums; font-weight:600; }
 .vg-kpi[data-ir] { cursor:pointer; transition:border-color .15s ease, background .15s ease; }
 .vg-kpi[data-ir]:hover { border-color:var(--line-forte); background:var(--surface-2); }
 .vg-kpi[data-ir]:focus-visible { outline:2px solid var(--azul); outline-offset:2px; }
@@ -122,6 +142,14 @@
 </style>
 </head>
 <body>
+<div class="modal-fundo" id="modalSemana" hidden>
+  <div class="modal" style="width:min(640px,100%)">
+    <div class="modal-tit"><div><h2 id="semTitulo">Semana</h2><p class="v-rodape" id="semTotal" style="margin:4px 0 0"></p></div>
+      <button class="icone" id="semFechar" aria-label="Fechar">×</button></div>
+    <div id="semLista"></div>
+    <div class="modal-rodape"><a class="sutil" id="semAbrir" href="transacoes.html">Abrir em Transações ↗</a></div>
+  </div>
+</div>
 <nav class="nav"></nav>
 
 <main class="container">
@@ -224,6 +252,7 @@ const FILTRO_SALVO = lerFiltro();
 let PERIODO = ["mes", "trimestre", "semestre", "ano"].includes(FILTRO_SALVO.periodo) ? FILTRO_SALVO.periodo : "mes";
 let REF = /^\d{4}-\d{2}$/.test(FILTRO_SALVO.ref || "") ? FILTRO_SALVO.ref : "";
 let D = null;
+let SEM_REF = null;
 const VISIVEIS_CMP = 5;
 const LINHA = new Map();
 let INVEST = null;
@@ -251,17 +280,17 @@ function renderKpis() {
       ir: `transacoes.html?${periodo}&type=DEBIT`,
       pe: (r.variacao === null ? "sem período anterior para comparar"
             : `${seta(r.variacao)} vs ${esc(p.anteriorRotulo)}`)
-        + `<br>média ${fmtBRLCurto(r.media)}/mês em ${p.mesesComDado} `
-        + `${p.mesesComDado === 1 ? "mês fechado" : "meses fechados"}`
-        + (p.mesesEstimados ? ` · ${fmtBRLCurto(r.gastoEstimado)} projetado` : "") },
+        + (p.mesesComDado > 1 ? ` · média ${fmtBRLCurto(r.media)}/mês` : "")
+        + (p.mesesEstimados ? ` · ${fmtBRLCurto(r.gastoEstimado)} projetado` : ""),
+      dica: `média ${fmtBRLCurto(r.media)}/mês em ${p.mesesComDado} ${p.mesesComDado === 1 ? "mês fechado" : "meses fechados"}` },
     { rot: "Cartões", val: fmtBRL(r.cartao),
       ir: `transacoes.html?${periodo}&type=DEBIT&card=todos`,
       pe: `<b>${pct(r.shareCartao)}</b> do gasto ${varCartao === null ? "" : "· " + seta(varCartao)}`
-        + `<br>fatura fechada pelo banco` },
+      , dica: "fatura fechada pelo banco" },
     { rot: "Transferências", val: fmtBRL(r.naoCartao),
       ir: `transacoes.html?${periodo}&type=DEBIT&card=nenhum`,
       pe: `<b>${pct(r.gasto ? r.naoCartao / r.gasto * 100 : 0)}</b> do gasto`
-        + `<br>conta, PIX, boleto, débito` },
+      , dica: "conta, PIX, boleto, débito" },
     { rot: "Saldo", val: fmtSinal(r.resultado),
       cls: r.resultado >= 0 ? "verde" : "vermelho",
       ir: `transacoes.html?${periodo}`,
@@ -269,11 +298,11 @@ function renderKpis() {
       // projeção de entrada contra gasto real inflava o resultado.
       pe: `recebido ${fmtBRLCurto(r.entradas)}`
         + (r.entradasProjetadas > r.entradas
-          ? `<br>${fmtBRLCurto(r.entradasProjetadas - r.entradas)} ainda previsto` : "") },
+          ? ` · ${fmtBRLCurto(r.entradasProjetadas - r.entradas)} previsto` : "") },
   ];
   el("kpis").innerHTML = cards.map(c => `
     <article class="vg-kpi" ${c.ir ? `data-ir="${esc(c.ir)}" role="link" tabindex="0"
-      title="Abrir ${esc(c.rot.toLowerCase())} em detalhe"` : ""}>
+      title="${esc(c.dica ? c.dica + " · " : "")}Abrir ${esc(c.rot.toLowerCase())} em detalhe"` : ""}>
       <div class="rot">${esc(c.rot)}<span class="ir">↗</span></div>
       <div class="val ${c.cls || ""}">${c.val}</div><div class="pe">${c.pe}</div></article>`).join("");
 }
@@ -762,6 +791,9 @@ async function carregar() {
     b.classList.toggle("ativo", b.dataset.periodo === PERIODO);
   }
   renderKpis();
+  if (!SEM_INICIO || SEM_REF !== REF) SEM_INICIO = semanaInicial(REF);
+  SEM_REF = REF;
+  renderSemana();
   renderGeral();
   renderCartaoLinha();
   renderCartoes();
@@ -823,6 +855,127 @@ async function recarregar() {
 
   await recarregar();
 })();
+</script>
+<script>
+/* ------------------------------------------------------- gasto da semana */
+// Semana do mês (1 a 4), pela data local da compra (cartão entra no
+// dia da compra, não na fatura). Soma o mesmo que "Gasto no período": saídas
+// que entram nos cálculos.
+let SEM_INICIO = null;
+const SEM_CACHE = new Map();
+const DIAS_SEM = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+
+const isoDia = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const maisDias = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const curtoDia = d => `${d.getDate()}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+const diaLocal = iso => { const [a, m, d] = iso.split("-").map(Number); return new Date(a, m - 1, d); };
+
+// Quatro semanas por mês, pelos dias: 1–7, 8–14, 15–21 e 22 até o fim do mês
+// (a última fica com 7 a 10 dias).
+const INICIOS_SEM = [1, 8, 15, 22];
+const inicioSemana = d => new Date(d.getFullYear(), d.getMonth(), INICIOS_SEM[Math.min(3, Math.floor((d.getDate() - 1) / 7))]);
+const fimSemana = inicio => inicio.getDate() === 22
+  ? new Date(inicio.getFullYear(), inicio.getMonth() + 1, 0) : maisDias(inicio, 6);
+const semanasDoMes = inicio => INICIOS_SEM.map(d => new Date(inicio.getFullYear(), inicio.getMonth(), d));
+const andarSemana = (inicio, passo) => passo > 0 ? maisDias(fimSemana(inicio), 1) : inicioSemana(maisDias(inicio, -1));
+
+// Semana inicial: a de hoje no mês corrente; senão a última do mês escolhido.
+function semanaInicial(ref) {
+  const hoje = new Date();
+  const [a, m] = ref.split("-").map(Number);
+  if (a === hoje.getFullYear() && m === hoje.getMonth() + 1) return inicioSemana(hoje);
+  return new Date(a, m - 1, 22);
+}
+
+async function transacoesSemana(inicio) {
+  const fim = fimSemana(inicio);
+  const de = isoDia(inicio).slice(0, 7), ate = isoDia(fim).slice(0, 7);
+  const chave = `${de}|${ate}`;
+  if (!SEM_CACHE.has(chave)) {
+    SEM_CACHE.set(chave, pedir(`/extrato?from=${de}&to=${ate}&modo=mes&type=DEBIT&limit=2000`)
+      .then(r => r.transacoes).catch(e => { SEM_CACHE.delete(chave); throw e; }));
+  }
+  const a = isoDia(inicio), b = isoDia(fim);
+  return (await SEM_CACHE.get(chave))
+    .filter(t => t.incluidaNosCalculos && Number(t.valorNormalizado) < 0 && t.data >= a && t.data <= b)
+    .map(t => ({ ...t, gasto: -Number(t.valorNormalizado) }));
+}
+
+async function renderSemana() {
+  if (!SEM_INICIO) return;
+  let card = el("kpiSemana");
+  if (!card) {
+    card = document.createElement("article");
+    card.className = "vg-kpi semana";
+    card.id = "kpiSemana";
+    card.tabIndex = 0;
+    card.title = "Ver as transações da semana";
+    el("kpis").appendChild(card);
+  }
+  const inicio = SEM_INICIO, fim = fimSemana(inicio);
+  const semProxima = andarSemana(inicio, 1) > new Date();
+  const hojeD = new Date();
+  const pilulas = semanasDoMes(inicio).map((d, i) => {
+    const futura = d > hojeD;
+    return `<button data-sem-ir="${isoDia(d)}" class="${isoDia(d) === isoDia(inicio) ? "ativa" : ""}" ${futura ? "disabled" : ""}
+      title="${curtoDia(d)} a ${curtoDia(fimSemana(d))}" aria-label="Semana ${i + 1}">${i + 1}</button>`;
+  }).join("");
+  const topo = `<div class="sem-topo"><div class="rot">Gasto da semana</div>
+    <div class="sem-setas"><button data-sem="-1" aria-label="Semana anterior">‹</button>
+    <span class="sem-num">${pilulas}</span>
+    <button data-sem="1" aria-label="Próxima semana" ${semProxima ? "disabled" : ""}>›</button></div></div>`;
+  card.innerHTML = topo + `<div class="val">…</div><div class="pe">${curtoDia(inicio)} a ${curtoDia(fim)}</div>`;
+  let itens;
+  try { itens = await transacoesSemana(inicio); }
+  catch (e) { card.querySelector(".val").textContent = "—"; return; }
+  if (SEM_INICIO !== inicio) return;   // trocou de semana enquanto carregava
+  const total = itens.reduce((s, t) => s + t.gasto, 0);
+  card.innerHTML = topo + `<div class="val">${fmtBRL(total)}</div>
+    <div class="pe">${curtoDia(inicio)} a ${curtoDia(fim)} · ${itens.length} ${itens.length === 1 ? "transação" : "transações"}</div>`;
+}
+
+async function abrirSemana() {
+  const inicio = SEM_INICIO, fim = fimSemana(inicio);
+  const itens = (await transacoesSemana(inicio)).sort((a, b) => b.data.localeCompare(a.data) || b.gasto - a.gasto);
+  const total = itens.reduce((s, t) => s + t.gasto, 0);
+  el("semTitulo").textContent = `Semana de ${curtoDia(inicio)} a ${curtoDia(fim)}`;
+  el("semTotal").textContent = `${fmtBRL(total)} em ${itens.length} ${itens.length === 1 ? "transação" : "transações"}`;
+  const dias = [...new Set(itens.map(t => t.data))];
+  el("semLista").innerHTML = itens.length ? dias.map(d => {
+    const doDia = itens.filter(t => t.data === d);
+    const nome = DIAS_SEM[(diaLocal(d).getDay() + 6) % 7];
+    return `<div class="sem-dia"><span>${nome}, ${fmtData(d)}</span><span>${fmtBRL(doDia.reduce((s, t) => s + t.gasto, 0))}</span></div>`
+      + doDia.map(t => `<div class="sem-lin"><span>${esc(t.descricao)}
+          <small>${esc(t.categoria?.emoji || "")} ${esc(t.categoria?.nome || "Sem categoria")} · ${esc(t.rotuloInstrumento || t.contaNome || "")}${t.parcelaTotal ? ` · ${t.parcelaNumero}/${t.parcelaTotal}` : ""}</small></span>
+          <strong>${fmtBRL(t.gasto)}</strong></div>`).join("");
+  }).join("") : '<div class="vazio">Nenhum gasto nesta semana.</div>';
+  el("semAbrir").href = `transacoes.html?from=${isoDia(inicio).slice(0, 7)}&to=${isoDia(fim).slice(0, 7)}&type=DEBIT`;
+  el("modalSemana").hidden = false;
+}
+
+el("kpis").addEventListener("click", e => {
+  const ir = e.target.closest("[data-sem-ir]");
+  if (ir) {
+    e.stopPropagation();
+    if (!ir.disabled) { SEM_INICIO = diaLocal(ir.dataset.semIr); renderSemana(); }
+    return;
+  }
+  const seta = e.target.closest("[data-sem]");
+  if (seta) {
+    e.stopPropagation();
+    if (seta.disabled) return;
+    SEM_INICIO = andarSemana(SEM_INICIO, Number(seta.dataset.sem));
+    renderSemana();
+    return;
+  }
+  if (e.target.closest("#kpiSemana")) abrirSemana();
+});
+el("kpis").addEventListener("keydown", e => {
+  if (e.target.id === "kpiSemana" && ["Enter", " "].includes(e.key)) { e.preventDefault(); abrirSemana(); }
+});
+el("semFechar").addEventListener("click", () => { el("modalSemana").hidden = true; });
+el("modalSemana").addEventListener("click", e => { if (e.target.id === "modalSemana") el("modalSemana").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") el("modalSemana").hidden = true; });
 </script>
 </body>
 </html>

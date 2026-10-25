@@ -244,7 +244,24 @@ function posicionarPop(elemento, ancora, alinhar = "esquerda") {
 
   elemento.style.top = `${topo}px`;
   elemento.style.left = `${esq}px`;
+  // Guarda onde ficou em relação à âncora: ao rolar a página ele acompanha.
+  elemento._ancoragem = { ancora, dy: topo - a.top, dx: esq - a.left };
 }
+
+/** Popover aberto anda junto com o botão que o abriu quando a página (ou um
+ *  painel com rolagem) rola. Sem isto ele ficava parado na tela, descolado do
+ *  botão -- e a parte de baixo de um painel alto nunca aparecia. */
+function acompanharPops() {
+  for (const pop of document.querySelectorAll(".pop:not([hidden])")) {
+    const ref = pop._ancoragem;
+    if (!ref || !ref.ancora.isConnected) continue;
+    const a = ref.ancora.getBoundingClientRect();
+    pop.style.top = `${a.top + ref.dy}px`;
+    pop.style.left = `${a.left + ref.dx}px`;
+  }
+}
+// Captura: rolagem de elemento não sobe até a janela, mas passa por ela aqui.
+window.addEventListener("scroll", acompanharPops, { capture: true, passive: true });
 
 function abrirPop(elemento, ancora, { alinhar = "esquerda" } = {}) {
   if (_popAberto === elemento && _ancoraAberta === ancora) {
@@ -302,6 +319,7 @@ const ICONE_CALENDARIO = `<svg class="mes-icone" viewBox="0 0 16 16" width="15" 
  *  escura.
  *
  *  `obrigatorio` tira o "Limpar" dos campos que não admitem mês vazio.
+ *  `data-rotulo` troca o "Escolher mês" do campo vazio.
  */
 function campoMes(input, { obrigatorio = false } = {}) {
   if (!input || input.dataset.mesPronto) return;
@@ -334,7 +352,7 @@ function campoMes(input, { obrigatorio = false } = {}) {
   let anoAberto = Number((input.value || hoje).slice(0, 4));
 
   const pintarBotao = () => {
-    botao.innerHTML = `<span>${input.value ? esc(labelMesLongo(input.value)) : "Escolher mês"}</span>
+    botao.innerHTML = `<span>${input.value ? esc(labelMesLongo(input.value)) : esc(input.dataset.rotulo || "Escolher mês")}</span>
       ${ICONE_CALENDARIO}`;
     // "sem-mes", não "vazio": `.vazio` é o estado-vazio global do tema, uma
     // caixa tracejada de 28px de padding -- o botão virava um bloco enorme.
@@ -667,4 +685,104 @@ function setEstado(id, texto, tipo = "") {
   if (!el) return;
   el.textContent = texto;
   el.className = `estado ${tipo}`.trim();
+}
+
+/* ------------------------------------------------------- filtro "Onde" */
+
+/** Contas e cartões numa lista só, com busca e vários marcados por clique.
+ *
+ *  Monta um campo + lista embutida em `raiz` (não é popover: fica dentro do
+ *  painel de filtros sem fechá-lo). O valor é o par `{ card, account }` das
+ *  telas, cada um com ids separados por vírgula -- o mesmo da URL.
+ *  `obter()` devolve o valor atual; `mudar(novo)` recebe o novo par.
+ */
+function montarOnde(raiz, { obter, mudar, aoAbrir = () => {} }) {
+  raiz.innerHTML = `<button type="button" class="pf-campo" aria-expanded="false"></button>
+    <div class="pf-lista" hidden>
+      <div class="pf-busca"><input type="search" placeholder="Buscar conta ou cartão…" autocomplete="off" aria-label="Buscar conta ou cartão" />
+        <button type="button" class="pf-fechar" data-onde-fechar aria-label="Fechar lista">▴</button></div>
+      <div class="pf-itens tudo"></div>
+      <div class="pf-lista-rodape"><span></span><button type="button" data-onde-limpar>Limpar</button></div>
+    </div>`;
+  const [botao, lista] = raiz.children;
+  const busca = lista.querySelector("input"), itens = lista.querySelector(".pf-itens");
+  let cartoes = [], contas = [];
+  const ids = v => String(v || "").split(",").filter(Boolean);
+  const especial = id => id === "todos" || id === "nenhum";
+
+  // Conta não tem cor própria: usa a do cartão da mesma tag (contas:tag:X).
+  const cor = id => (cartoes.find(c => c.id === id || `contas:${c.id}` === id) || {}).cor || "var(--text-3)";
+  const nome = (tipo, id) => tipo === "card" && id === "todos" ? "Só cartões"
+    : tipo === "card" && id === "nenhum" ? "Fora do cartão"
+    : ((tipo === "card" ? cartoes : contas).find(c => c.id === id) || {}).nome || id;
+  // Fora da lista (campo e chips) o tipo vai junto: cartão e conta do mesmo
+  // banco têm o mesmo nome.
+  const rotulo = (tipo, id) => especial(id) ? nome(tipo, id) : `${tipo === "card" ? "Cartão" : "Conta"} ${nome(tipo, id)}`;
+  const selecionados = () => {
+    const v = obter();
+    return [...ids(v.card).map(id => ({ tipo: "card", id })), ...ids(v.account).map(id => ({ tipo: "account", id }))];
+  };
+
+  const pintar = () => {
+    const sel = selecionados(), nomes = sel.map(o => rotulo(o.tipo, o.id));
+    botao.innerHTML = (sel.length
+        ? `<span class="pf-pontos">${sel.slice(0, 3).map(o => `<i style="background:${cor(o.id)}"></i>`).join("")}</span>` : "")
+      + `<span class="txt ${sel.length ? "" : "sem-valor"}">${esc(!sel.length ? "Todas as contas e cartões"
+          : nomes.length <= 2 ? nomes.join(", ") : `${nomes.length} selecionados`)}</span>`;
+    const v = obter(), termo = busca.value.trim().toLowerCase();
+    const casa = x => !termo || x.nome.toLowerCase().includes(termo);
+    const item = (tipo, x, extra) => `<button type="button" class="pf-item ${ids(v[tipo]).includes(x.id) ? "sel" : ""}"
+        data-onde="${tipo}" data-id="${esc(x.id)}"><i style="background:${cor(x.id)}"></i>${esc(x.nome)}${extra ? `<small>${esc(extra)}</small>` : ""}</button>`;
+    // Com o grupo inteiro marcado, o mesmo botão desmarca.
+    const tudo = (tipo, todos) => todos.length && todos.every(x => ids(v[tipo]).includes(x.id));
+    const grupo = (titulo, tipo, todos, extra) => todos.filter(casa).length
+      ? `<div class="pf-grupo">${titulo}<button type="button" data-onde-todos="${tipo}">${tudo(tipo, todos) ? "desmarcar todos" : "marcar todos"}</button></div>`
+        + todos.filter(casa).map(x => item(tipo, x, extra(x))).join("") : "";
+    itens.innerHTML = grupo("Cartões", "card", cartoes, c => c.contas > 1 ? `${c.contas} cartões` : (c.membros?.[0]?.numero || ""))
+      + grupo("Contas", "account", contas, () => "") || '<div class="pf-grupo">Nada encontrado</div>';
+    const n = sel.filter(o => !especial(o.id)).length;
+    lista.querySelector(".pf-lista-rodape span").textContent = n ? `${n} selecionado${n > 1 ? "s" : ""}` : "Todas as contas e cartões";
+  };
+
+  // Aberta, a lista toma o lugar do campo (a busca fica onde ele estava);
+  // fecha no Esc ou clicando fora dela.
+  const fechar = () => {
+    lista.hidden = true; botao.hidden = false; botao.setAttribute("aria-expanded", "false");
+  };
+  botao.addEventListener("click", e => {
+    e.stopPropagation();
+    aoAbrir();
+    lista.hidden = false; botao.hidden = true; botao.setAttribute("aria-expanded", "true");
+    busca.value = ""; pintar(); busca.focus();
+  });
+  busca.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); fechar(); botao.focus(); } });
+  // Fase de captura: outros cliques do painel param a propagação.
+  document.addEventListener("click", e => { if (!lista.hidden && !raiz.contains(e.target)) fechar(); }, true);
+  busca.addEventListener("input", pintar);
+  // O clique troca o HTML da lista; sem parar aqui, o "clique fora" global
+  // não acharia o alvo dentro do painel e o fecharia.
+  lista.addEventListener("click", e => {
+    e.stopPropagation();
+    const v = obter(), it = e.target.closest("[data-onde]"), todos = e.target.closest("[data-onde-todos]");
+    const novo = { card: ids(v.card).filter(x => !especial(x)).join(","), account: v.account || "" };
+    if (it) {
+      const atual = ids(novo[it.dataset.onde]);
+      novo[it.dataset.onde] = (atual.includes(it.dataset.id)
+        ? atual.filter(x => x !== it.dataset.id) : atual.concat(it.dataset.id)).join(",");
+    } else if (todos) {
+      const tipo = todos.dataset.ondeTodos, grupo = (tipo === "card" ? cartoes : contas).map(x => x.id);
+      const marcados = ids(novo[tipo]);
+      novo[tipo] = grupo.every(id => marcados.includes(id)) ? "" : grupo.join(",");
+    } else if (e.target.closest("[data-onde-fechar]")) {
+      fechar(); botao.focus(); return;
+    } else if (e.target.closest("[data-onde-limpar]")) {
+      novo.card = novo.account = "";
+    } else return;
+    mudar(novo);
+  });
+
+  return {
+    definir(listaCartoes, listaContas) { cartoes = listaCartoes || []; contas = listaContas || []; pintar(); },
+    pintar, fechar, cor, nome, rotulo, selecionados,
+  };
 }

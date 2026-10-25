@@ -8,6 +8,12 @@ processo próprio. Os dois podem rodar ao mesmo tempo sem se enxergar.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Os módulos do app ficam em backend/; as telas, em web/.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
+
 import cartoes as cartoes_id
 import contas_tags
 import fixas2
@@ -27,7 +33,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from atualizar_pluggy import atualizar_em_background, registrar_item, definir_arquivada
 from atualizar_pluggy import status as pluggy_status
 from atualizar_pluggy import ultima_importacao
-from banco import DATABASE_PATH, ROOT, create_database_backup, ensure_database, list_database_backups
+from banco import DATABASE_PATH, ROOT, WEB, create_database_backup, ensure_database, list_database_backups
 from extrato_camada import (
     ajustar_transacao,
     atualizar_regra_entrada,
@@ -286,6 +292,7 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             "cartao": texto("card"),
             "tipo": texto("type").upper(),
             "categoria": texto("category"),
+            "categoriaExcluir": texto("notcategory") == "1",
             "status": texto("status").upper(),
             "busca": texto("q"),
             "modo": modo if modo in ("fatura", "mes") else "fatura",
@@ -682,7 +689,7 @@ class ServidorUnico(ThreadingHTTPServer):
 def run_server(host: str = HOST, port: int = PORT, open_browser: bool = False,
                auto_sync: bool = True) -> None:
     ensure_database()
-    handler = lambda *a, **kw: PluggyHandler(*a, directory=str(ROOT), **kw)  # noqa: E731
+    handler = lambda *a, **kw: PluggyHandler(*a, directory=str(WEB), **kw)  # noqa: E731
     try:
         server = ServidorUnico((host, port), handler)
     except OSError:

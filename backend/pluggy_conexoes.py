@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 
 API_URL = "https://api.pluggy.ai"
-ENV_PATH = Path(__file__).resolve().parent / ".env"
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _ler_env_local() -> dict[str, str]:

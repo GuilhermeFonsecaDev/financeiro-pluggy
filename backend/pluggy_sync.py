@@ -17,7 +17,7 @@ Fluxo de uso
        pip install -r requirements.txt
 
 3) Gere a pagina de conexao:
-       python pluggy_sync.py connect
+       python backend/pluggy_sync.py connect
 
    Isso cria um arquivo "connect.html". Abra-o no navegador, escolha seu
    banco (ou "Pluggy Bank" para testar no sandbox) e autorize o acesso.
@@ -27,10 +27,10 @@ Fluxo de uso
    demore para concluir a autorizacao.
 
 4) Baixe os dados dessa conexao:
-       python pluggy_sync.py sync <ITEM_ID>
+       python backend/pluggy_sync.py sync <ITEM_ID>
 
    Opcionalmente informe o periodo das transacoes:
-       python pluggy_sync.py sync <ITEM_ID> --from 2025-01-01 --to 2026-08-15
+       python backend/pluggy_sync.py sync <ITEM_ID> --from 2025-01-01 --to 2026-08-15
 
    Os arquivos serao salvos em ./data/ (accounts.csv/json e
    transactions_<accountId>.csv/json). Essa pasta e o .env NAO devem ser
@@ -54,7 +54,8 @@ from typing import Any, Optional
 import requests
 from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Raiz do projeto: .env e data/ ficam lá (o script fica em backend/).
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Preso ao diretorio do script, nao ao diretorio atual: o backend chama este
 # arquivo como subprocesso e o usuario pode roda-lo de qualquer lugar.
@@ -151,7 +152,7 @@ CONNECT_HTML_TEMPLATE = """<!doctype html>
             'Conexao criada com sucesso!\\n\\n' +
             'ITEM_ID: ' + itemData.item.id + '\\n\\n' +
             'Copie o ITEM_ID acima e rode no terminal:\\n' +
-            'python pluggy_sync.py sync ' + itemData.item.id;
+            'python backend/pluggy_sync.py sync ' + itemData.item.id;
         },
         onError: (error) => {
           resultEl.textContent = 'Erro na conexao: ' + JSON.stringify(error, null, 2);
@@ -289,7 +290,7 @@ def cmd_inspect(connector_id: Optional[int]) -> None:
     print(
         "\nSe 'type' for diferente de PERSONAL_BANK/BUSINESS_BANK, o widget pode\n"
         "estar filtrando esse conector. Nesse caso rode:\n"
-        f"  python pluggy_sync.py connect --connector {connector_id} --types {data.get('type')}"
+        f"  python backend/pluggy_sync.py connect --connector {connector_id} --types {data.get('type')}"
     )
 
 
@@ -489,7 +490,7 @@ def cmd_connect(
     print(
         "ATENCAO: abrir por duplo clique usa origin 'file://', que quebra\n"
         "conectores OAuth (como o MeuPluggy). Prefira:\n"
-        "    python pluggy_sync.py connect --meupluggy --serve"
+        "    python backend/pluggy_sync.py connect --meupluggy --serve"
     )
     if connector_id == CONNECTOR_MEUPLUGGY:
         print("Conector pre-selecionado: MeuPluggy (200).")
@@ -642,7 +643,7 @@ def cmd_sync(item_id: str, date_from: str, date_to: str) -> None:
             "ERRO: a API retornou 0 contas para esse item.\n"
             "  Nada foi gravado -- os arquivos em ./data/ continuam intactos.\n"
             "  O item pode estar sem contas do lado do Meu Pluggy, ou o plano\n"
-            "  perdeu acesso aos dados. Rode 'python pluggy_sync.py check' e\n"
+            "  perdeu acesso aos dados. Rode 'python backend/pluggy_sync.py check' e\n"
             "  confira a conexao em https://meu.pluggy.ai"
         )
 

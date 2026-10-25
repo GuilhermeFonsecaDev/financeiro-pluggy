@@ -30,7 +30,7 @@ import shutil
 import sys
 from pathlib import Path
 
-RAIZ = Path(__file__).resolve().parent
+RAIZ = Path(__file__).resolve().parent.parent
 DESTINO = RAIZ / "data"
 COPIA = DESTINO / "teste_faturas.db"
 SNAPSHOT = DESTINO / "snapshot_faturas.json"

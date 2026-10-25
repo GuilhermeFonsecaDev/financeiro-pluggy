@@ -47,7 +47,8 @@ import pluggy_extrato as px
 # Download e importacao vivem no mesmo projeto: pluggy_sync.py fica aqui do lado
 # e grava em ./data. Caminho relativo ao arquivo, nao absoluto, para a pasta
 # poder ser movida ou clonada sem editar codigo.
-RAIZ = Path(__file__).resolve().parent
+RAIZ = Path(__file__).resolve().parent.parent
+PASTA_CODIGO = Path(__file__).resolve().parent
 INTERVALO_PADRAO_HORAS = float(os.getenv("PLUGGY_INTERVALO_HORAS", "6"))
 TIMEOUT_SYNC_SEGUNDOS = int(os.getenv("PLUGGY_TIMEOUT_SEGUNDOS", "300"))
 
@@ -371,14 +372,14 @@ def status() -> dict[str, Any]:
 
 def _rodar_sync(item_id: str) -> tuple[bool, str]:
     """Roda o pluggy_sync.py para um item."""
-    script = RAIZ / "pluggy_sync.py"
+    script = PASTA_CODIGO / "pluggy_sync.py"
     if not script.exists():
         return False, f"nao encontrei {script}"
 
     ambiente = dict(os.environ, PYTHONIOENCODING="utf-8")
     try:
         processo = subprocess.run(
-            [sys.executable, "pluggy_sync.py", "sync", item_id],
+            [sys.executable, str(script), "sync", item_id],
             cwd=str(RAIZ),
             capture_output=True,
             text=True,

@@ -69,7 +69,7 @@
       <div class="colunas">
         <button class="icone seta ${aberta ? "aberta" : ""}" data-abre-desc="${i}"
                 aria-expanded="${aberta}" aria-label="${aberta ? "Fechar" : "Abrir"} descontos"
-                ${item.descontos.length ? "" : "disabled"}>▶</button>
+                ${item.descontos.length ? "" : "disabled"}>›</button>
         <div class="nome"><input type="text" data-nome="${i}" value="${esc(item.nome)}"
              aria-label="Nome da conta" style="width:100%" /></div>
         <div class="col-tag">
@@ -116,6 +116,15 @@
     $("compCartoes").textContent = moeda(t.cartoes);
     $("compPessoais").textContent = moeda(pessoais);
     $("compEmpresa").textContent = moeda(empresa);
+    // Barra de fundo de cada parte, proporcional às despesas (como na tela nova).
+    const partes = { compCartoes: t.cartoes, compPessoais: pessoais, compEmpresa: empresa };
+    document.querySelectorAll(".sim-comp").forEach(l => {
+      const frac = t.despesas > 0 ? Math.min(1, Math.max(0, partes[l.dataset.comp]) / t.despesas) : 0;
+      const f = l.querySelector(".v-f");
+      f.style.width = `${(frac * 100).toFixed(1)}%`;
+      f.style.background = l.dataset.cor;
+      l.querySelector(".v-chip").textContent = frac > 0 ? `${Math.round(frac * 100)}%` : "";
+    });
 
     const pct = t.receitas > 0 ? Math.min(100, t.despesas / t.receitas * 100) : 0;
     $("compBarraPreenchimento").style.width = `${pct.toFixed(1)}%`;
@@ -136,7 +145,7 @@
     $("vazio").innerHTML = estado.itens.length ? ""
       : `<div class="vazio">
           <div>Nenhuma conta na simulação.</div>
-          <button id="simClonar" data-abre-pop style="margin-top:14px">Clonar um mês</button>
+          <button id="simClonar" style="margin-top:14px">Clonar um mês</button>
           <button data-nova style="margin:14px 0 0 7px">Criar nova conta</button>
         </div>`;
     $("simHabitos").checked = estado.somarHabitos;
@@ -252,11 +261,8 @@
     if (!alvo || !estado) return;
     const d = alvo.dataset;
     if (alvo.id === "simClonar") {
-      $("popClonarLista").innerHTML = mesesAte(proximoMes(estado.mes), 24).reverse()
-        .map(m => `<button class="pop-item" data-clonar="${m}">${labelMes(m)}</button>`).join("");
-      abrirPop($("popClonar"), alvo);
-    } else if (d.clonar !== undefined) {
-      clonar(d.clonar);
+      // O botão do estado vazio abre o mesmo seletor do cabeçalho.
+      setTimeout(() => $("simClonarMes").nextElementSibling?.click(), 0);
     } else if (d.nova !== undefined) {
       adicionarConta();
     } else if (d.abreDesc !== undefined) {
@@ -333,11 +339,16 @@
     }
   }
 
-  function proximoMes(mes) {
-    const base = mes || new Date().toISOString().slice(0, 7);
-    const total = Number(base.slice(0, 4)) * 12 + Number(base.slice(5, 7)) - 1 + 6;
-    return `${String(Math.floor(total / 12)).padStart(4, "0")}-${String(total % 12 + 1).padStart(2, "0")}`;
-  }
+  // Clonar: o seletor de mês do projeto, com qualquer mês (os futuros têm as
+  // contas fixas já cadastradas).
+  const campoClonar = $("simClonarMes");
+  campoMes(campoClonar, { obrigatorio: true });
+  campoClonar.addEventListener("change", async () => {
+    const mes = campoClonar.value;
+    if (!/^\d{4}-\d{2}$/.test(mes)) return;
+    await clonar(mes);
+    campoClonar.value = "";      // volta a dizer "Clonar um mês"
+  });
 
   montarNav("");
   const pedido = new URLSearchParams(location.search).get("mes") || "";

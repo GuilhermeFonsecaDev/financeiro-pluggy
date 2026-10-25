@@ -155,7 +155,7 @@ const estiloPessoa = nome => { const c = corPessoa(nome); return `background:${c
 
 function tagPessoa(r) {
   return `<button class="reemb-pessoa ${r.pessoa ? "" : "vazia"}" data-pessoa-reembolso="${esc(r.id)}" ${r.pessoa ? `style="${estiloPessoa(r.pessoa)}"` : ""}
-    title="${r.pessoa ? "Trocar a pessoa" : "Definir quem deve"}">${r.pessoa ? esc(r.pessoa) : "+ pessoa"}</button>`;
+    title="${r.pessoa ? "Trocar o responsável" : "Definir o responsável"}">${r.pessoa ? esc(r.pessoa) : "+ responsável"}</button>`;
 }
 
 function renderPessoasReembolso() {
@@ -188,7 +188,7 @@ function escolherPessoa(ancora, atual, aoEscolher) {
     lista.innerHTML = [
       ...pessoas.map(p => `<div class="sb-item sb-filho" role="option" data-v="${esc(p)}" aria-selected="${p === atual}"><span class="reemb-pessoa" style="${estiloPessoa(p)}">${esc(p)}</span></div>`),
       nova ? `<div class="sb-item sb-filho" role="option" data-v="${esc(termo)}">Adicionar “${esc(termo)}”</div>` : "",
-      atual && !t ? `<div class="sb-item sb-filho sb-tirar" role="option" data-v="">Sem pessoa</div>` : "",
+      atual && !t ? `<div class="sb-item sb-filho sb-tirar" role="option" data-v="">Sem responsável</div>` : "",
     ].join("") || `<div class="sb-vazio">Digite um nome.</div>`;
     const itens = [...lista.querySelectorAll(".sb-item")];
     ativo = Math.max(0, itens.findIndex(e => e.getAttribute("aria-selected") === "true"));
@@ -273,7 +273,7 @@ el("formReembolso").addEventListener("submit", async e => {
 
 function definirPessoaForm(nome) {
   el("rPessoa").dataset.valor = nome;
-  el("rPessoa").textContent = nome || "Quem deve";
+  el("rPessoa").textContent = nome || "Responsável";
   el("rPessoa").classList.toggle("sem-pessoa", !nome);
 }
 el("rPessoa").addEventListener("click", e => {
@@ -338,3 +338,70 @@ opcoesForma = (selecionada, opcoes = {}) => opcoesFormaOriginal(selecionada, { .
   [desp, ...document.querySelectorAll(".f2-comp b")].forEach(n => obs.observe(n, { childList: true, characterData: true, subtree: true }));
   pintar();
 })();
+
+/* ------------------------------------------------- detalhe da composição */
+// Clicar numa parte da composição (Cartões, Contas pessoais, Empresa,
+// Reembolsos) abre o mesmo modal do "Ver lista", com os valores que somam
+// aquela parte. A conta é a mesma de renderComposicao.
+function itensDaComposicao(parte) {
+  const r = F2.resumo, semHabitos = MODO_VALORES === "atual";
+  if (parte === "compCartoes") {
+    const faturas = F2.faturas.map(f => ({ titulo: f.nome, tipo: "Fatura", cor: f.cor,
+      valor: f.valor - (semHabitos ? f.habitos : 0) }));
+    const aCobrar = F2.itens.flatMap(i => [
+      ...(i.status === "prevista" ? [{ titulo: i.nome, tipo: i.formaNome || "Cartão", valor: i.somado }] : []),
+      ...i.descontos.filter(d => d.status === "prevista")
+        .map(d => ({ titulo: `${i.nome} › ${d.descricao}`, tipo: d.formaNome || "Cartão", valor: d.somado })),
+    ]);
+    return [["Faturas", faturas], ["Contas no cartão a cobrar", aCobrar]];
+  }
+  if (parte === "compReembolsos") {
+    return [["Reembolsos", F2.reembolsos.filter(x => x.desconta)
+      .map(x => ({ titulo: x.descricao, tipo: x.pessoa || "PIX / dinheiro", valor: x.valor }))]];
+  }
+  const empresa = parte === "compEmpresa";
+  const daTag = F2.itens.filter(i => (i.tag === "Contas Empresa") === empresa);
+  return [["Contas", daTag.flatMap(i => [
+    ...(i.status === "fora_cartao" ? [{ titulo: i.nome, tipo: i.formaNome || "Fora do cartão", valor: i.somado }] : []),
+    ...i.descontos.filter(d => d.status === "fora_cartao")
+      .map(d => ({ titulo: `${i.nome} › ${d.descricao}`, tipo: d.formaNome || "Fora do cartão", valor: d.somado })),
+  ])]];
+}
+
+function abrirComposicao(parte) {
+  if (!F2) return;
+  const nomes = { compCartoes: "Cartões", compPessoais: "Contas pessoais", compEmpresa: "Empresa", compReembolsos: "Reembolsos" };
+  const secoes = itensDaComposicao(parte).map(([t, l]) => [t, l.filter(x => x.valor).sort((a, b) => b.valor - a.valor)]);
+  const total = secoes.reduce((s, [, l]) => s + l.reduce((a, x) => a + x.valor, 0), 0);
+  const qtd = secoes.reduce((s, [, l]) => s + l.length, 0);
+  el("cardModalTitulo").textContent = `${nomes[parte]} · ${labelMes(MES)}`;
+  el("cardModalSub").textContent = "";
+  const despesas = Math.abs(Number(String(el("compDespesas").textContent).replace(/[^\d,-]/g, "").replace(",", "."))) || 0;
+  const cor = { compCartoes: "var(--azul)", compPessoais: "var(--laranja)", compEmpresa: "var(--roxo, var(--azul))", compReembolsos: "var(--verde)" }[parte];
+  const corpo = `<div style="--cor:${cor}"><strong class="v-big comp-total">${fmtBRL(total)}</strong>${despesas && parte !== "compReembolsos"
+        ? `<span class="v-chip comp-pct">${Math.round(total / despesas * 100)}% das despesas</span>` : ""}
+      <p class="v-legenda">${qtd} ${qtd === 1 ? "item" : "itens"}<span class="v-sep">·</span>${MODO_VALORES === "atual" ? "Atual" : "Previsto"}</p></div>`
+    + secoes.filter(([, l]) => l.length).map(([t, l]) => `<section>
+        <p class="v-subtit comp-sec"><span>${esc(t)}</span></p>
+        <div class="comp-lista" style="--cor:${cor}">${l.map(x => `<div class="comp-linha"><i style="background:${x.cor || cor}"></i>
+          <span class="comp-nome">${esc(x.titulo)}</span><span class="comp-tipo v-chip">${esc(x.tipo)}</span>
+          <span class="comp-valor">${fmtBRL(x.valor)}</span></div>`).join("")}
+          <div class="comp-linha comp-soma"><i></i><span class="comp-nome">Total</span><span></span>
+          <span class="comp-valor">${fmtBRL(l.reduce((a, x) => a + x.valor, 0))}</span></div></div>
+      </section>`).join("");
+  el("cardModalSecoes").innerHTML = qtd ? corpo : '<div class="card-modal-vazio">Nada nesta parte do mês.</div>';
+  modalEmSecoes(true);
+  el("cardModalResumo").hidden = true;
+  el("modalCard").classList.add("modal-comp");
+  el("modalCard").hidden = false;
+}
+
+document.querySelectorAll(".f2-comp:not(.f2-sub)").forEach(linha => {
+  linha.classList.add("clicavel");
+  linha.setAttribute("role", "button");
+  linha.tabIndex = 0;
+  linha.title = "Ver o que soma esta parte";
+  const abrir = () => abrirComposicao(linha.dataset.comp);
+  linha.addEventListener("click", abrir);
+  linha.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); } });
+});

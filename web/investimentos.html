@@ -176,8 +176,11 @@
 .detalhes[open] > summary::after { content:"Fechar lista"; }
 .detalhes[open] > summary { margin-bottom:14px; }
 .filtros-mov { display:flex; gap:7px; margin:0 0 12px; flex-wrap:wrap; }
-.filtros-mov button { min-height:30px; padding:4px 11px; border-radius:999px; font-size:12.5px; }
-.filtros-mov button.ativo { border-color:var(--azul); background:var(--azul-suave); color:#9ac8f6; }
+/* Mesmos chips do painel de filtros (tema.css, .pf-chips). */
+.filtros-mov { gap:6px; }
+.filtros-mov button { min-height:0; padding:5px 11px; border:1px solid var(--line); border-radius:999px; background:var(--surface-2); color:var(--text-2); font-size:12.5px; font-weight:500; }
+.filtros-mov button:hover { color:var(--text); border-color:var(--line-forte); }
+.filtros-mov button.ativo { background:rgba(74,149,234,.16); border-color:rgba(74,149,234,.5); color:var(--azul); font-weight:600; }
 .filtros-mov select { min-height:30px; margin-left:auto; padding-top:4px; padding-bottom:4px; border-radius:999px; font-size:12.5px; }
 @media (max-width:1400px) { .hero-grade { grid-template-columns:repeat(2,minmax(0,1fr)); } .hero-grade:not(.com-pendente) .hero-mini.media-aporte { grid-column:1/-1; } }
 @media (max-width:1200px) { .sec-grid { grid-template-columns:1fr; } }
@@ -263,6 +266,7 @@
 .posicao-itens li { display:flex; justify-content:space-between; gap:16px; border-top:1px solid var(--line); padding-top:6px; }
 .posicao-itens .sub { margin:0; }
 @media (max-width:760px) { .classes-investimento { grid-template-columns:1fr; } .acoes-topo { flex-wrap:wrap; } }
+.rent-lado { white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -322,7 +326,7 @@
     </div>
     <div class="sub" id="posicoesResumo" aria-live="polite" style="display:none"></div>
     <div class="tabela-wrap"><table class="posicoes-tabela">
-      <thead><tr><th>Investimento / instituição</th><th class="num">Capital aplicado</th><th class="num">Valor bruto</th><th class="num">Saldo líquido</th><th class="num">Ganho bruto</th></tr></thead>
+      <thead><tr><th>Investimento / instituição</th><th class="num">Capital aplicado</th><th class="num">Valor bruto</th><th class="num">Saldo líquido</th><th class="num" title="Como o BTG mostra: renda fixa antes do IR, fundos líquidos">Rendimento do mês</th><th class="num" title="Como o BTG mostra: renda fixa antes do IR, fundos líquidos">Desde a aplicação</th></tr></thead>
       <tbody id="posicoes"></tbody>
     </table></div>
     <p class="posicoes-nota" id="notaCapital" hidden></p>
@@ -750,6 +754,10 @@ function consolidar(g) {
     rendimentoBruto: original == null ? null : arredondar(bruto - original),
     rentabilidadeBruta: original ? (bruto / original - 1) * 100 : null,
     rendimentoBrutoEstimado: (aplicado && confiavel) ? arredondar(bruto - aplicado) : null,
+    rendimentoMes: somaOuNada('rendimentoMes'),
+    rendimentoDesdeAplicacao: (aplicado && confiavel) ? somaOuNada('rendimentoDesdeAplicacao') : null,
+    rentabilidadeDesdeAplicacao: (aplicado && confiavel && somaOuNada('rendimentoDesdeAplicacao') != null)
+      ? somaOuNada('rendimentoDesdeAplicacao') / aplicado * 100 : null,
     rentabilidadeBrutaEstimada: (aplicado && confiavel) ? (bruto / aplicado - 1) * 100 : null,
     disponivel: somaOuNada('disponivel'), quantidade: somaOuNada('quantidade'),
     valorCota: comum('valorCota'), taxa: comum('taxa'), tipoTaxa: comum('tipoTaxa'),
@@ -785,7 +793,7 @@ function renderPosicoes() {
   const semPosicao = fundoNaLista ? pendentes.filter(m => !m.fundoId) : [];
   const linhasPendentes = semPosicao.map(m => `<tr class="posicao-pendente"><td class="posicao-produto"><div class="posicao-nome-pendente">${esc(m.fundo)}</div>
     <div class="sub">${esc(m.instituicao || 'BTG')} · aguardando liquidação desde ${dataIso(m.data)}</div></td>
-    <td class="num">${fmtBRL(m.valor)}<div class="origem-valor pendente">a liquidar</div></td><td class="num sub">—</td><td class="num sub">—</td><td class="num sub">—</td></tr>`).join('');
+    <td class="num">${fmtBRL(m.valor)}<div class="origem-valor pendente">a liquidar</div></td><td class="num sub">—</td><td class="num sub">—</td><td class="num sub">—</td><td class="num sub">—</td></tr>`).join('');
   el('posicoes').innerHTML = linhas.map(l => {
     const fundo = l.tipo === 'MUTUAL_FUND';
     const subtipo = {INVESTMENT_FUND:'Fundo de investimento',STOCK_FUND:'Fundo de ações',FIXED_INCOME_FUND:'Fundo de renda fixa',MULTIMARKET_FUND:'Multimercado',EXCHANGE_FUND:'Fundo cambial'}[l.subtipo] || l.subtipo || nomeClasse(classeInvestimento(l));
@@ -805,12 +813,13 @@ function renderPosicoes() {
           + detalhe('Vencimento', l.vencimento ? dataIso(l.vencimento) : varias ? 'Vários' : 'Não informado'));
     const itens = varias ? `<ul class="posicao-itens">${l.itens.slice().sort((a, b) => b.liquido - a.liquido).map(i =>
       `<li><span class="sub">${i.vencimento ? `vence ${dataIso(i.vencimento)}` : i.dataAplicacao ? `desde ${dataIso(i.dataAplicacao)}` : 'sem vencimento'}</span><span>${fmtBRL(i.liquido)}</span></li>`).join('')}</ul>` : '';
-    const ganho = l.rendimentoBrutoEstimado, rent = l.rentabilidadeBrutaEstimada;
+    // Como o BTG mostra: renda fixa bruta (antes do IR), fundos líquidos.
+    const ganho = l.rendimentoDesdeAplicacao, rent = l.rentabilidadeDesdeAplicacao, mes = l.rendimentoMes;
     const origem = l.aplicado == null || l.origemAplicado === 'pluggy' ? ''
       : !l.aplicadoConfiavel ? '<div class="origem-valor conferir">histórico de aportes divergente</div>'
       : '';
-    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num"${l.origemAplicado === 'movimentos' ? ' title="Somado pelos aportes registrados"' : ''}>${l.aplicado == null || !l.aplicadoConfiavel ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}${notaPendente(pendenteDe(l))}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<div class="sub">${pct(rent)}</div>` : ''}</td></tr>`;
-  }).join('') + linhasPendentes || '<tr><td colspan="5" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
+    return `<tr><td class="posicao-produto"><details><summary>${esc(l.nome)}${varias ? `<span class="posicao-conta">${l.itens.length} aplicações</span>` : ''}</summary><dl class="posicao-detalhes">${detalhes}</dl>${itens}${fundo ? '<p class="posicoes-nota">A rentabilidade de 12 meses é do fundo, não o retorno da sua aplicação.</p>' : ''}</details><div class="sub">${esc(l.instituicao)} · ${esc(subtipo)}</div></td><td class="num"${l.origemAplicado === 'movimentos' ? ' title="Somado pelos aportes registrados"' : ''}>${l.aplicado == null || !l.aplicadoConfiavel ? 'Indisponível' : fmtBRL(l.aplicado)}${origem}${notaPendente(pendenteDe(l))}</td><td class="num">${fmtBRL(l.bruto)}</td><td class="num">${fmtBRL(l.liquido)}</td><td class="num ${mes == null ? '' : mes >= 0 ? 'ganho' : 'perda'}">${mes == null ? '—' : fmtBRL(mes)}</td><td class="num ${ganho == null ? '' : ganho >= 0 ? 'ganho' : 'perda'}">${ganho == null ? 'Indisponível' : fmtBRL(ganho)}${rent != null ? `<span class="sub rent-lado"> - ${pct(rent)}</span>` : ''}</td></tr>`;
+  }).join('') + linhasPendentes || '<tr><td colspan="6" class="sub">Nenhuma posição ativa neste tipo de investimento.</td></tr>';
   // O aplicado pelos aportes só existe no backend novo; sem ele a coluna cai
   // para o custo da Pluggy, e quem está com o processo antigo precisa saber.
   const backendAntigo = (D.lotes || []).some(l => l.aplicado === undefined);

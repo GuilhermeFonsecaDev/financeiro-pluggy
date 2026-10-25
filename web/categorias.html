@@ -145,7 +145,10 @@
   </header>
 
   <div class="filtros-barra" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
-    <button id="btnFiltros" data-abre-pop>⚙ Filtros</button>
+    <button id="btnFiltros" class="btn-filtros" data-abre-pop aria-label="Filtros">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h7M12 4h2M2 12h2M7 12h7"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="12" r="1.5"/></svg>
+      Filtros<span class="n-filtros" id="nFiltros" hidden></span></button>
     <!-- O mês sai do popover: é o filtro que se troca o tempo todo, e enterrá-lo
          atrás de "Filtros → Aplicar" custava três cliques para uma escolha que
          é a principal da tela. -->
@@ -180,15 +183,12 @@
   </div>
 </main>
 
-<div class="pop" id="popFiltros" hidden style="min-width:250px">
-  <div class="pop-rotulo">Filtrar por</div>
-  <div style="display:grid;gap:9px;padding:5px 8px 8px">
-    <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
-    <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
-  </div>
-  <div class="pop-rodape">
-    <button class="sutil" id="fLimpar">Limpar</button>
-    <button class="primario" id="fAplicar">Aplicar</button>
+<!-- Mesmo painel de Transações: cada escolha já filtra. O mês fica fora,
+     na barra, porque é o filtro que se troca o tempo todo. -->
+<div class="pop pop-filtros" id="popFiltros" hidden>
+  <div class="pf-cab"><strong>Filtros</strong><button type="button" class="pf-limpar" id="fLimpar">Limpar</button></div>
+  <div class="pf-corpo">
+    <div><div class="pf-rot">Onde</div><div id="fOnde"></div></div>
   </div>
 </div>
 
@@ -432,10 +432,7 @@ async function carregar() {
   }
   render(p);
 
-  const conta = CONTAS.find(c => c.id === filtros.account)?.nome;
-  const cartao = CARTOES.find(c => c.id === filtros.card)?.nome;
-  document.getElementById("resumoFiltro").textContent =
-    [conta, cartao].filter(Boolean).join(" · ");
+  pintarFiltros();
   setEstado("estado", `${p.categorias.filter(c => c.total > 0).length} categorias com gasto`, "ok");
 }
 
@@ -666,33 +663,43 @@ async function carregarFiltros() {
   CONTAS = p.contas || [];
   CARTOES = p.cartoes || [];
   MES_ATUAL = p.mesAtual || "";
-  document.getElementById("fConta").innerHTML =
-    ['<option value="">Todas as contas</option>']
-      .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
-  document.getElementById("fCartao").innerHTML =
-    ['<option value="">Todos os cartões</option>']
-      .concat(CARTOES.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
+  ONDE.definir(CARTOES, CONTAS);
+}
+
+let ONDE = null, ONDE_TIMER = null;
+/** Contador no botão, resumo ao lado e "Limpar (N)" no painel. */
+function pintarFiltros() {
+  const sel = ONDE.selecionados();
+  document.getElementById("resumoFiltro").textContent = sel.map(o => ONDE.rotulo(o.tipo, o.id)).join(" · ");
+  const n = document.getElementById("nFiltros");
+  n.hidden = !sel.length;
+  n.textContent = sel.length;
+  const limpar = document.getElementById("fLimpar");
+  limpar.textContent = sel.length ? `Limpar (${sel.length})` : "Limpar";
+  limpar.disabled = !sel.length;
+  ONDE.pintar();
 }
 
 function ligar() {
+  ONDE = montarOnde(document.getElementById("fOnde"), {
+    obter: () => ({ card: filtros.card, account: filtros.account }),
+    mudar: novo => {
+      filtros.card = novo.card; filtros.account = novo.account;
+      pintarFiltros();   // o clique aparece na hora; a lista vem logo depois
+      clearTimeout(ONDE_TIMER);
+      ONDE_TIMER = setTimeout(() => carregar().catch(e => setEstado("estado", e.message, "erro")), 250);
+    },
+  });
   document.getElementById("btnFiltros").addEventListener("click", e => {
-    document.getElementById("fConta").value = filtros.account;
-    document.getElementById("fCartao").value = filtros.card;
+    ONDE.fechar();
+    pintarFiltros();
     abrirPop(document.getElementById("popFiltros"), e.currentTarget);
   });
-  document.getElementById("fAplicar").addEventListener("click", () => {
-    filtros.account = document.getElementById("fConta").value;
-    filtros.card = document.getElementById("fCartao").value;
-    salvarUltimoMes(filtros.month);
-    fecharPop();
-    carregar().catch(e => setEstado("estado", e.message, "erro"));
-  });
-  document.getElementById("fLimpar").addEventListener("click", () => {
-    filtros = { month: MES_ATUAL, account: "", card: "" };
-    document.getElementById("fMes").value = filtros.month;
-    salvarUltimoMes(filtros.month);
-    fecharPop();
-    carregar().catch(e => setEstado("estado", e.message, "erro"));
+  // Limpar tira só contas e cartões: o mês continua sendo o que está na barra.
+  document.getElementById("fLimpar").addEventListener("click", e => {
+    e.stopPropagation();
+    filtros.account = filtros.card = "";
+    carregar().catch(erro => setEstado("estado", erro.message, "erro"));
   });
 
   // Sem "Aplicar": trocar o mês já é a intenção inteira, e um segundo clique

@@ -51,6 +51,31 @@
 .fatura-selos { display:inline-flex; gap:6px; align-items:center; }
 /* Detalhe da fatura em duas tabelas, cada uma com título e subtotal. */
 .card-modal-secoes { display:grid; gap:18px; }
+/* Detalhe da composição: no visual do projeto (visual.css), sem caixas nem
+   cabeçalhos em maiúsculas -- número grande e lista com barra de fundo. */
+#cardModalResumo[hidden] { display:none; }
+.modal-comp .card-modal-secoes { gap:16px; }
+/* Lista simples: bolinha na cor da parte, nome, forma em cinza e valor. */
+.modal-comp .comp-lista { margin-top:6px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.modal-comp .comp-linha { display:grid; grid-template-columns:8px minmax(0,1fr) auto auto; align-items:center; gap:12px;
+  padding:11px 14px; font-size:13.5px; border-top:1px solid var(--line); }
+.modal-comp .comp-linha:first-child { border-top:0; }
+.modal-comp .comp-linha i { width:8px; height:8px; border-radius:50%; }
+.modal-comp .comp-nome { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.modal-comp .comp-tipo { margin:0; vertical-align:0; font-weight:500; }
+/* Cor da parte no total, no selo de % e no passar do mouse: menos cinza. */
+.modal-comp .comp-total { color:var(--cor); }
+.modal-comp .comp-pct { background:color-mix(in srgb, var(--cor) 18%, transparent); color:var(--cor); vertical-align:6px; }
+.modal-comp .comp-linha:hover { background:color-mix(in srgb, var(--cor) 9%, transparent); }
+.modal-comp .comp-nome { color:var(--text); font-weight:500; }
+.modal-comp .comp-linha.comp-soma { background:var(--surface-2); padding-top:9px; padding-bottom:9px; }
+.modal-comp .comp-linha.comp-soma:hover { background:var(--surface-2); }
+.modal-comp .comp-soma .comp-nome { color:var(--text-2); text-transform:uppercase; font-size:10.5px; letter-spacing:.06em; font-weight:650; }
+.modal-comp .comp-soma .comp-valor { font-weight:650; }
+.modal-comp .comp-soma i { background:var(--text-3); }
+.modal-comp .comp-valor { min-width:96px; text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
+.modal-comp .comp-sec { display:flex; justify-content:space-between; align-items:baseline; }
+.modal-comp .comp-sec b { font-size:12.5px; color:var(--text-2); font-weight:600; font-variant-numeric:tabular-nums; }
 .card-modal-secoes[hidden], #cardModalTabela[hidden] { display:none; }
 .card-modal-secao header { margin:0 4px 8px; font-size:13px; color:var(--text-2); font-weight:600; }
 .card-modal-total { background:var(--surface-2); font-weight:650; padding-top:8px; padding-bottom:8px; }
@@ -148,11 +173,11 @@
           <div class="reemb-pessoas" id="reembPessoas"></div><div class="vinculos-total"><span>Total de reembolsos</span><strong id="reembolsosTotal">R$ 0,00</strong></div>
         </div>
         <div class="vinculos-tabela">
-          <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Pessoa</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
+          <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Responsável</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
           <div id="reembolsosLista"></div>
           <form class="vinculos-linha f2-reemb f2-novo" id="formReembolso" autocomplete="off">
             <input id="rDescricao" type="text" maxlength="160" placeholder="ex.: INGRESSO DO SHOW" aria-label="Descrição do reembolso" />
-            <button type="button" class="sb-botao sem-pessoa" id="rPessoa" data-abre-pop aria-haspopup="listbox" aria-label="Pessoa que deve">Quem deve</button>
+            <button type="button" class="sb-botao sem-pessoa" id="rPessoa" data-abre-pop aria-haspopup="listbox" aria-label="Responsável pelo reembolso">Responsável</button>
             <select id="rForma" aria-label="Cartão ou conta da compra"></select>
             <select id="rComo" aria-label="Como o dinheiro voltou">
               <option value="dinheiro">PIX / dinheiro</option>
@@ -814,6 +839,8 @@ function adiantamentosDoCartao(grupoId) {
 function modalEmSecoes(sim) {
   el("cardModalTabela").hidden = sim;
   el("cardModalSecoes").hidden = !sim;
+  el("cardModalResumo").hidden = false;   // o detalhe da composição esconde
+  el("modalCard").classList.remove("modal-comp");
 }
 
 function secaoModal(titulo, linhas, total) {

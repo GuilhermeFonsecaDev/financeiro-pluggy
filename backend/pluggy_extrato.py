@@ -751,6 +751,10 @@ def _periodo(filtros: dict[str, Any]) -> tuple[str, str]:
     return de, ate
 
 
+def _lista_filtro(valor: Any) -> list[str]:
+    return [v for v in str(valor or "").split(",") if v.strip()]
+
+
 def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
           grupos: dict[str, set[str]] | None = None,
           grupos_cartoes: dict[str, set[str]] | None = None,
@@ -785,46 +789,49 @@ def _onde(filtros: dict[str, Any], ativas: set[str] | None = None,
         if mes_ate:
             clausulas.append(f"t.{campo} <= ?")
             params.append(mes_ate)
-    if filtros.get("conta"):
-        conta = filtros["conta"]
-        ids_grupo = grupos.get(conta, set()) if grupos else set()
-        if ids_grupo:
-            marcadores = ", ".join("?" for _ in ids_grupo)
+    # "Onde": várias contas e cartões, separados por vírgula, valem juntos
+    # (qualquer um deles). "todos"/"nenhum" continuam sendo perguntas sobre
+    # cartão em geral, que os cards da Visão geral fazem ao abrir a lista.
+    contas_sel = _lista_filtro(filtros.get("conta"))
+    cartoes_sel = _lista_filtro(filtros.get("cartao"))
+    if cartoes_sel in (["todos"], ["nenhum"]) and not contas_sel:
+        dentro = "IN" if cartoes_sel == ["todos"] else "NOT IN"
+        clausulas.append(
+            f"t.conta_id {dentro} (SELECT conta_id FROM pluggy_contas "
+            "WHERE subtipo = 'CREDIT_CARD')")
+    elif contas_sel or cartoes_sel:
+        # O filtro Conta nunca vira porta de entrada para cartões, e um nome
+        # desconhecido nunca abre o extrato todo: sem ids, nada passa.
+        ids = set()
+        for conta in contas_sel:
+            ids |= (grupos or {}).get(conta, set())
+        for cartao in cartoes_sel:
+            ids |= (grupos_cartoes or {}).get(cartao, set())
+        if ids:
+            marcadores = ", ".join("?" for _ in ids)
             clausulas.append(f"t.conta_id IN ({marcadores})")
-            params.extend(sorted(ids_grupo))
+            params.extend(sorted(ids))
         else:
-            # O filtro Conta nunca vira uma porta de entrada para cartões.
-            clausulas.append("1 = 0")
-    if filtros.get("cartao"):
-        cartao = filtros["cartao"]
-        ids_cartao = grupos_cartoes.get(cartao, set()) if grupos_cartoes else set()
-        if cartao in ("todos", "nenhum"):
-            # "Qualquer cartao" e "fora do cartao" nao sao um cartao especifico,
-            # entao nao existem em grupos_cartoes. Sao as duas perguntas que os
-            # cards da Visao geral fazem ao abrir as transacoes.
-            dentro = "IN" if cartao == "todos" else "NOT IN"
-            clausulas.append(
-                f"t.conta_id {dentro} (SELECT conta_id FROM pluggy_contas "
-                "WHERE subtipo = 'CREDIT_CARD')")
-        elif ids_cartao:
-            marcadores = ", ".join("?" for _ in ids_cartao)
-            clausulas.append(f"t.conta_id IN ({marcadores})")
-            params.extend(sorted(ids_cartao))
-        else:
-            # Um filtro de cartao desconhecido nunca deve abrir o extrato todo.
             clausulas.append("1 = 0")
     if filtros.get("tipo") in {"DEBIT", "CREDIT"}:
         clausulas.append("t.tipo = ?")
         params.append(filtros["tipo"])
-    if filtros.get("categoria"):
+    if _lista_filtro(filtros.get("categoria")):
         # Filtra pela categoria EFETIVA (a resolvida pela camada local), nao
         # pelo texto cru da Pluggy. Escolher uma categoria-pai traz as
         # subcategorias dela junto -- e o mesmo agrupamento que a lista de
         # "Gastos por categoria" usa (ver por_categoria em extrato_payload),
         # entao clicar num total e ver a lista batendo com ele.
-        clausulas.append(
-            "t.categoria_id IN (SELECT id FROM extrato_categorias WHERE id = ? OR pai_id = ?)")
-        params.extend([filtros["categoria"], filtros["categoria"]])
+        # Várias categorias valem juntas; com "categoriaExcluir" a escolha se
+        # inverte e mostra tudo MENOS elas (sem categoria também fica).
+        cats = _lista_filtro(filtros.get("categoria"))
+        marcadores = ", ".join("?" for _ in cats)
+        sub = f"SELECT id FROM extrato_categorias WHERE id IN ({marcadores}) OR pai_id IN ({marcadores})"
+        if filtros.get("categoriaExcluir"):
+            clausulas.append(f"(t.categoria_id IS NULL OR t.categoria_id NOT IN ({sub}))")
+        else:
+            clausulas.append(f"t.categoria_id IN ({sub})")
+        params.extend(cats + cats)
     if filtros.get("status") in {"POSTED", "PENDING"}:
         clausulas.append("t.status = ?")
         params.append(filtros["status"])
@@ -1959,13 +1966,16 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         grupos = _grupos_contas(conn, ativas)
         grupos_cartoes = _grupos_cartoes(conn, ativas)
         identidades = cartoes_id.identidades(conn)
-        filtro_cartao = filtros.get("cartao") or ""
-        fontes_filtro_cartao = (
-            (cartoes_id.fontes_ativas(conn) & ativas)
-            if filtro_cartao in ("", "todos")
-            else set() if filtro_cartao == "nenhum"
-            else grupos_cartoes.get(filtro_cartao, set())
-        )
+        # Parcelas projetadas só entram para os cartões escolhidos; sem cartão
+        # escolhido, para todos -- a não ser que o filtro seja só de contas.
+        cartoes_sel = _lista_filtro(filtros.get("cartao"))
+        if cartoes_sel in ([], ["todos"]):
+            fontes_filtro_cartao = (set() if (not cartoes_sel and _lista_filtro(filtros.get("conta")))
+                                    else cartoes_id.fontes_ativas(conn) & ativas)
+        elif cartoes_sel == ["nenhum"]:
+            fontes_filtro_cartao = set()
+        else:
+            fontes_filtro_cartao = set().union(*(grupos_cartoes.get(c, set()) for c in cartoes_sel))
 
         # A view aplica todas as regras e é cara. A cópia materializada é
         # compartilhada entre aberturas e invalidada pela assinatura das
@@ -2179,7 +2189,10 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
         # mostra o pai dela com so aquela subcategoria embaixo, em vez de
         # ficar com o pai pelado e nenhuma pista de onde voce esta.
         filhos_por_pai: dict[str, list[dict[str, Any]]] = {}
-        if filtros.get("categoria"):
+        cats_filtro = _lista_filtro(filtros.get("categoria"))
+        excluir_cats = bool(filtros.get("categoriaExcluir"))
+        cat_unica = cats_filtro[0] if len(cats_filtro) == 1 and not excluir_cats else ""
+        if cat_unica:
             for linha in conn.execute(
                 f"""
                 SELECT filho.id AS categoria_id, filho.nome, filho.cor,
@@ -2195,7 +2208,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 GROUP BY filho.id
                 ORDER BY total DESC
                 """,
-                [*params, filtros["categoria"]],
+                [*params, cat_unica],
             ):
                 filhos_por_pai.setdefault(linha["pai_id"], []).append({
                     "categoriaId": linha["categoria_id"],
@@ -2227,7 +2240,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 ano_projecao_itens = payload_ano["ano"]
                 for cartao in payload_ano["cartoes"]:
                     for item in payload_ano["itens"].get(cartao["id"], []):
-                        if filtros.get("conta") or item["contaId"] not in fontes_filtro_cartao:
+                        if item["contaId"] not in fontes_filtro_cartao:
                             continue
                         # Hábitos e recorrências são estimativa de gasto, não
                         # lançamento: ficam nas faturas previstas e em Contas
@@ -2295,9 +2308,8 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                     "raizId": None, "raizNome": "Outros", "raizCor": "#9ba1ab",
                     "raizEmoji": "",
                 }
-                if filtros.get("categoria") and filtros["categoria"] not in (
-                    categoria["id"], categoria["raizId"]
-                ):
+                if cats_filtro and (bool({categoria["id"], categoria["raizId"]} & set(cats_filtro))
+                                    == excluir_cats):
                     continue
                 valor = round(float(item["valor"]), 2)
                 mensal = evolucao.setdefault(mes_ref_item, {
@@ -2360,7 +2372,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                 })
                 agregado["total"] += valor
                 agregado["quantidade"] += 1
-                if filtros.get("categoria") and categoria["id"] != categoria["raizId"]:
+                if cat_unica and categoria["id"] != categoria["raizId"]:
                     filhos = filhos_por_pai.setdefault(categoria["raizId"], [])
                     filho = next((f for f in filhos if f["categoriaId"] == categoria["id"]), None)
                     if filho is None:
@@ -2470,7 +2482,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             por_categoria_mapa.values(), key=lambda item: item["total"], reverse=True
         )
 
-    if filtros.get("categoria"):
+    if cat_unica:
         por_categoria = [
             {**item, "filhos": sorted(filhos_por_pai.get(item["categoriaId"], []),
                                      key=lambda f: f["total"], reverse=True)}

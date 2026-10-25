@@ -9,7 +9,34 @@
      editável e nada salvo. Layout diferente aqui seria uma segunda verdade
      visual sobre o mesmo mês. -->
 <link rel="stylesheet" href="contas_fixas.css" />
+<link rel="stylesheet" href="contas_fixas2.css" />
+<link rel="stylesheet" href="visual.css" />
 <style>
+/* Visual da tela nova de Contas Fixas (contas_fixas2.html). */
+.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); }
+.fatura-card { min-height:0; padding:18px 20px; background:var(--surface); box-shadow:none; }
+.fatura-card.banco:hover { transform:none; box-shadow:none; border-color:var(--line-forte); }
+.fatura-rotulo { font-size:13px; font-weight:500; text-transform:none; letter-spacing:0; }
+.fatura-valor { margin:6px 0 10px; font-size:28px; font-weight:650; letter-spacing:-.02em; }
+.fatura-barra { height:3px; margin:0 0 10px; }
+.fatura-linhas { font-size:12.5px; flex-wrap:wrap; }
+#lista .seta { border:0; background:transparent; font-size:17px; font-weight:400; line-height:1; color:var(--text-3); }
+#lista .seta:hover { background:transparent; color:var(--text); }
+#lista .seta.aberta { color:var(--azul); }
+.topo .mes-campo.sem-mes { color:var(--text); }
+.composicao { grid-column:span 1; }
+.composicao-saldo { gap:0; margin:10px 0 0; }
+.composicao-saldo strong.v-big { font-size:28px; }
+.composicao-barra { height:3px; margin-top:12px; }
+.composicao-percentuais { font-size:12px; color:var(--text-3); }
+.composicao-detalhes { margin-top:8px; }
+.composicao .v-tit .sim-media { margin-left:auto; }
+/* Receita editável dentro da legenda, no lugar do número. */
+.v-legenda .sim-receita { display:inline-flex; align-items:baseline; gap:4px; }
+.v-legenda .sim-receita input { width:110px; min-height:0; padding:1px 0; border:0; border-bottom:1px dashed var(--line-forte);
+  border-radius:0; background:transparent; color:var(--text); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+.v-legenda .sim-receita input:focus { outline:none; border-bottom-color:var(--azul); }
+
 /* Só o que é exclusivo da simulação: os campos que lá são texto e aqui
    precisam ser digitáveis, e a faixa que lembra que nada disto é salvo. */
 
@@ -67,8 +94,10 @@
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span class="estado" id="estado">Carregando…</span>
-      <button id="simLimpar" class="sutil">Limpar tudo</button>
-      <a class="btn" href="contas_fixas2.html">Voltar</a>
+      <!-- Tudo numa linha só, na altura do título. -->
+      <input id="simClonarMes" type="month" data-mes-obrigatorio="1" data-rotulo="Clonar um mês"
+             aria-label="Clonar as contas de um mês" />
+      <button id="simLimpar">Limpar tudo</button>
       <button class="primario" id="simAdicionar">+ Nova conta</button>
     </div>
   </header>
@@ -100,28 +129,24 @@
       </div>
     </div>
 
-    <aside class="painel composicao" aria-labelledby="composicaoTitulo">
-      <div class="composicao-cabecalho">
-        <h2 id="composicaoTitulo">Composição simulada</h2>
+    <aside class="v-cartao composicao" aria-labelledby="composicaoTitulo">
+      <h2 class="v-tit" id="composicaoTitulo">Composição simulada
         <button class="sim-media" id="simMediaReceitas"
-                title="Preencher as receitas com a média dos últimos 12 meses">Usar média</button>
-      </div>
-      <div class="composicao-saldo" id="compSaldoCard"><span>Saldo do mês</span><strong id="compSaldo">R$ 0,00</strong></div>
-      <div class="composicao-resumo">
-        <div><span>Receitas</span>
-          <label class="sim-receita"><span>R$</span>
-            <input id="compReceitasInput" type="text" inputmode="decimal" value="0,00"
-                   aria-label="Receitas simuladas do mês" /></label>
-        </div>
-        <div><span>Despesas</span><strong id="compDespesas">R$ 0,00</strong></div>
-      </div>
+                title="Preencher as receitas com a média dos últimos 12 meses">Usar média</button></h2>
+      <div class="composicao-saldo" id="compSaldoCard"><span class="v-subtit">Saldo do mês</span><strong class="v-big" id="compSaldo">R$ 0,00</strong></div>
+      <p class="v-legenda">
+        <span class="sim-receita"><i style="background:var(--verde)"></i>Receitas R$
+          <input id="compReceitasInput" type="text" inputmode="decimal" value="0,00"
+                 aria-label="Receitas simuladas do mês" /></span>
+        <span class="v-sep">·</span>
+        <span><i style="background:var(--vermelho)"></i>Despesas <b id="compDespesas">R$ 0,00</b></span></p>
       <div class="composicao-barra" id="compBarra" role="img"><div id="compBarraPreenchimento"></div></div>
       <div class="composicao-percentuais"><span id="compComprometido"></span><span id="compPercentualSaldo"></span></div>
-      <div class="composicao-detalhes">
-        <h3>Dentro das despesas</h3>
-        <div class="composicao-linha"><span>Cartões</span><strong id="compCartoes">R$ 0,00</strong></div>
-        <div class="composicao-linha"><span>Contas pessoais</span><strong id="compPessoais">R$ 0,00</strong></div>
-        <div class="composicao-linha"><span>Empresa</span><strong id="compEmpresa">R$ 0,00</strong></div>
+      <p class="v-subtit" style="margin-top:18px">Dentro das despesas</p>
+      <div class="v-barras composicao-detalhes">
+        <div class="v-bl sim-comp" data-comp="compCartoes" data-cor="var(--azul)"><i class="v-f"></i><span class="v-nome">Cartões</span><span class="v-val"><b id="compCartoes">R$ 0,00</b><span class="v-chip"></span></span></div>
+        <div class="v-bl sim-comp" data-comp="compPessoais" data-cor="var(--laranja)"><i class="v-f"></i><span class="v-nome">Contas pessoais</span><span class="v-val"><b id="compPessoais">R$ 0,00</b><span class="v-chip"></span></span></div>
+        <div class="v-bl sim-comp" data-comp="compEmpresa" data-cor="var(--roxo, var(--azul))"><i class="v-f"></i><span class="v-nome">Empresa</span><span class="v-val"><b id="compEmpresa">R$ 0,00</b><span class="v-chip"></span></span></div>
       </div>
       <label class="sim-habitos"><input id="simHabitos" type="checkbox" />
         <span>Somar hábitos e recorrências</span></label>
@@ -130,9 +155,6 @@
   </section>
 </main>
 
-<div class="pop" id="popClonar" hidden style="min-width:230px">
-  <div class="pop-lista" id="popClonarLista"></div>
-</div>
 
 <script src="app.js"></script>
 <script src="simulador_mes.js"></script>

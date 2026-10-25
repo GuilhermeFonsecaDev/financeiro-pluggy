@@ -11,6 +11,8 @@
 .filtros-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .filtros-barra .busca { flex: 1 1 220px; max-width: 340px; }
 .filtro-ativo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--azul-suave); border: 1px solid rgba(74,149,234,.32); color: #8cc0f5; font-size: 12px; font-weight: 550; }
+.filtro-ativo.excluido { background:rgba(240,106,106,.12); border-color:rgba(240,106,106,.35); color:#f39a9a; }
+.filtro-ativo .ponto-f { width:8px; height:8px; border-radius:50%; flex:none; }
 .filtro-ativo button { min-height: 18px; width: 18px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 14px; line-height: 1; }
 .contador { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
 
@@ -341,48 +343,47 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
   </div>
 </div>
 
-<!-- janela de filtros -->
-<div class="pop" id="popFiltros" hidden style="min-width:270px">
-  <div class="pop-rotulo">Filtrar por</div>
-  <div style="display:grid;gap:9px;padding:5px 8px 8px">
-    <label class="campo"><span>Período</span>
-      <select id="fPeriodo">
-        <option value="">Todo período</option>
-        <option value="mes-atual">Este mês</option>
-        <option value="mes-passado">Mês passado</option>
-        <option value="ultimos-3">Últimos 3 meses</option>
-        <option value="ultimos-6">Últimos 6 meses</option>
-        <option value="ultimos-12">Últimos 12 meses</option>
-        <option value="ano-atual">Este ano</option>
-        <option value="ano-passado">Ano passado</option>
-        <option value="custom">Escolher meses…</option>
-      </select></label>
-    <div id="fPeriodoCustom" style="display:none;grid-template-columns:1fr 1fr;gap:9px">
-      <label class="campo"><span>De</span>
-        <input id="fMesDe" type="month" data-mes-obrigatorio="1" aria-label="Mês inicial" /></label>
-      <label class="campo"><span>Até</span>
-        <input id="fMesAte" type="month" data-mes-obrigatorio="1" aria-label="Mês final" /></label>
-    </div>
-    <label class="campo"><span>Conta bancária</span><select id="fConta"></select></label>
-    <label class="campo"><span>Cartão ou tag</span><select id="fCartao"></select></label>
-    <label class="campo"><span>Tipo</span>
-      <select id="fTipo">
-        <option value="">Todos</option>
-        <option value="DEBIT">Saídas</option>
-        <option value="CREDIT">Entradas</option>
-      </select></label>
-    <label class="campo"><span>Categoria</span><select id="fCategoria"></select></label>
-    <label class="campo"><span>Situação</span>
-      <select id="fSituacao">
-        <option value="">Todas</option>
-        <option value="POSTED">Efetivadas</option>
-        <option value="PENDING">Pendentes</option>
-      </select></label>
+<!-- janela de filtros: cada escolha já filtra (sem "Aplicar") -->
+<div class="pop pop-filtros" id="popFiltros" hidden>
+  <div class="pf-cab"><strong>Filtros</strong><button type="button" class="pf-limpar" id="fLimpar">Limpar</button></div>
+  <div class="pf-corpo">
+    <div><div class="pf-rot">Período</div>
+      <div class="pf-chips" id="fPeriodo">
+        <button type="button" data-preset="mes-atual">Este mês</button>
+        <button type="button" data-preset="mes-passado">Mês passado</button>
+        <button type="button" data-preset="ultimos-3">3 meses</button>
+        <button type="button" data-preset="ultimos-6">6 meses</button>
+        <button type="button" data-preset="ultimos-12">12 meses</button>
+        <button type="button" data-preset="ano-atual">Este ano</button>
+        <button type="button" data-preset="ano-passado">Ano passado</button>
+        <button type="button" data-preset="custom">Escolher meses…</button>
+      </div>
+      <div id="fPeriodoCustom" class="pf-custom" hidden>
+        <label class="campo"><span>De</span>
+          <input id="fMesDe" type="month" data-mes-obrigatorio="1" aria-label="Mês inicial" /></label>
+        <label class="campo"><span>Até</span>
+          <input id="fMesAte" type="month" data-mes-obrigatorio="1" aria-label="Mês final" /></label>
+      </div></div>
+    <div><div class="pf-rot">Tipo</div>
+      <span class="segmentado pf-seg" id="fTipo" role="group" aria-label="Tipo">
+        <button type="button" data-tipo="">Todos</button>
+        <button type="button" data-tipo="DEBIT">Saídas</button>
+        <button type="button" data-tipo="CREDIT">Entradas</button>
+      </span></div>
+    <div><div class="pf-rot">Onde</div>
+      <div id="fOnde"></div></div>
+    <div><div class="pf-rot">Categoria</div>
+      <button type="button" class="pf-campo" id="fCat" aria-expanded="false"></button>
+      <div class="pf-lista" id="fCatLista" hidden>
+        <div class="pf-busca"><input type="search" id="fCatBusca" placeholder="Buscar categoria…" autocomplete="off" />
+          <button type="button" class="pf-fechar" id="fCatFechar" aria-label="Fechar lista">▴</button></div>
+        <div id="fCatItens" class="pf-itens"></div>
+        <div class="pf-lista-rodape"><span id="fCatConta"></span>
+          <span class="pf-acoes"><button type="button" class="pf-inverter" id="fCatInverter" aria-pressed="false">⇄ Excluir</button>
+          <button type="button" id="fCatLimpar">Limpar</button></span></div>
+      </div></div>
   </div>
-  <div class="pop-rodape">
-    <button class="sutil" id="fLimpar">Limpar tudo</button>
-    <button class="primario" id="fAplicar">Aplicar</button>
-  </div>
+  <div class="pf-rodape" id="fResumo"></div>
 </div>
 
 <script src="app.js"></script>
@@ -396,7 +397,7 @@ const PAGE = 60;
 // competência de um gasto de cartão é o mês da fatura, então "18 a 29 de
 // agosto" não teria significado — a fatura vence num dia só. Mês único é
 // from === to, que é o que clicar na tira de evolução produz.
-let filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: "fatura", sort: "" };
+let filtros = { from: "", to: "", account: "", card: "", type: "", category: "", notcategory: "", status: "", q: "", modo: "fatura", sort: "" };
 // A ordem é preferência de leitura, não filtro: fica lembrada no navegador.
 try { filtros.sort = localStorage.getItem("transacoes.ordem") || ""; } catch { /* sem storage */ }
 let CATEGORIAS = [], CONTAS = [], CARTOES = [], CONTAS_EDICAO = [], EMOJIS = [], MES_ATUAL = "";
@@ -477,19 +478,28 @@ function qs() {
   return p.toString();
 }
 
+/* "Onde": contas e cartões juntos; a URL continua com account= e card=,
+ * cada um aceitando vários ids separados por vírgula. */
+const listaDe = v => String(v || "").split(",").filter(Boolean);
+let ONDE = null;   // o componente "Onde" (app.js), montado em ligar()
+const ondeSelecionados = () => ONDE ? ONDE.selecionados() : [];
+
 function renderFiltrosAtivos() {
   const rotulos = {
-    account: () => CONTAS.find(c => c.id === filtros.account)?.nome,
-    card: () => filtros.card === "todos" ? "Só cartões"
-      : filtros.card === "nenhum" ? "Fora do cartão"
-      : `Cartão ${CARTOES.find(c => c.id === filtros.card)?.nome || filtros.card}`,
     type: () => filtros.type === "DEBIT" ? "Saídas" : "Entradas",
-    category: () => CATEGORIAS.find(c => c.id === filtros.category)?.nome,
     status: () => filtros.status === "POSTED" ? "Efetivadas" : "Pendentes",
   };
-  const ativos = Object.entries(rotulos)
+  // Cada conta ou cartão escolhido é um chip, com a bolinha da cor dele:
+  // tira um só sem abrir o painel.
+  const onde = ondeSelecionados().map(o => `<span class="filtro-ativo"><i class="ponto-f" style="background:${ONDE.cor(o.id)}"></i>${esc(ONDE.rotulo(o.tipo, o.id))}<button data-tira="${o.tipo}" data-id="${esc(o.id)}">×</button></span>`);
+  const excluir = filtros.notcategory === "1";
+  const cats = listaDe(filtros.category).map(id => {
+    const c = CATEGORIAS.find(x => x.id === id);
+    return `<span class="filtro-ativo ${excluir ? "excluido" : ""}">${esc(excluir ? `Sem ${c?.nome || id}` : (c?.nome || id))}<button data-tira="category" data-id="${esc(id)}">×</button></span>`;
+  });
+  const ativos = onde.concat(cats, Object.entries(rotulos)
     .filter(([k]) => filtros[k])
-    .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button data-tira="${k}">×</button></span>`);
+    .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button data-tira="${k}">×</button></span>`));
   // O período ganha chip próprio: ele é o filtro que mais muda e o único que
   // some da tira de evolução (que sempre mostra o ano inteiro).
   const periodo = rotuloPeriodo();
@@ -504,7 +514,68 @@ function renderFiltrosAtivos() {
   const limparIcone = document.getElementById("btnLimparIcone");
   limparIcone.classList.toggle("ativo", algum);
   limparIcone.title = "Remover filtros";
+  pintarPainelFiltros();
 }
+
+/** O painel reflete o estado atual; cada controle muda `filtros` e recarrega. */
+function pintarPainelFiltros() {
+  if (!document.getElementById("popFiltros")) return;
+  const preset = presetAtual();
+  // Com o "Escolher meses…" aberto é ele que fica marcado, não o atalho que
+  // por acaso descreve o mesmo intervalo.
+  const marcado = PERIODO_CUSTOM_ABERTO ? "custom" : preset;
+  document.querySelectorAll("#fPeriodo [data-preset]").forEach(b =>
+    b.classList.toggle("ativo", b.dataset.preset === marcado && marcado !== ""));
+  document.getElementById("fPeriodoCustom").hidden = preset !== "custom" && !PERIODO_CUSTOM_ABERTO;
+  const mesRef = filtros.from || filtros.to || mesDeHoje();
+  document.getElementById("fMesDe").value = filtros.from || mesRef;
+  document.getElementById("fMesAte").value = filtros.to || mesRef;
+  document.querySelectorAll("#fTipo [data-tipo]").forEach(b =>
+    b.classList.toggle("ativo", b.dataset.tipo === (filtros.type || "")));
+  const sel = ondeSelecionados();
+  ONDE?.pintar();
+  const cats = listaDe(filtros.category).map(id => CATEGORIAS.find(c => c.id === id)).filter(Boolean);
+  const excluir = filtros.notcategory === "1";
+  document.getElementById("fCat").innerHTML = cats.length
+    ? `${cats.slice(0, 3).map(iconeFiltroCat).join("")}<span class="txt">${excluir ? "Exceto " : ""}${esc(
+        cats.length <= 2 ? cats.map(c => c.nome).join(", ") : `${cats.length} categorias`)}</span>`
+    : '<span class="txt sem-valor">Todas as categorias</span>';
+  renderCatLista();
+  const n = ["periodo", "type"].filter(k => k === "periodo" ? (filtros.from || filtros.to) : filtros[k]).length
+    + sel.length + listaDe(filtros.category).length;
+  const limpar = document.getElementById("fLimpar");
+  limpar.textContent = n ? `Limpar (${n})` : "Limpar";
+  limpar.disabled = !n && !filtros.status && !filtros.q;
+}
+let PERIODO_CUSTOM_ABERTO = false;
+
+/** Quadrado da categoria no filtro: o emoji, ou a inicial quando não há. */
+function iconeFiltroCat(c) {
+  const conteudo = c.emoji ? esc(c.emoji)
+    : `<b style="color:${/^#[0-9a-f]{6}$/i.test(c.cor || "") ? c.cor : "var(--text-2)"}">${esc((c.nome || "?").trim().charAt(0).toUpperCase())}</b>`;
+  return `<span class="emo-f" style="${tingeCategoria(c)}">${conteudo}</span>`;
+}
+
+function renderCatLista() {
+  const termo = (document.getElementById("fCatBusca").value || "").trim().toLowerCase();
+  const casa = c => !termo || c.nome.toLowerCase().includes(termo);
+  const marcadas = listaDe(filtros.category), excluir = filtros.notcategory === "1";
+  // No modo excluir os marcados ficam vermelhos com ✕: o que está riscado sai.
+  const sel = id => marcadas.includes(id) ? (excluir ? "sel excluir" : "sel") : "";
+  document.getElementById("fCatItens").innerHTML =
+    CATEGORIAS.filter(casa).map(c => `<button type="button" class="pf-item ${c.paiId ? "pf-filho" : ""} ${sel(c.id)}" data-cat="${esc(c.id)}">
+        ${iconeFiltroCat(c)}${esc(c.nome)}</button>`).join("")
+    || '<div class="pf-grupo">Nada encontrado</div>';
+  const n = marcadas.length;
+  document.getElementById("fCatConta").textContent = !n ? "Todas as categorias"
+    : `${n} ${excluir ? (n > 1 ? "excluídas" : "excluída") : (n > 1 ? "selecionadas" : "selecionada")}`;
+  const inv = document.getElementById("fCatInverter");
+  inv.classList.toggle("ativo", excluir);
+  inv.setAttribute("aria-pressed", String(excluir));
+  inv.title = excluir ? "Mostrando tudo MENOS as marcadas · clique para mostrar só elas"
+                      : "Inverter: mostrar tudo menos as categorias marcadas";
+}
+
 
 /* ------------------------------------------------------------ categorias */
 
@@ -773,7 +844,7 @@ function marcaLinhaCategoria(i) {
 function linhaCategoria(i, maior, classes = "", soma = 0) {
   const pct = soma ? Math.round(i.total / soma * 100) : 0;
   return `
-    <div class="v-bl clicavel cat-linha ${classes}${filtros.category === i.categoriaId ? " sel" : ""}"
+    <div class="v-bl clicavel cat-linha ${classes}${filtros.notcategory !== "1" && listaDe(filtros.category).includes(i.categoriaId) ? " sel" : ""}"
          data-categoria="${esc(i.categoriaId || "")}"
          title="${i.quantidade} transação(ões) · clique para filtrar">
       <span class="v-f" style="width:${Math.max(i.total / maior * 100, 2)}%;background:${esc(i.cor || "#9ba1ab")}"></span>
@@ -830,6 +901,15 @@ async function carregar({ mais = false } = {}) {
   btn.hidden = !p.temMais; btn.disabled = false;
 
   setEstado("estado", `${p.total} no banco`, "ok");
+}
+
+/** Painel de filtros: o painel e os chips mudam na hora; a lista recarrega
+ *  um instante depois, e cliques seguidos viram uma recarga só. */
+let filtrarTimer = null;
+function filtrarLogo() {
+  renderFiltrosAtivos();
+  clearTimeout(filtrarTimer);
+  filtrarTimer = setTimeout(recarregar, 250);
 }
 
 async function recarregar() {
@@ -1078,19 +1158,11 @@ function aplicarFiltros(p) {
   CONTAS_EDICAO = p.instrumentos || p.contasEdicao || [];
   MES_ATUAL = p.mesAtual || "";
 
-  document.getElementById("fConta").innerHTML =
-    ['<option value="">Todas as contas</option>']
-      .concat(CONTAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
-  document.getElementById("fCartao").innerHTML =
-    ['<option value="">Todos os cartões</option>']
-      .concat(CARTOES.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`)).join("");
-  document.getElementById("fCategoria").innerHTML =
-    ['<option value="">Todas as categorias</option>']
-      .concat(CATEGORIAS.map(c =>
-        `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.emoji)} ${esc(c.nome)}</option>`)).join("");
 
   renderPopCategorias();
   renderUltimaImportacao(p.ultimaImportacao);
+  ONDE?.definir(CARTOES, CONTAS);
+  pintarPainelFiltros();
 }
 
 function renderUltimaImportacao(ultima) {
@@ -1117,26 +1189,6 @@ async function carregarStatusSync() {
 }
 
 /* --------------------------------------------------------------- eventos */
-
-function sincronizarSelects() {
-  const preset = presetAtual();
-  document.getElementById("fPeriodo").value = preset;
-  // O "De/Até" vem preenchido com o intervalo atual mesmo quando o preset é
-  // outro: se a pessoa trocar para personalizado, começa de onde estava.
-  const mesRef = filtros.from || filtros.to || mesDeHoje();
-  document.getElementById("fMesDe").value = filtros.from || mesRef;
-  document.getElementById("fMesAte").value = filtros.to || mesRef;
-  mostrarPeriodoCustom(preset === "custom");
-  document.getElementById("fConta").value = filtros.account;
-  document.getElementById("fCartao").value = filtros.card;
-  document.getElementById("fTipo").value = filtros.type;
-  document.getElementById("fCategoria").value = filtros.category;
-  document.getElementById("fSituacao").value = filtros.status;
-}
-
-function mostrarPeriodoCustom(mostrar) {
-  document.getElementById("fPeriodoCustom").style.display = mostrar ? "grid" : "none";
-}
 
 function sincronizarModo() {
   for (const b of document.querySelectorAll("#modoVisao button")) {
@@ -1170,8 +1222,81 @@ function ligar() {
   window.addEventListener("resize", atualizarSetasEvolucao);
 
   document.getElementById("btnFiltros").addEventListener("click", e => {
-    sincronizarSelects();
+    PERIODO_CUSTOM_ABERTO = false;
+    ONDE.fechar();
+    document.getElementById("fCatLista").hidden = true;
+    document.getElementById("fCat").hidden = false;
+    pintarPainelFiltros();
     abrirPop(document.getElementById("popFiltros"), e.currentTarget);
+  });
+
+  // Cada escolha já filtra: o painel fica aberto e a lista recarrega.
+  document.getElementById("fPeriodo").addEventListener("click", e => {
+    const b = e.target.closest("[data-preset]");
+    if (!b) return;
+    e.stopPropagation();
+    const preset = b.dataset.preset;
+    if (preset === "custom") { PERIODO_CUSTOM_ABERTO = !PERIODO_CUSTOM_ABERTO || presetAtual() !== "custom"; pintarPainelFiltros(); return; }
+    PERIODO_CUSTOM_ABERTO = false;
+    // Clicar no período já escolhido volta para "todo período".
+    const p = presetAtual() === preset ? { from: "", to: "" } : PRESETS_PERIODO[preset]();
+    filtros.from = p.from; filtros.to = p.to;
+    filtrarLogo();
+  });
+  const periodoCustom = () => {
+    let de = document.getElementById("fMesDe").value, ate = document.getElementById("fMesAte").value;
+    if (de && ate && de > ate) [de, ate] = [ate, de];   // invertido: corrige
+    filtros.from = de; filtros.to = ate;
+    PERIODO_CUSTOM_ABERTO = true;
+    filtrarLogo();
+  };
+  document.getElementById("fMesDe").addEventListener("change", periodoCustom);
+  document.getElementById("fMesAte").addEventListener("change", periodoCustom);
+  document.getElementById("fTipo").addEventListener("click", e => {
+    const b = e.target.closest("[data-tipo]");
+    if (!b || b.dataset.tipo === (filtros.type || "")) return;
+    e.stopPropagation();
+    filtros.type = b.dataset.tipo;
+    filtrarLogo();
+  });
+  // As duas listas embutidas (Onde e Categoria): abrir uma fecha a outra.
+  const alternarLista = (botao, lista, busca, render) => e => {
+    e.stopPropagation();
+    const abrir = document.getElementById(lista).hidden;
+    ONDE.fechar();
+    document.getElementById(lista).hidden = !abrir;
+    document.getElementById(botao).hidden = abrir;   // a lista toma o lugar do campo
+    document.getElementById(botao).setAttribute("aria-expanded", String(abrir));
+    if (abrir) { document.getElementById(busca).value = ""; render(); document.getElementById(busca).focus(); }
+  };
+  document.getElementById("fCat").addEventListener("click", alternarLista("fCat", "fCatLista", "fCatBusca", renderCatLista));
+  document.getElementById("fCatBusca").addEventListener("input", renderCatLista);
+  const fecharCat = () => { document.getElementById("fCatLista").hidden = true; document.getElementById("fCat").hidden = false; };
+  document.getElementById("fCatBusca").addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); fecharCat(); } });
+  document.addEventListener("click", e => {
+    if (!document.getElementById("fCatLista").hidden && !e.target.closest("#fCatLista, #fCat")) fecharCat();
+  }, true);
+  document.getElementById("fCatLista").addEventListener("click", e => {
+    e.stopPropagation();
+    if (e.target.closest("#fCatFechar")) { fecharCat(); return; }
+    if (e.target.closest("#fCatInverter")) {
+      filtros.notcategory = filtros.notcategory === "1" ? "" : "1";
+      return filtrarLogo();
+    }
+    if (e.target.closest("#fCatLimpar")) { filtros.category = filtros.notcategory = ""; return filtrarLogo(); }
+    const it = e.target.closest("[data-cat]");
+    if (!it) return;
+    // Vários por clique, como no "Onde": a lista fica aberta.
+    const atual = listaDe(filtros.category);
+    filtros.category = (atual.includes(it.dataset.cat)
+      ? atual.filter(x => x !== it.dataset.cat) : atual.concat(it.dataset.cat)).join(",");
+    if (!filtros.category) filtros.notcategory = "";
+    filtrarLogo();
+  });
+  ONDE = montarOnde(document.getElementById("fOnde"), {
+    obter: () => ({ card: filtros.card, account: filtros.account }),
+    mudar: novo => { filtros.card = novo.card; filtros.account = novo.account; filtrarLogo(); },
+    aoAbrir: () => { document.getElementById("fCatLista").hidden = true; document.getElementById("fCat").hidden = false; },
   });
 
   document.getElementById("modoVisao").addEventListener("click", e => {
@@ -1186,46 +1311,13 @@ function ligar() {
     recarregar();
   });
 
-  document.getElementById("fPeriodo").addEventListener("change", e => {
-    const preset = e.target.value;
-    mostrarPeriodoCustom(preset === "custom");
-    if (preset !== "custom") {
-      const p = PRESETS_PERIODO[preset]();
-      document.getElementById("fMesDe").value = p.from || mesDeHoje();
-      document.getElementById("fMesAte").value = p.to || mesDeHoje();
-    }
-  });
-
-  document.getElementById("fAplicar").addEventListener("click", () => {
-    const preset = document.getElementById("fPeriodo").value;
-    if (preset === "custom") {
-      let de = document.getElementById("fMesDe").value;
-      let ate = document.getElementById("fMesAte").value;
-      if (de && ate && de > ate) [de, ate] = [ate, de];   // invertido: corrige
-      filtros.from = de;
-      filtros.to = ate;
-    } else {
-      const p = PRESETS_PERIODO[preset]();
-      filtros.from = p.from;
-      filtros.to = p.to;
-    }
-    filtros.account = document.getElementById("fConta").value;
-    filtros.card = document.getElementById("fCartao").value;
-    filtros.type = document.getElementById("fTipo").value;
-    filtros.category = document.getElementById("fCategoria").value;
-    filtros.status = document.getElementById("fSituacao").value;
-    fecharPop();
-    recarregar();
-  });
-
   // O estado padrão desta tela é o histórico inteiro. O modo de visão
   // (fatura/mês) não é um "filtro" que se limpa junto -- é a forma como a
   // tela inteira agrupa, então "Limpar tudo" o preserva.
   const limpar = () => {
-    filtros = { from: "", to: "", account: "", card: "", type: "", category: "", status: "", q: "", modo: filtros.modo, sort: filtros.sort };
+    filtros = { from: "", to: "", account: "", card: "", type: "", category: "", notcategory: "", status: "", q: "", modo: filtros.modo, sort: filtros.sort };
     document.getElementById("busca").value = "";
-    sincronizarSelects();
-    fecharPop();
+    PERIODO_CUSTOM_ABERTO = false;
     recarregar();
   };
   document.getElementById("fLimpar").addEventListener("click", limpar);
@@ -1267,6 +1359,10 @@ function ligar() {
     if (!b) return;
     if (b.dataset.tira === "periodo") {
       filtros.from = filtros.to = "";   // um chip, duas chaves
+    } else if (b.dataset.id) {
+      // Um item do "Onde": sai só ele da lista.
+      filtros[b.dataset.tira] = listaDe(filtros[b.dataset.tira]).filter(x => x !== b.dataset.id).join(",");
+      if (b.dataset.tira === "category" && !filtros.category) filtros.notcategory = "";
     } else {
       filtros[b.dataset.tira] = "";
     }
@@ -1291,6 +1387,7 @@ function ligar() {
     const l = e.target.closest("[data-categoria]");
     if (!l) return;
     const c = l.dataset.categoria;
+    filtros.notcategory = "";
     if (filtros.category !== c) {
       filtros.category = c;
     } else if (l.classList.contains("filho")) {
@@ -1458,7 +1555,7 @@ function ligar() {
 
     // Deep link vindo da tela de Categorias.
     const url = new URLSearchParams(location.search);
-    for (const chave of ["from", "to", "account", "card", "type", "category", "status", "q", "modo"]) {
+    for (const chave of ["from", "to", "account", "card", "type", "category", "notcategory", "status", "q", "modo"]) {
       if (url.has(chave)) filtros[chave] = url.get(chave);
     }
     // "month" (mês único) é o que as outras telas ainda mandam.

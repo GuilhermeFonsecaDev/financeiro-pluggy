@@ -103,7 +103,7 @@ LOGO_POR_CODIGO = {
 # enquanto um logotipo largo ("btg pactual") fica fino no meio dela: no mesmo
 # tamanho de caixa, a compacta parece maior. Fração da caixa; ausente = 1.
 ESCALA_DA_LOGO = {"nubank": 0.72}
-PASTA_LOGOS = Path(__file__).resolve().parent / "assets" / "bancos"
+PASTA_LOGOS = Path(__file__).resolve().parent.parent / "web" / "assets" / "bancos"
 # Contraste mínimo para gráficos (WCAG 1.4.11) contra a superfície do tema.
 CONTRASTE_MINIMO = 3.0
 SUPERFICIE_DO_TEMA = "#1b1e24"

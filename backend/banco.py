@@ -23,7 +23,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent
+# Raiz do projeto (o código fica em backend/; banco, backups e data na raiz).
+ROOT = Path(__file__).resolve().parent.parent
+WEB = ROOT / "web"
 DATABASE_PATH = ROOT / "pluggy.db"
 BACKUP_DIR = ROOT / "backups"
 

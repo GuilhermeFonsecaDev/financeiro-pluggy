@@ -14,6 +14,22 @@ tempo sem se enxergar.
 | Porta | 8766 | 8765 |
 | Subir | `iniciar_pluggy.bat` | `iniciar_dashboard.bat` |
 
+
+## Estrutura
+
+```
+backend_pluggy.py   servidor local (rode este)
+backend/            módulos Python do app e scripts (pluggy_sync, atualizar_pluggy…)
+web/                telas: .html, .js, .css e assets/ (só esta pasta é servida)
+testes/             testes automáticos: python -m unittest discover -s testes -t .
+docs/               notas de planejamento e handoff
+data/  backups/     extratos baixados e cópias do banco (fora do git)
+pluggy.db  .env     banco e credenciais locais (fora do git)
+```
+
+Os scripts de linha de comando ficam em `backend/`: por exemplo,
+`python backend/atualizar_pluggy.py --status`.
+
 ## Como abrir
 
 Dê dois cliques em:
@@ -60,7 +76,7 @@ mas não são tratados como saldo líquido, rendimento ou lote ativo. A curva
 do saldo usa somente fluxos das posições disponíveis. Assim que a conexão
 entrega posições, a API substitui essa identificação provisória.
 
-Regressões da carteira: `python -m unittest testes_investimentos -v`
+Regressões da carteira: `python -m unittest testes.testes_investimentos -v` (todos: `python -m unittest discover -s testes -t .`)
 (banco temporário, sem chamadas externas).
 
 - `visao_geral.html`: números do mês, trimestre, semestre ou ano, com o gasto mês a mês.
@@ -295,9 +311,9 @@ estiver fora do ar ou o consentimento tiver vencido, o motivo aparece em
 vermelho na página de Extrato.
 
 ```powershell
-python atualizar_pluggy.py            # atualiza se já passou do intervalo
-python atualizar_pluggy.py --forcar   # atualiza agora
-python atualizar_pluggy.py --status   # estado da última tentativa
+python backend/atualizar_pluggy.py            # atualiza se já passou do intervalo
+python backend/atualizar_pluggy.py --forcar   # atualiza agora
+python backend/atualizar_pluggy.py --status   # estado da última tentativa
 ```
 
 Para subir sem atualizar: `python backend_pluggy.py --open --sem-sync`.
@@ -484,11 +500,11 @@ nunca é devolvido à página.
 ### Comandos do sincronizador
 
 ```powershell
-python pluggy_sync.py check              # valida credenciais e lista conectores
-python pluggy_sync.py config             # config da aplicação e allowlist de conectores
-python pluggy_sync.py item <ITEM_ID>     # sonda uma conexão: status, contas, transações
-python pluggy_sync.py sync <ITEM_ID>     # baixa contas e transações para ./data
-python pluggy_sync.py connect --meupluggy --serve   # widget para autorizar um banco
+python backend/pluggy_sync.py check              # valida credenciais e lista conectores
+python backend/pluggy_sync.py config             # config da aplicação e allowlist de conectores
+python backend/pluggy_sync.py item <ITEM_ID>     # sonda uma conexão: status, contas, transações
+python backend/pluggy_sync.py sync <ITEM_ID>     # baixa contas e transações para ./data
+python backend/pluggy_sync.py connect --meupluggy --serve   # widget para autorizar um banco
 ```
 
 ## Backups

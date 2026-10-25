@@ -523,10 +523,14 @@ def _lotes_historicos(conn) -> list[dict[str, Any]]:
         "SELECT investimento_chave, nome, tipo, status, importado_em FROM pluggy_investimentos "
         "ORDER BY importado_em")}
     fotos: dict[str, dict[str, float]] = defaultdict(dict)
-    for f in conn.execute("SELECT investimento_chave k, substr(data_referencia,1,10) ref, saldo_liquido v "
-                          "FROM pluggy_investimento_snapshots WHERE saldo_liquido > 0 ORDER BY coletado_em"):
+    # Mesma convenção do BTG: renda fixa pelo bruto (antes do IR), fundos
+    # pelo líquido. Sem o bruto na foto, vale o líquido.
+    for f in conn.execute("SELECT investimento_chave k, substr(data_referencia,1,10) ref, saldo_liquido v, "
+                          "valor_bruto b FROM pluggy_investimento_snapshots WHERE saldo_liquido > 0 "
+                          "ORDER BY coletado_em"):
         if f["ref"]:                     # foto sem data de referência não serve de base
-            fotos[f["k"]][f["ref"]] = float(f["v"])
+            tipo = (chaves.get(f["k"]) or {"tipo": ""})["tipo"]
+            fotos[f["k"]][f["ref"]] = float(f["b"]) if tipo == "FIXED_INCOME" and (f["b"] or 0) > 0 else float(f["v"])
     movs: dict[str, set] = defaultdict(set)
     for m in conn.execute("SELECT investimento_chave k, tipo, substr(data,1,10) d, valor_bruto v "
                           "FROM pluggy_investimento_movimentos"):
@@ -620,7 +624,7 @@ def _rendimento_meses(conn, ativos, hoje=None) -> list[dict[str, Any]]:
     datas = [d for l in lotes for d in l["fotos"]]
     if not datas:
         return []
-    saldo_hoje = {p["investimento_chave"]: float(p["saldo_liquido"] or 0) for p in ativos}
+    saldo_hoje = {p["investimento_chave"]: _valor_rendimento(p) for p in ativos}
     # Só os lotes da carteira de hoje: o histórico dos já resgatados vem com
     # resgates faltando na API e fotos depois do resgate, e daria rendimentos
     # de milhares de reais que nunca existiram.
@@ -635,6 +639,33 @@ def _rendimento_meses(conn, ativos, hoje=None) -> list[dict[str, Any]]:
             meses.append(r)
         inicio = _proximo_mes(inicio)
     return meses
+
+
+def _valor_rendimento(p) -> float:
+    """Valor de hoje na convenção do BTG: renda fixa bruta, fundo líquido."""
+    if p["tipo"] == "FIXED_INCOME" and float(p["valor_bruto"] or 0) > 0:
+        return float(p["valor_bruto"])
+    return float(p["saldo_liquido"] or 0)
+
+
+def _rendimento_mes_por_posicao(conn, ativos, hoje=None) -> dict[str, float | None]:
+    """O rendimento do mês corrente de cada posição (a mesma conta do card).
+
+    Fica na primeira chave ativa do lote: duas conexões da mesma posição não
+    podem contar o mesmo rendimento duas vezes.
+    """
+    from datetime import date
+    hoje = hoje or date.today()
+    inicio = hoje.replace(day=1)
+    saldo_hoje = {p["investimento_chave"]: _valor_rendimento(p) for p in ativos}
+    saida: dict[str, float | None] = {}
+    for lote in _lotes_historicos(conn):
+        ativas = [k for k in lote["chaves"] if k in saldo_hoje]
+        if not ativas:
+            continue
+        r = _rendimento_entre([lote], inicio, _proximo_mes(inicio), saldo_hoje)
+        saida[ativas[0]] = r["total"] if r else None
+    return saida
 
 
 def _rendimento_do_mes(meses, hoje=None) -> dict[str, Any]:
@@ -898,6 +929,7 @@ def payload() -> dict[str, Any]:
         cotas_pendentes = _cotas_pendentes(conn, ativos, movimentos_investimento, rotulos)
         rendimento_meses = _rendimento_meses(conn, ativos)
         rendimento_mes = _rendimento_do_mes(rendimento_meses)
+        rendimento_mes_posicao = _rendimento_mes_por_posicao(conn, ativos)
         series_por_posicao = _series_por_posicao(snaps)
         movs_por_posicao = _movimentos_por_posicao(movimentos_investimento, rotulos)
 
@@ -995,6 +1027,15 @@ def payload() -> dict[str, Any]:
             "motivoSemAplicado": "" if informado is not None else pelos_movimentos["motivo"],
         })
         aplicado_lote = lote["aplicado"] if lote["aplicadoConfiavel"] else None
+        # Os dois números que o BTG mostra por ativo: o do mês corrente e o
+        # acumulado desde a aplicação (renda fixa bruta, fundo líquido).
+        lote["rendimentoMes"] = rendimento_mes_posicao.get(chave)
+        valor_hoje = _valor_rendimento(linha)
+        lote["rendimentoBase"] = "bruto" if lote["tipo"] == "FIXED_INCOME" and lote["bruto"] > 0 else "liquido"
+        lote["rendimentoDesdeAplicacao"] = (round(valor_hoje - aplicado_lote, 2)
+                                            if aplicado_lote else None)
+        lote["rentabilidadeDesdeAplicacao"] = (round((valor_hoje / aplicado_lote - 1) * 100, 4)
+                                               if aplicado_lote else None)
         if informado is None and aplicado_lote:
             # Ganho a partir do aplicado derivado: mesma conta, outra fonte --
             # e por isso marcada, nunca misturada com o custo informado.

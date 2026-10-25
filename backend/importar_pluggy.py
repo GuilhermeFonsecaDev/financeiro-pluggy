@@ -7,9 +7,9 @@ A importacao e idempotente: a chave primaria e o id que a propria Pluggy gera,
 entao rodar duas vezes atualiza as linhas em vez de duplicar.
 
 Uso:
-    python importar_pluggy.py --dry-run     # so mostra o que faria
-    python importar_pluggy.py               # importa de fato (faz backup antes)
-    python importar_pluggy.py --data-dir "C:/caminho/para/data"
+    python backend/importar_pluggy.py --dry-run     # so mostra o que faria
+    python backend/importar_pluggy.py               # importa de fato (faz backup antes)
+    python backend/importar_pluggy.py --data-dir "C:/caminho/para/data"
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Any
 import banco as fin
 
 # Relativo ao arquivo, para o projeto poder ser movido sem editar codigo.
-DATA_DIR_PADRAO = Path(__file__).resolve().parent / "data"
+DATA_DIR_PADRAO = Path(__file__).resolve().parent.parent / "data"
 
 SCHEMA_PLUGGY = """
 CREATE TABLE IF NOT EXISTS pluggy_itens (
@@ -345,7 +345,7 @@ def importar(data_dir: Path, dry_run: bool = False) -> int:
     caminho_contas = data_dir / "accounts.json"
     if not caminho_contas.exists():
         print(f"Nao encontrei {caminho_contas}")
-        print("Rode antes: python pluggy_sync.py sync <ITEM_ID>")
+        print("Rode antes: python backend/pluggy_sync.py sync <ITEM_ID>")
         return 1
 
     contas = carregar_json(caminho_contas)

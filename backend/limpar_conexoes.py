@@ -1,8 +1,8 @@
 """Remove conexões Pluggy que viraram lixo, sem perder vínculo do usuário.
 
-    python limpar_conexoes.py                       lista as conexões e o estado
-    python limpar_conexoes.py <item_id> [<item_id>] mostra o que faria
-    python limpar_conexoes.py <item_id> --aplicar   faz backup e executa
+    python backend/limpar_conexoes.py                       lista as conexões e o estado
+    python backend/limpar_conexoes.py <item_id> [<item_id>] mostra o que faria
+    python backend/limpar_conexoes.py <item_id> --aplicar   faz backup e executa
 
 Candidata típica a remoção: conexão substituída por reconexão (as contas
 antigas ficam para trás, já fora de todo cálculo) e conexão que não trouxe

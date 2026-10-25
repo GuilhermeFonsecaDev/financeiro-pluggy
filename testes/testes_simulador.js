@@ -22,7 +22,7 @@ const assert = ehNode ? require('assert') : {
     }
   },
 };
-const S = ehNode ? require('./simulador_mes.js') : SimuladorMes;
+const S = ehNode ? require('../simulador_mes.js') : SimuladorMes;
 
 const testes = [];
 const teste = (nome, fn) => testes.push([nome, fn]);

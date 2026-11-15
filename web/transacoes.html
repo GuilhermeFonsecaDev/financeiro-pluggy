@@ -10,8 +10,8 @@
 /* Só o que é específico desta tela. O resto vem do tema. */
 .filtros-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .filtros-barra .busca { flex: 1 1 220px; max-width: 340px; }
-.filtro-ativo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--azul-suave); border: 1px solid rgba(74,149,234,.32); color: #8cc0f5; font-size: 12px; font-weight: 550; }
-.filtro-ativo.excluido { background:rgba(240,106,106,.12); border-color:rgba(240,106,106,.35); color:#f39a9a; }
+.filtro-ativo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--azul-suave); border: 1px solid color-mix(in srgb, var(--azul) 32%, transparent); color: #8cc0f5; font-size: 12px; font-weight: 550; }
+.filtro-ativo.excluido { background:color-mix(in srgb, var(--vermelho) 12%, transparent); border-color:color-mix(in srgb, var(--vermelho) 35%, transparent); color:#f39a9a; }
 .filtro-ativo .ponto-f { width:8px; height:8px; border-radius:50%; flex:none; }
 .filtro-ativo button { min-height: 18px; width: 18px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 14px; line-height: 1; }
 .contador { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
@@ -55,8 +55,8 @@
 .mes-evolucao { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; flex: 1 0 112px; width: auto; min-width: 112px; height: 138px; padding: 12px 9px 12px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
 .mes-evolucao + .mes-evolucao { margin-left: 8px; }
 .mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-2); }
-.mes-evolucao.ativo { border-color: rgba(74,149,234,.55); background: rgba(74,149,234,.09); }
-.mes-evolucao.atual:not(.ativo) { border-color: rgba(74,149,234,.22); }
+.mes-evolucao.ativo { border-color: color-mix(in srgb, var(--azul) 55%, transparent); background: color-mix(in srgb, var(--azul) 9%, transparent); }
+.mes-evolucao.atual:not(.ativo) { border-color: color-mix(in srgb, var(--azul) 22%, transparent); }
 /* Mes com entradas projetadas: mesmo desenho normal, so um aviso no canto --
    o numero e uma estimativa, nao esconde isso mas tambem nao grita. */
 /* Valor estimado sem marca: a linha tracejada já indica previsão (dica no mouse). */
@@ -179,7 +179,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 .dia-cab b { font-weight: 550; font-variant-numeric: tabular-nums; }
 .tx-ic { width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 8px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; cursor: pointer; }
 .tx-ic.proj { cursor: default; opacity: .7; }
-.tx-ic.manual { box-shadow: inset 0 0 0 1px rgba(74,149,234,.45); }
+.tx-ic.manual { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azul) 45%, transparent); }
 .tx-ic:hover:not(.proj) { filter: brightness(1.25); }
 .tx-ic .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0; }
 #linhas .desc { font-weight: 600; font-size: 13.5px; }
@@ -192,7 +192,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 .cat-lista, .cat-grupo { gap: 6px; }
 .cat-linha.v-bl { margin: 0; padding: 0 12px; display: flex; }
 .cat-linha.v-bl:hover { background: var(--surface-3); }
-.cat-linha.v-bl.sel { box-shadow: inset 0 0 0 1px rgba(74,149,234,.55); }
+.cat-linha.v-bl.sel { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azul) 55%, transparent); }
 .cat-linha.v-bl.primeiro-filho { border-top: 0; margin-top: 2px; padding-top: 0; }
 .cat-linha.v-bl.filho { min-height: 32px; margin-left: 14px; font-size: 12.5px; }
 .cat-linha.v-bl .v-nome { display: flex; align-items: center; gap: 7px; }
@@ -238,13 +238,13 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
     <span class="contador" id="contador">—</span>
   </div>
 
-  <section class="v-cartao evolucao-painel" id="metricas"></section>
+  <section class="v-cartao evolucao-painel" id="metricas" data-esqueleto="linhas:3"></section>
 
   <section class="grid tx-grade">
     <article class="v-cartao">
       <div class="tabela-wrap">
         <table>
-          <tbody id="linhas"></tbody>
+          <tbody id="linhas" data-esqueleto="linhas:8"></tbody>
         </table>
       </div>
       <div id="vazio"></div>
@@ -255,7 +255,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 
     <article class="v-cartao">
       <h2 class="v-tit">Gastos por categoria <span style="font-size:12px">filtro atual</span></h2>
-      <div id="categorias"></div>
+      <div id="categorias" data-esqueleto="barras:8"></div>
     </article>
   </section>
 </main>
@@ -491,21 +491,21 @@ function renderFiltrosAtivos() {
   };
   // Cada conta ou cartão escolhido é um chip, com a bolinha da cor dele:
   // tira um só sem abrir o painel.
-  const onde = ondeSelecionados().map(o => `<span class="filtro-ativo"><i class="ponto-f" style="background:${ONDE.cor(o.id)}"></i>${esc(ONDE.rotulo(o.tipo, o.id))}<button data-tira="${o.tipo}" data-id="${esc(o.id)}">×</button></span>`);
+  const onde = ondeSelecionados().map(o => `<span class="filtro-ativo"><i class="ponto-f" style="background:${ONDE.cor(o.id)}"></i>${esc(ONDE.rotulo(o.tipo, o.id))}<button class="alvo-maior" data-tira="${o.tipo}" data-id="${esc(o.id)}" aria-label="Tirar este filtro">×</button></span>`);
   const excluir = filtros.notcategory === "1";
   const cats = listaDe(filtros.category).map(id => {
     const c = CATEGORIAS.find(x => x.id === id);
-    return `<span class="filtro-ativo ${excluir ? "excluido" : ""}">${esc(excluir ? `Sem ${c?.nome || id}` : (c?.nome || id))}<button data-tira="category" data-id="${esc(id)}">×</button></span>`;
+    return `<span class="filtro-ativo ${excluir ? "excluido" : ""}">${esc(excluir ? `Sem ${c?.nome || id}` : (c?.nome || id))}<button class="alvo-maior" data-tira="category" data-id="${esc(id)}" aria-label="Tirar esta categoria">×</button></span>`;
   });
   const ativos = onde.concat(cats, Object.entries(rotulos)
     .filter(([k]) => filtros[k])
-    .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button data-tira="${k}">×</button></span>`));
+    .map(([k, f]) => `<span class="filtro-ativo">${esc(f() || filtros[k])}<button class="alvo-maior" data-tira="${k}" aria-label="Tirar este filtro">×</button></span>`));
   // O período ganha chip próprio: ele é o filtro que mais muda e o único que
   // some da tira de evolução (que sempre mostra o ano inteiro).
   const periodo = rotuloPeriodo();
   if (periodo) {
     ativos.unshift(
-      `<span class="filtro-ativo">${esc(periodo)}<button data-tira="periodo">×</button></span>`);
+      `<span class="filtro-ativo">${esc(periodo)}<button class="alvo-maior" data-tira="periodo" aria-label="Tirar o período">×</button></span>`);
   }
   document.getElementById("filtrosAtivos").innerHTML = ativos.join("");
   // Ícone de remover filtros na barra: sempre visível e ativo; fica azul
@@ -896,7 +896,7 @@ async function carregar({ mais = false } = {}) {
   const n = corpo.querySelectorAll("tr[data-tx]").length;
   document.getElementById("contador").textContent = `${n} de ${p.totalFiltrado}`;
   document.getElementById("vazio").innerHTML = p.totalFiltrado
-    ? "" : `<div class="vazio">Nenhuma transação com esses filtros.</div>`;
+    ? "" : `<div class="vazio">Nenhuma transação com esses filtros. Tire um filtro ou escolha outro período.</div>`;
   const btn = document.getElementById("btnMais");
   btn.hidden = !p.temMais; btn.disabled = false;
 

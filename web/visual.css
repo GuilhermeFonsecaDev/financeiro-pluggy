@@ -7,7 +7,7 @@
    Gráficos: ver graficos.js (vLinhas, vBarras, vListaBarras). */
 :root { --v-verde:#3fbf7f; --v-azul:#4a95ea; --v-laranja:#e8954a; --v-roxo:#9085e9; }
 
-.v-cartao { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px 20px; min-width:0; }
+.v-cartao { background:var(--surface); border:1px solid var(--line); border-radius:var(--raio-g); padding:18px 20px; min-width:0; }
 .v-tit { margin:0; color:var(--text-3); font-size:13px; font-weight:500; display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .v-tit button, .v-tit select { padding:4px 10px; font-size:12px; }
 .v-legenda { display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; margin:6px 0 0; font-size:13px; color:var(--text-2); }
@@ -19,9 +19,9 @@
 .v-big { font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; margin-top:6px; font-variant-numeric:tabular-nums; }
 .v-big small { font-size:14px; color:var(--text-3); font-weight:500; margin-left:2px; }
 .v-chip { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:4px; background:var(--surface-3); color:var(--text-2); white-space:nowrap; }
-.v-chip.bom { background:rgba(63,191,127,.14); color:var(--verde); }
-.v-chip.ruim { background:rgba(240,106,106,.14); color:var(--vermelho); }
-.v-chip.aviso { background:rgba(232,149,74,.14); color:var(--laranja); }
+.v-chip.bom { background:color-mix(in srgb, var(--verde) 14%, transparent); color:var(--verde); }
+.v-chip.ruim { background:color-mix(in srgb, var(--vermelho) 14%, transparent); color:var(--vermelho); }
+.v-chip.aviso { background:color-mix(in srgb, var(--laranja) 14%, transparent); color:var(--laranja); }
 .v-subtit { margin:0; font-size:12.5px; color:var(--text-3); }
 
 /* Gráficos: só a linha (ou as barras), sem eixo nem grade. */

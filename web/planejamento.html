@@ -27,8 +27,8 @@
 .rodape b { color:var(--text-2); font-weight:600; }
 .big { font-size:28px; font-weight:650; letter-spacing:-.02em; line-height:1.15; margin-top:6px; font-variant-numeric:tabular-nums; }
 .pl-chip { display:inline-block; font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:4px; background:var(--surface-3); color:var(--text-2); }
-.pl-chip.bom { background:rgba(63,191,127,.14); color:var(--verde); }
-.pl-chip.ruim { background:rgba(240,106,106,.14); color:var(--vermelho); }
+.pl-chip.bom { background:color-mix(in srgb, var(--verde) 14%, transparent); color:var(--verde); }
+.pl-chip.ruim { background:color-mix(in srgb, var(--vermelho) 14%, transparent); color:var(--vermelho); }
 .ruim { color:var(--vermelho); }
 .pl-avisos { color:var(--laranja); font-size:13px; margin:0; }
 
@@ -161,7 +161,7 @@
       <article class="cartao" aria-labelledby="metasTit">
         <p class="tit"><span id="metasTit">Metas</span></p>
         <p class="legenda" id="plano" hidden></p>
-        <div class="metas-grade" id="metas"></div>
+        <div class="metas-grade" id="metas" data-esqueleto="cards:3"></div>
       </article>
     </section>
 
@@ -170,8 +170,8 @@
       <div class="parc-topo"><div class="big" id="parcTotal">—</div><div class="parc-sel" id="parcSel" hidden></div></div>
       <svg class="graf" id="parcGraf" height="120" role="img" aria-label="Parcelas por mês"></svg>
       <div class="parc-2">
-        <div><p class="subtit" id="parcCartTit">Por cartão</p><div class="barras" id="parcCartoes"></div></div>
-        <div><p class="subtit" id="parcMesTit">Parcelas do mês</p><div class="barras rolar" id="parcLista"></div></div>
+        <div><p class="subtit" id="parcCartTit">Por cartão</p><div class="barras" id="parcCartoes" data-esqueleto="barras:4"></div></div>
+        <div><p class="subtit" id="parcMesTit">Parcelas do mês</p><div class="barras rolar" id="parcLista" data-esqueleto="barras:5"></div></div>
       </div>
       <p class="rodape" id="parcFrase"></p>
     </section>

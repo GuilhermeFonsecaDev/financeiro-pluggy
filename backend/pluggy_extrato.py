@@ -899,19 +899,7 @@ def filtros_payload(modo: str = "fatura") -> dict[str, Any]:
                 "WHERE ativo = 1 ORDER BY ordem"
             )
         ]
-        filhos_de: dict[str, list] = {}
-        for c in planas:
-            if c["paiId"]:
-                filhos_de.setdefault(c["paiId"], []).append(c)
-
-        categorias: list[dict[str, Any]] = []
-        for c in planas:
-            if c["paiId"]:
-                continue
-            categorias.append(c)
-            categorias.extend(filhos_de.get(c["id"], []))
-        vistos = {c["id"] for c in categorias}
-        categorias.extend(c for c in planas if c["id"] not in vistos)
+        categorias: list[dict[str, Any]] = cam.arvore_por_uso(conn, planas)
 
         # Ignora rodadas que nao gravaram nada: elas nao representam uma
         # importacao de verdade e so confundiriam a data mostrada na tela.
@@ -1438,6 +1426,13 @@ def _aplicar_faturas_pagas(
         except ValueError:
             continue
         if not 0 <= indice < 12 or pago <= 0:
+            continue
+        # Adiantamento não é a fatura: pagar R$ 182 antes do fechamento de uma
+        # fatura de R$ 3 mil deixava o ciclo valendo R$ 182. Pagamento bem
+        # menor que as compras do ciclo fica de fora (o abatimento dos
+        # adiantamentos é feito em _conciliar_pagamentos_adicionais).
+        compras = float(valores[conta_id][indice] or 0)
+        if compras > 0 and pago < compras * 0.5:
             continue
         valores[conta_id][indice] = round(pago, 2)
         origens[conta_id][indice] = "pagamento"

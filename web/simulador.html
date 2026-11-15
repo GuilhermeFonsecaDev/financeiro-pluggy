@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="visual.css" />
 <style>
 /* Visual da tela nova de Contas Fixas (contas_fixas2.html). */
-.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); }
+.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); text-transform:none; letter-spacing:0; }
 .fatura-card { min-height:0; padding:18px 20px; background:var(--surface); box-shadow:none; }
 .fatura-card.banco:hover { transform:none; box-shadow:none; border-color:var(--line-forte); }
 .fatura-rotulo { font-size:13px; font-weight:500; text-transform:none; letter-spacing:0; }
@@ -71,10 +71,10 @@
    confundir com o selo laranja de "previsto" da tela de Contas Fixas. */
 .sim-media {
   min-height: 0; padding: 4px 11px; border-radius: 999px;
-  border: 1px solid rgba(74, 149, 234, .38); background: rgba(74, 149, 234, .12);
+  border: 1px solid color-mix(in srgb, var(--azul) 38%, transparent); background: color-mix(in srgb, var(--azul) 12%, transparent);
   color: var(--azul); font-size: 11px; font-weight: 650; cursor: pointer;
 }
-.sim-media:hover { border-color: var(--azul); background: rgba(74, 149, 234, .22); color: var(--azul); }
+.sim-media:hover { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 22%, transparent); color: var(--azul); }
 .sim-media:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
 
 .sim-habitos { display: flex; align-items: center; gap: 8px; margin-top: 14px;

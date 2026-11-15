@@ -29,7 +29,7 @@
 .painel-tit .aporte-campo { display:flex; align-items:center; gap:8px; }
 .painel-tit .aporte-campo label { color:var(--text-3); font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.07em; white-space:nowrap; cursor:text; }
 .aporte-entrada { display:flex; align-items:center; justify-content:center; gap:5px; width:146px; min-height:36px; padding:0 10px; border:1px solid var(--line-forte); border-radius:var(--raio); background:var(--surface-2); }
-.aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
+.aporte-entrada:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px color-mix(in srgb, var(--azul) 10%, transparent); }
 .aporte-entrada > span { color:var(--text-3); font-size:12.5px; }
 .aporte-entrada input { width:5ch; min-width:0; padding:0; border:0; background:transparent; color:var(--text); font:inherit; font-size:16px; font-weight:700; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 .aporte-entrada input:focus { outline:none; box-shadow:none; background:transparent; }
@@ -146,7 +146,7 @@
 .vaga-pct.sobe { color: var(--verde); }
 .carteira tr.fechado td { opacity: .55; }
 .carteira tr.fechado .acoes button { opacity: 1; }
-.carteira tr.destaque td { background: rgba(74, 149, 234, .14); transition: background .3s ease; }
+.carteira tr.destaque td { background: color-mix(in srgb, var(--azul) 14%, transparent); transition: background .3s ease; }
 
 /* --- grafo de linhagem (tela de Investimentos) --------------------------- */
 .linhagem-grafo { overflow-x: auto; }
@@ -158,7 +158,7 @@
 .linhagem-fundo-raia { fill: transparent; }
 .linhagem-vaga { cursor: pointer; outline: none; }
 .linhagem-vaga:hover .linhagem-fundo-raia, .linhagem-vaga:focus .linhagem-fundo-raia { fill: var(--surface-2); }
-.linhagem-barra.aberto { fill: rgba(74, 149, 234, .35); stroke: var(--azul); stroke-width: 1.2; }
+.linhagem-barra.aberto { fill: color-mix(in srgb, var(--azul) 35%, transparent); stroke: var(--azul); stroke-width: 1.2; }
 .linhagem-barra.fechado { fill: var(--surface-3); stroke: var(--line-forte); stroke-width: 1; }
 .linhagem-nome { font-size: 11px; fill: var(--text-2); }
 .linhagem-nome.fechado { fill: var(--text-3); }
@@ -180,7 +180,7 @@
             padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface-2);
             margin-bottom: 6px; }
 .mf-fundo.fechado { opacity: .6; }
-.mf-fundo.destaque { border-color: var(--azul); background: rgba(74, 149, 234, .1); }
+.mf-fundo.destaque { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 10%, transparent); }
 .mf-nome { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 
 .mf-cnpj, .mf-linhagem { color: var(--text-3); font-size: 11.5px; margin-top: 3px; }

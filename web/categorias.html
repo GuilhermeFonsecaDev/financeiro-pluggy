@@ -170,14 +170,14 @@
   <section class="painel pizza-card" aria-labelledby="pizzaTit">
     <p class="pizza-tit" id="pizzaTit">Para onde foi</p>
     <svg class="pizza" id="pizza" viewBox="0 0 200 200" role="img" aria-label="Gastos por categoria"></svg>
-    <div class="pizza-leg" id="pizzaLeg"></div>
+    <div class="pizza-leg" id="pizzaLeg" data-esqueleto="linhas:4"></div>
   </section>
   <section class="painel">
     <div class="cabec">
       <span></span><span></span><span>Categoria</span>
       <span class="r" id="cabecGastos">Gastos</span><span class="r so-ano" id="cabecMeses">Mês a mês</span><span></span>
     </div>
-    <div id="arvore"></div>
+    <div id="arvore" data-esqueleto="linhas:8"></div>
     <div id="vazio"></div>
   </section>
   </div>
@@ -374,7 +374,7 @@ function render(p) {
   if (!visiveis.length) {
     alvo.innerHTML = "";
     document.getElementById("vazio").innerHTML =
-      `<div class="vazio">Nenhum gasto no filtro atual.</div>`;
+      `<div class="vazio">Nenhum gasto no filtro atual. Troque o mês ou tire o filtro de contas e cartões.</div>`;
     return;
   }
   document.getElementById("vazio").innerHTML = "";

@@ -171,7 +171,7 @@
     <input type="month" id="fRef" aria-label="Mês de referência" />
   </div>
 
-  <div class="vg-kpis" id="kpis"></div>
+  <div class="vg-kpis" id="kpis" data-esqueleto="cards:5"></div>
 
   <div class="vg-grade">
     <section class="v-cartao c12">
@@ -189,21 +189,21 @@
 
     <section class="v-cartao c6">
       <h2 class="v-tit">Contas em aberto <span class="nota" id="notaFixas"></span></h2>
-      <div id="fixas"></div>
+      <div id="fixas" data-esqueleto="linhas:4"></div>
       <p class="v-rodape" id="rodFixas"></p>
     </section>
 
     <section class="v-cartao c6">
       <h2 class="v-tit">Distribuição dos gastos <span class="nota" id="notaCats"></span></h2>
       <p class="v-legenda" id="legDist"></p>
-      <div class="v-barras" id="dist"></div>
+      <div class="v-barras" id="dist" data-esqueleto="barras:6"></div>
       <p class="v-rodape" id="rodDist"></p>
     </section>
 
     <section class="v-cartao c6">
       <h2 class="v-tit">Comparativo por categoria <span class="nota" id="notaCmp"></span></h2>
       <p class="v-legenda"><span><b id="legCmpAtual"></b></span><span class="v-sep">vs</span><span id="legCmpAnt"></span></p>
-      <div class="v-barras vg-rola" id="cmp"></div>
+      <div class="v-barras vg-rola" id="cmp" data-esqueleto="barras:6"></div>
       <p class="v-rodape">Barra cheia é o período atual, a clara é o anterior, na mesma escala; a variação fica no selo. <span id="cmpRolar"></span></p>
     </section>
 
@@ -216,7 +216,7 @@
 
     <section class="v-cartao c6">
       <h2 class="v-tit">Fatura cartões <span class="nota" id="notaCartoes"></span></h2>
-      <div class="v-barras" id="cartoes"></div>
+      <div class="v-barras" id="cartoes" data-esqueleto="barras:4"></div>
       <p class="v-rodape">A barra é quanto do limite já foi usado; fica vermelha acima de 80%. Clique no cartão para ver os lançamentos.</p>
     </section>
 
@@ -229,13 +229,13 @@
 
     <section class="v-cartao c6">
       <h2 class="v-tit">Maiores gastos <span class="nota" id="notaTop"></span></h2>
-      <div class="v-barras vg-rola" id="top"></div>
+      <div class="v-barras vg-rola" id="top" data-esqueleto="barras:6"></div>
       <p class="v-rodape">Os lançamentos que mais pesaram no período; data, conta e parcela no mouse.</p>
     </section>
 
     <section class="v-cartao c12">
       <h2 class="v-tit">Leituras rápidas</h2>
-      <div class="vg-insights" id="insights"></div>
+      <div class="vg-insights" id="insights" data-esqueleto="linhas:3"></div>
     </section>
   </div>
 </main>
@@ -632,7 +632,7 @@ function renderComparativo() {
 function renderCartoes() {
   const cs = D.cartoes || [];
   el("notaCartoes").textContent = `fatura de ${labelMes(D.mesFoco)}`;
-  if (!cs.length) { el("cartoes").innerHTML = `<div class="vazio">Nenhum cartão.</div>`; return; }
+  if (!cs.length) { el("cartoes").innerHTML = `<div class="vazio">Nenhum cartão conectado. Conecte em Cartões e Contas.</div>`; return; }
   el("cartoes").innerHTML = vListaBarras(cs.map(c => {
     const cor = corInstrumento(c);
     const usoValido = c.usoPct !== null && c.usoPct !== undefined && Number.isFinite(Number(c.usoPct));
@@ -917,7 +917,7 @@ async function renderSemana() {
   const hojeD = new Date();
   const pilulas = semanasDoMes(inicio).map((d, i) => {
     const futura = d > hojeD;
-    return `<button data-sem-ir="${isoDia(d)}" class="${isoDia(d) === isoDia(inicio) ? "ativa" : ""}" ${futura ? "disabled" : ""}
+    return `<button data-sem-ir="${isoDia(d)}" class="alvo-maior ${isoDia(d) === isoDia(inicio) ? "ativa" : ""}" ${futura ? "disabled" : ""}
       title="${curtoDia(d)} a ${curtoDia(fimSemana(d))}" aria-label="Semana ${i + 1}">${i + 1}</button>`;
   }).join("");
   const topo = `<div class="sem-topo"><div class="rot">Gasto da semana</div>

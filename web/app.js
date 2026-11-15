@@ -786,3 +786,25 @@ function montarOnde(raiz, { obter, mudar, aoAbrir = () => {} }) {
     pintar, fechar, cor, nome, rotulo, selecionados,
   };
 }
+
+/* Barras crescem só na primeira pintura da tela (tema.css, "movimento"):
+   redesenhar ao filtrar não deve repetir a animação. */
+document.documentElement.classList.add("primeira-pintura");
+setTimeout(() => document.documentElement.classList.remove("primeira-pintura"), 2500);
+
+/* Esqueletos de carregamento (tema.css): contêiner vazio marcado com
+   data-esqueleto="tipo:quantos" ganha blocos no formato do conteúdo. Tipos:
+   linhas (texto/lista), barras (listas com barra de fundo), cards. */
+(function preencherEsqueletos() {
+  document.querySelectorAll("[data-esqueleto]").forEach(el => {
+    if (el.children.length) return;
+    const [tipo, qtd] = el.dataset.esqueleto.split(":");
+    const n = Number(qtd) || 4;
+    const um = tipo === "cards" ? '<div class="esq-card" aria-hidden="true"><i class="esq"></i><i class="esq"></i></div>'
+      : tipo === "barras" ? '<i class="esq esq-barra" aria-hidden="true"></i>'
+      : '<i class="esq esq-linha" aria-hidden="true"></i>';
+    const html = um.repeat(n);
+    el.innerHTML = el.tagName === "TBODY" ? `<tr><td colspan="99">${html}</td></tr>` : html;
+    el.setAttribute("aria-busy", "true");
+  });
+})();

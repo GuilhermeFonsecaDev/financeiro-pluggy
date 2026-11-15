@@ -153,7 +153,7 @@ tr.total-row td:first-child { background: var(--surface-3); }
 .valor { font-weight: 600; font-variant-numeric: tabular-nums; }
 .valor.zero, .total-cell.zero { color: var(--text-3); font-weight: 450; }
 .total-cell { color: #86dcae; font-weight: 650; font-variant-numeric: tabular-nums; }
-.aviso { margin: 0 0 14px; padding: 11px 14px; border: 1px solid rgba(232,149,74,.32); border-radius: var(--raio); background: rgba(232,149,74,.09); color: #f0b980; font-size: 13px; }
+.aviso { margin: 0 0 14px; padding: 11px 14px; border: 1px solid color-mix(in srgb, var(--laranja) 32%, transparent); border-radius: var(--raio); background: color-mix(in srgb, var(--laranja) 9%, transparent); color: #f0b980; font-size: 13px; }
 .aviso[hidden] { display: none; }
 .vazio-cell { padding: 26px 14px; color: var(--text-3); }
 
@@ -184,14 +184,14 @@ tbody tr { cursor:pointer; }
     </div>
   </header>
 
-  <section class="carteira" id="carteira" aria-label="Cartões e a fatura do mês"></section>
+  <section class="carteira" id="carteira" data-esqueleto="cards:4" aria-label="Cartões e a fatura do mês"></section>
 
   <section class="v-cartao" style="padding:18px 0 0;overflow:hidden">
     <h2 class="v-tit" style="padding:0 20px 10px">Faturas por cartão e mês</h2>
     <div class="tabela-wrap grade-cartoes" tabindex="0" aria-label="Faturas dos cartões; deslize para ver todas as colunas">
       <table aria-label="Gastos por cartão e mês vindos do Open Finance">
         <thead id="tableHead"></thead>
-        <tbody id="tableBody"></tbody>
+        <tbody id="tableBody" data-esqueleto="linhas:6"></tbody>
       </table>
     </div>
   </section>

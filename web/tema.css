@@ -20,13 +20,22 @@
 
   --text: #e9ecf1;
   --text-2: #a7aebb;
-  --text-3: #737b88;
+  --text-3: #858d9a;   /* ≥ 4,5:1 sobre bg, surface e surface-2 */
 
   --azul: #4a95ea;
-  --azul-suave: rgba(74, 149, 234, .14);
+  --azul-suave: color-mix(in srgb, var(--azul) 14%, transparent);
   --verde: #3fbf7f;
   --vermelho: #f06a6a;
   --laranja: #e8954a;
+
+  /* Estados: sempre derivados das cores acima. */
+  --estado-hover: var(--surface-3);
+  --selecionado-fundo: color-mix(in srgb, var(--azul) 16%, transparent);
+  --selecionado-borda: color-mix(in srgb, var(--azul) 50%, transparent);
+  --selecionado-texto: #b9d6f8;
+  --aviso-suave: color-mix(in srgb, var(--laranja) 14%, transparent);
+  --erro-suave: color-mix(in srgb, var(--vermelho) 14%, transparent);
+  --sucesso-suave: color-mix(in srgb, var(--verde) 14%, transparent);
 
   --raio: 10px;
   --raio-g: 14px;
@@ -54,6 +63,14 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--azul);
+}
+/* 14) Detalhes do navegador no tema do app. */
+::selection { background: color-mix(in srgb, var(--azul) 35%, transparent); color: var(--text); }
+/* 4) Foco pelo teclado: o mesmo contorno em todo controle. */
+:where(button, a, [role="button"], [tabindex], select, summary):focus-visible {
+  outline: 2px solid var(--azul); outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------------- layout */
@@ -137,7 +154,7 @@ button.sutil {
 button.sutil:hover { background: var(--surface-2); color: var(--text); }
 
 button.perigo { color: var(--vermelho); }
-button.perigo:hover { background: rgba(240, 106, 106, .12); }
+button.perigo:hover { background: color-mix(in srgb, var(--vermelho) 12%, transparent); }
 
 .segmentado {
   display: inline-flex;
@@ -266,7 +283,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .chip .ponto { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
 button.chip { min-height: 0; cursor: pointer; }
 button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
-.chip.aviso { border-color: rgba(232, 149, 74, .4); background: rgba(232, 149, 74, .12); color: #f0b980; }
+.chip.aviso { border-color: color-mix(in srgb, var(--laranja) 40%, transparent); background: color-mix(in srgb, var(--laranja) 12%, transparent); color: #f0b980; }
 
 /* --------------------------------------------------------------- popover */
 
@@ -280,7 +297,6 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
   border: 1px solid var(--line-forte);
   border-radius: var(--raio-g);
   background: var(--surface-2);
-  box-shadow: var(--sombra-pop);
 }
 .pop[hidden] { display: none; }
 .pop-busca { padding: 5px; }
@@ -379,9 +395,8 @@ button.chip:hover { border-color: var(--azul); background: var(--surface-3); }
   overflow-y: auto;
   padding: 22px;
   border: 1px solid var(--line-forte);
-  border-radius: 16px;
+  border-radius: var(--raio-g);
   background: var(--surface);
-  box-shadow: var(--sombra-pop);
 }
 .modal-tit { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .modal-rodape { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -583,7 +598,7 @@ input[type="checkbox"] {
   transition: background-color .15s, border-color .15s, box-shadow .15s;
 }
 input[type="checkbox"]:hover { border-color: var(--text-3); }
-input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(74,149,234,.3); border-color: var(--azul); }
+input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--azul) 30%, transparent); border-color: var(--azul); }
 input[type="checkbox"]:checked {
   border-color: var(--azul); background-color: var(--azul);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.6 3.6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -610,14 +625,14 @@ label:has(> input[type="checkbox"]) { display: inline-flex; align-items: center;
 .pf-cab { display:flex; justify-content:space-between; align-items:center; padding:14px 16px 4px; }
 .pf-cab strong { font-size:13px; font-weight:600; }
 .pf-limpar { min-height:0; border:0; background:transparent; color:var(--azul); font-size:12.5px; font-weight:600; padding:4px 6px; border-radius:6px; }
-.pf-limpar:hover { background:rgba(74,149,234,.12); }
+.pf-limpar:hover { background:color-mix(in srgb, var(--azul) 12%, transparent); }
 .pf-limpar:disabled { color:var(--text-3); background:transparent; cursor:default; }
 .pf-corpo { display:grid; gap:14px; padding:6px 16px 16px; }
 .pf-rot { font-size:12px; color:var(--text-3); margin-bottom:6px; }
 .pf-chips { display:flex; flex-wrap:wrap; gap:6px; }
 .pf-chips button { min-height:0; border:1px solid var(--line); background:var(--surface-2); color:var(--text-2); border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:500; }
 .pf-chips button:hover { color:var(--text); border-color:var(--line-forte); }
-.pf-chips button.ativo { background:rgba(74,149,234,.16); border-color:rgba(74,149,234,.5); color:var(--azul); font-weight:600; }
+.pf-chips button.ativo { background:color-mix(in srgb, var(--azul) 16%, transparent); border-color:color-mix(in srgb, var(--azul) 50%, transparent); color:var(--azul); font-weight:600; }
 .pf-custom { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:10px; }
 .pf-custom[hidden] { display:none; }
 .pf-custom .mes-campo { min-height:0; height:37px; padding:0 10px; font-size:13px; font-weight:500; white-space:nowrap; }
@@ -669,9 +684,83 @@ label:has(> input[type="checkbox"]) { display: inline-flex; align-items: center;
 .n-filtros { background:var(--azul); color:#fff; border-radius:999px; font-size:11px; font-weight:700; padding:1px 7px; line-height:1.4; }
 .n-filtros[hidden] { display:none; }
 /* Categorias no modo "excluir": marcadas em vermelho com ✕. */
-.pf-item.sel.excluir { background:rgba(240,106,106,.14); color:#f3a3a3; }
+.pf-item.sel.excluir { background:color-mix(in srgb, var(--vermelho) 14%, transparent); color:#f3a3a3; }
 .pf-item.sel.excluir::after { content:"✕"; }
 .pf-acoes { display:inline-flex; gap:12px; align-items:center; }
 .pf-inverter { min-height:0; border:1px solid var(--line-forte); border-radius:999px; background:transparent; color:var(--text-2); padding:3px 9px; font-size:12px; font-weight:500; }
 .pf-inverter:hover { color:var(--text); }
-.pf-inverter.ativo { background:rgba(240,106,106,.14); border-color:rgba(240,106,106,.45); color:#f3a3a3; font-weight:600; }
+.pf-inverter.ativo { background:color-mix(in srgb, var(--vermelho) 14%, transparent); border-color:color-mix(in srgb, var(--vermelho) 45%, transparent); color:#f3a3a3; font-weight:600; }
+
+/* ------------------------------------------------------------- movimento */
+/* Padrões de movimento do app todo: três durações e duas curvas. Entrada
+   curta e com uma "mola" leve; nada que atrase quem está usando. Quem pediu
+   ao sistema para reduzir movimento vê tudo estático (fim do bloco). */
+:root {
+  --mov-rapido: 120ms;
+  --mov-medio: 200ms;
+  --mov-lento: 240ms;
+  --mov-suave: cubic-bezier(.2, .8, .2, 1);
+  --mov-mola: cubic-bezier(.34, 1.36, .64, 1);
+}
+/* Navegadores novos: mola de verdade (passa um pouco do ponto e volta). */
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --mov-mola: linear(0, .26 9%, .58 19%, .84 30%, .98 41%, 1.04 52%, 1.03 64%, 1.005 80%, 1); }
+}
+
+@keyframes mov-surgir { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@keyframes mov-fundo  { from { opacity: 0; } }
+@keyframes mov-modal  { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+@keyframes mov-crescer { from { transform: scaleX(0); } }
+
+/* Popovers (filtros, seletores, menus ⋯) e listas que abrem no lugar do campo. */
+.pop:not([hidden]) { animation: mov-surgir var(--mov-medio) var(--mov-suave); transform-origin: top left; }
+.pf-lista:not([hidden]) { animation: mov-surgir var(--mov-medio) var(--mov-suave); }
+.pf-custom:not([hidden]) { animation: mov-surgir var(--mov-medio) var(--mov-suave); }
+
+/* Modais: o fundo escurece e a janela sobe com a mola. */
+.modal-fundo:not([hidden]) { animation: mov-fundo var(--mov-medio) ease-out; }
+.modal-fundo:not([hidden]) > .modal { animation: mov-modal var(--mov-lento) var(--mov-mola); }
+
+/* Clique: chips, segmentados e itens marcáveis afundam um pouco e voltam. */
+.pf-chips button, .segmentado button, .pf-item, .sb-item, .filtro-ativo button, .reemb-pessoa, .pf-inverter {
+  transition: background-color var(--mov-rapido) ease, color var(--mov-rapido) ease,
+              border-color var(--mov-rapido) ease, transform var(--mov-rapido) var(--mov-mola);
+}
+.pf-chips button:active, .segmentado button:active, .pf-item:active, .sb-item:active, .pf-inverter:active { transform: scale(.96); }
+
+/* Barras de fundo das listas (composição, categorias, cartões) crescem da
+   esquerda ao desenhar. */
+html.primeira-pintura .v-bl > .v-f { transform-origin: left center; animation: mov-crescer var(--mov-lento) var(--mov-suave); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Alternativa, não silêncio: o que aparece ainda aparece com um fade
+     curto; o que se move ou muda de escala para de se mover. */
+  @keyframes mov-surgir { from { opacity: 0; } }
+  @keyframes mov-modal  { from { opacity: 0; } }
+  @keyframes mov-crescer { from { opacity: 0; } }
+  .pf-chips button:active, .segmentado button:active, .pf-item:active, .sb-item:active, .pf-inverter:active { transform: none; }
+}
+
+/* -------------------------------------------------------------- esqueletos */
+/* Enquanto os dados chegam, o contêiner mostra blocos no formato do conteúdo
+   (app.js preenche os marcados com data-esqueleto). A primeira pintura de
+   cada tela troca o innerHTML e eles somem sozinhos. */
+.esq { display:block; border-radius:8px; background:var(--surface-2); position:relative; overflow:hidden; }
+.esq::after { content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 5%, transparent), transparent);
+  animation:esq-brilho 1.4s ease-in-out infinite; }
+@keyframes esq-brilho { to { transform:translateX(100%); } }
+.esq-linha { height:14px; margin:12px 4px; }
+.esq-linha:nth-child(3n+2) { width:82%; }
+.esq-linha:nth-child(3n) { width:64%; }
+.esq-barra { height:36px; margin:0 0 6px; border-radius:10px; }
+.esq-card { min-height:96px; border-radius:var(--raio-g); border:1px solid var(--line); background:var(--surface); }
+.esq-card .esq { height:12px; width:40%; margin:18px 20px 0; }
+.esq-card .esq + .esq { height:24px; width:60%; margin-top:10px; }
+@media (prefers-reduced-motion: reduce) { .esq::after { animation:none; } }
+
+/* ------------------------------------------------- alvos de clique pequenos */
+/* Botão que é pequeno no desenho mas precisa de 24px+ de área para o dedo:
+   a área cresce por fora, o desenho fica igual. */
+.alvo-maior { position:relative; }
+.alvo-maior::before { content:""; position:absolute; inset:-5px; }

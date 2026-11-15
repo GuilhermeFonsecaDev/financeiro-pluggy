@@ -27,8 +27,8 @@
 .emp-data.vazia { color:var(--text-3); font-style:italic; }
 
 .emp-status { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; }
-.emp-status.aberto { background:rgba(232,149,74,.14); color:var(--laranja); }
-.emp-status.quitado { background:rgba(63,191,127,.13); color:var(--verde); }
+.emp-status.aberto { background:color-mix(in srgb, var(--laranja) 14%, transparent); color:var(--laranja); }
+.emp-status.quitado { background:color-mix(in srgb, var(--verde) 13%, transparent); color:var(--verde); }
 
 /* Parcelas ficam ao lado do status, na mesma linha de apoio. */
 .emp-parcelas { margin-left:8px; color:var(--text-3); font-size:12px; font-variant-numeric:tabular-nums; }
@@ -101,7 +101,7 @@
         <h2>Emprestado</h2>
         <span class="muted" style="font-size:12px" id="contadorEmprestado"></span>
       </div>
-      <div id="listaEmprestado"></div>
+      <div id="listaEmprestado" data-esqueleto="linhas:3"></div>
     </article>
 
     <div style="display:grid;gap:14px">
@@ -110,7 +110,7 @@
           <h2>Recebido</h2>
           <span class="muted" style="font-size:12px" id="contadorPagamentos"></span>
         </div>
-        <div id="listaPagamentos"></div>
+        <div id="listaPagamentos" data-esqueleto="linhas:3"></div>
       </article>
 
       <article class="painel">
@@ -118,7 +118,7 @@
           <h2>Empréstimos</h2>
           <span class="muted" style="font-size:12px" id="contadorPegos"></span>
         </div>
-        <div id="listaPegos"></div>
+        <div id="listaPegos" data-esqueleto="linhas:2"></div>
       </article>
     </div>
   </section>

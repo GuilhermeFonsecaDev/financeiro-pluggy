@@ -11,7 +11,7 @@
 <style>
 /* Linguagem visual mínima (visual.css) aplicada só nesta página: o
    contas_fixas.css é dividido com a página antiga e o simulador. */
-.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); }
+.faturas-titulo { font-size:13px; font-weight:500; color:var(--text-3); text-transform:none; letter-spacing:0; }
 .fatura-card { min-height:0; padding:18px 20px; background:var(--surface); box-shadow:none; }
 .fatura-card.banco:hover { transform:none; box-shadow:none; border-color:var(--line-forte); }
 .fatura-rotulo { font-size:13px; font-weight:500; text-transform:none; letter-spacing:0; }
@@ -46,8 +46,8 @@
 .lote button:hover { background:var(--surface-3); color:var(--text); }
 .lote #loteCadastro { color:var(--vermelho); }
 .lote button:disabled { opacity:.45; cursor:not-allowed; background:transparent; }
-.lote #loteCadastro:hover { background:rgba(240,106,106,.12); }
-.fixa.selecionada > .colunas { background:rgba(74,149,234,.08); border-radius:8px; }
+.lote #loteCadastro:hover { background:color-mix(in srgb, var(--vermelho) 12%, transparent); }
+.fixa.selecionada > .colunas { background:color-mix(in srgb, var(--azul) 8%, transparent); border-radius:8px; }
 .fatura-selos { display:inline-flex; gap:6px; align-items:center; }
 /* Detalhe da fatura em duas tabelas, cada uma com título e subtotal. */
 .card-modal-secoes { display:grid; gap:18px; }
@@ -86,8 +86,8 @@
   background:transparent; color:var(--text-3); font:italic 700 10.5px/1 Georgia, serif; display:grid; place-items:center; cursor:pointer; }
 .fatura-info:hover { color:var(--text); border-color:var(--text); }
 .fatura-info.previsto { border-color:var(--laranja); color:var(--laranja); }
-.fatura-info.previsto:hover { background:rgba(232,149,74,.14); }
-.fatura-topo .selo-previsto.v-chip:hover { background:rgba(232,149,74,.24); }
+.fatura-info.previsto:hover { background:color-mix(in srgb, var(--laranja) 14%, transparent); }
+.fatura-topo .selo-previsto.v-chip:hover { background:color-mix(in srgb, var(--laranja) 24%, transparent); }
 .composicao { grid-column:span 1; }
 .composicao-saldo { gap:0; margin:10px 0 0; }
 .composicao-saldo strong.v-big { font-size:28px; }
@@ -132,7 +132,7 @@
   </div>
 
   <h2 class="faturas-titulo" id="faturasTitulo">Faturas do mês</h2>
-  <section class="faturas-grid" id="metricas" aria-labelledby="faturasTitulo"></section>
+  <section class="faturas-grid" id="metricas" data-esqueleto="cards:4" aria-labelledby="faturasTitulo"></section>
 
   <section class="contas-composicao" aria-label="Contas fixas e composição do mês">
     <div class="contas-coluna">
@@ -155,7 +155,7 @@
           <span class="c col-forma">Pagamento</span>
           <span></span>
         </div>
-        <div id="lista"></div>
+        <div id="lista" data-esqueleto="linhas:8"></div>
         <div id="vazio"></div>
       </div>
       <section class="painel vinculos-painel" aria-labelledby="vinculosTitulo">
@@ -164,7 +164,7 @@
         </div>
         <div class="vinculos-tabela">
           <div class="vinculos-cabec f2-vinc"><span>Cartão</span><span>Fatura</span><span>Contas fixas</span><span>Reembolsos</span><span>Valor final</span><span></span></div>
-          <div id="vinculosLista"></div>
+          <div id="vinculosLista" data-esqueleto="linhas:4"></div>
         </div>
       </section>
       <section class="painel vinculos-painel" aria-labelledby="reembolsosTitulo">
@@ -174,7 +174,7 @@
         </div>
         <div class="vinculos-tabela">
           <div class="vinculos-cabec f2-reemb"><span>Descrição</span><span>Responsável</span><span>Compra em</span><span>Como voltou</span><span>Valor</span><span></span></div>
-          <div id="reembolsosLista"></div>
+          <div id="reembolsosLista" data-esqueleto="linhas:3"></div>
           <form class="vinculos-linha f2-reemb f2-novo" id="formReembolso" autocomplete="off">
             <input id="rDescricao" type="text" maxlength="160" placeholder="ex.: INGRESSO DO SHOW" aria-label="Descrição do reembolso" />
             <button type="button" class="sb-botao sem-pessoa" id="rPessoa" data-abre-pop aria-haspopup="listbox" aria-label="Responsável pelo reembolso">Responsável</button>
@@ -922,7 +922,7 @@ function renderCardsFaturas() {
       // quanto já foi pago.
       const adiantado = adiantamentosDoCartao(c.id).total;
       const info = temPrevisao || adiantado > 0
-        ? `<button class="fatura-info ${temPrevisao ? "previsto" : ""}" data-info-fatura="${esc(c.id)}"
+        ? `<button class="fatura-info alvo-maior ${temPrevisao ? "previsto" : ""}" data-info-fatura="${esc(c.id)}"
                    title="${esc([temPrevisao ? "Tem valor previsto" : "", adiantado > 0 ? `adiantamentos ${fmtBRL(adiantado)}` : ""].filter(Boolean).join(" · "))}"
                    aria-label="Detalhes da fatura de ${esc(c.nome)}">i</button>`
         : "";
@@ -1420,7 +1420,11 @@ function renderPrevisao(p) {
   p = PREVISAO;
   const cartoes = (p && p.cartoes) || [];
   const meses = (p && p.totais) || [];
-  if (!meses.some(m => m.competencia === previsaoMes)) previsaoMes = meses[0]?.competencia || "";
+  // Abre no primeiro mês que tem algo previsto: o mês corrente costuma já ter
+  // a fatura fechada (nada a prever), e a aba parecia vazia sem estar.
+  if (!meses.some(m => m.competencia === previsaoMes)) {
+    previsaoMes = (meses.find(m => Number(m.previsto) > 0) || meses[0])?.competencia || "";
+  }
 
   el("sRotuloMes").textContent = previsaoMes ? labelMes(previsaoMes) : "Mês";
   el("sBtnMes").hidden = meses.length < 2;

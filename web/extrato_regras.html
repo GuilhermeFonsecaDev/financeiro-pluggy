@@ -28,7 +28,7 @@
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid .full { grid-column: 1 / -1; }
 .dinheiro-input { display:flex; align-items:center; width:100%; min-height:31px; border:1px solid var(--line-forte); border-radius:8px; background:var(--surface-2); overflow:hidden; }
-.dinheiro-input:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px rgba(74,149,234,.10); }
+.dinheiro-input:focus-within { border-color:var(--azul); box-shadow:0 0 0 2px color-mix(in srgb, var(--azul) 10%, transparent); }
 .dinheiro-input > span { padding-left:9px; color:var(--text-3); font-size:12px; }
 .dinheiro-input input { flex:1; min-width:0; border:0; border-radius:0; outline:0; background:transparent; box-shadow:none; }
 .dinheiro-input input:focus { border:0; outline:0; box-shadow:none; }
@@ -56,7 +56,7 @@
 .rg-busca input { width: 100%; padding-left: 30px; }
 .rg-busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
 .rg-nada { padding: 26px 8px; text-align: center; color: var(--text-3); font-size: 13px; }
-.regra mark { background: rgba(74, 149, 234, .24); color: inherit; border-radius: 3px; padding: 0 1px; }
+.regra mark { background: color-mix(in srgb, var(--azul) 24%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .regra.leitura { grid-template-columns: 30px 1fr 120px 78px; }
 .selo-sis { justify-self: end; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
             color: var(--text-3); border: 1px solid var(--line-forte); border-radius: 999px; padding: 2px 8px; }
@@ -100,7 +100,7 @@
     </div>
   </header>
 
-  <section class="rg-metricas" id="metricas" aria-label="Resumo das regras"></section>
+  <section class="rg-metricas" id="metricas" data-esqueleto="cards:3" aria-label="Resumo das regras"></section>
 
   <div class="rg-barra">
     <span class="segmentado" id="abas" role="tablist" aria-label="Tipo de regra"></span>
@@ -111,7 +111,7 @@
   </div>
 
   <section class="painel" style="padding:6px 10px">
-    <div id="lista"></div>
+    <div id="lista" data-esqueleto="linhas:6"></div>
     <div id="vazio"></div>
   </section>
 </main>
@@ -650,9 +650,12 @@ function guardarUrl() {
   ligar();
   try {
     CATEGORIAS = (await pedir("/extrato/categorias")).categorias || [];
+    // O mesmo seletor da edição de transação: lista com busca, pai como
+    // título de grupo (também escolhível) e subcategorias com o emoji.
     el("fCategoria").innerHTML = ['<option value="">Não alterar a categoria</option>']
       .concat(CATEGORIAS.map(c =>
-        `<option value="${esc(c.id)}">${c.paiId ? "    " : ""}${esc(c.nome)}</option>`)).join("");
+        `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${c.paiId ? `${esc(c.emoji)} ` : ""}${esc(c.nome)}</option>`)).join("");
+    selectComBusca(el("fCategoria"), { placeholder: "Buscar categoria…" });
     await recarregar();
 
     // Veio do menu de ações de uma transação: abre o cadastro já preenchido.

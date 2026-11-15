@@ -593,6 +593,15 @@ SELECT
 
   CASE
     WHEN a.calculo_override IS NOT NULL THEN a.calculo_override
+    -- Parcela futura que o banco mandou como PENDENTE e depois lançou de
+    -- novo, EFETIVADA, com outro id: a pendente fica para trás e duplicava o
+    -- mês. A efetivada vale; a pendente sai.
+    WHEN t.status = 'PENDING' AND t.parcela_total > 1 AND EXISTS (
+      SELECT 1 FROM pluggy_transacoes p
+       WHERE p.conta_id = t.conta_id AND p.transacao_id <> t.transacao_id
+         AND p.status = 'POSTED' AND p.descricao = t.descricao
+         AND p.parcela_total = t.parcela_total AND p.parcela_numero = t.parcela_numero
+         AND ABS(p.valor - t.valor) < 0.005) THEN 0
     WHEN rc.regra_ignorar IS NOT NULL AND NOT {_REGRA_SUA_VENCE} THEN 0
     ELSE 1
   END AS incluida,
@@ -600,6 +609,13 @@ SELECT
   CASE
     WHEN a.calculo_override = 0 THEN 'Excluída manualmente'
     WHEN a.calculo_override = 1 THEN NULL
+    WHEN t.status = 'PENDING' AND t.parcela_total > 1 AND EXISTS (
+      SELECT 1 FROM pluggy_transacoes p
+       WHERE p.conta_id = t.conta_id AND p.transacao_id <> t.transacao_id
+         AND p.status = 'POSTED' AND p.descricao = t.descricao
+         AND p.parcela_total = t.parcela_total AND p.parcela_numero = t.parcela_numero
+         AND ABS(p.valor - t.valor) < 0.005) THEN 'Parcela já lançada'
+
     WHEN {_REGRA_SUA_VENCE} THEN NULL
     ELSE (SELECT r.nome FROM extrato_regras r WHERE r.id = rc.regra_ignorar)
   END AS motivo_exclusao
@@ -712,9 +728,57 @@ def _calcular_assinatura_extrato(conn: sqlite3.Connection) -> str:
     return digest.hexdigest()
 
 
+def _herdar_ajustes_parcelas(conn: sqlite3.Connection) -> None:
+    """Parcela que chega depois herda a categoria e a exclusão das irmãs.
+
+    Editar uma parcela propaga para as irmãs que JÁ existem (e as projetadas
+    seguem a base). A parcela seguinte, quando o banco a manda de verdade,
+    entrava sem ajuste e voltava para a categoria original -- ou reaparecia
+    numa compra que tinha sido excluída. Aqui ela recebe o ajuste mais recente
+    da mesma compra. Só preenche quem não tem ajuste nenhum: uma parcela
+    editada à parte nunca é sobrescrita.
+    """
+    from datetime import datetime
+
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'extrato_ajustes'").fetchone():
+        return
+    def base(descricao: str) -> str:
+        return normalizar(re.sub(r"\d+\s*/\s*\d+", " ", descricao or ""))
+    grupos: dict[tuple, dict[str, list]] = {}
+    for l in conn.execute(
+        "SELECT t.transacao_id, t.conta_id, t.parcela_total, t.descricao, t.data, "
+        "       a.transacao_id AS ajustada, a.categoria_id_manual, a.calculo_override, a.atualizado_em "
+        "FROM pluggy_transacoes t LEFT JOIN extrato_ajustes a ON a.transacao_id = t.transacao_id "
+        "WHERE t.parcela_total > 1"
+    ):
+        g = grupos.setdefault((l["conta_id"], l["parcela_total"], base(l["descricao"])),
+                              {"fonte": [], "sem": []})
+        if l["ajustada"] is None:
+            g["sem"].append(l)
+        elif l["categoria_id_manual"] is not None or l["calculo_override"] is not None:
+            g["fonte"].append(l)
+    agora = datetime.now().isoformat(timespec="seconds")
+    novos = []
+    for g in grupos.values():
+        if not g["sem"] or not g["fonte"]:
+            continue
+        fonte = max(g["fonte"], key=lambda l: l["atualizado_em"] or "")
+        # Só a parcela com data DEPOIS da edição (ainda era futura quando a
+        # pessoa editou). As anteriores ficaram como estavam de propósito, ou
+        # são histórico antigo, e não mudam.
+        novos += [(l["transacao_id"], fonte["categoria_id_manual"], fonte["calculo_override"], agora)
+                  for l in g["sem"] if str(l["data"] or "")[:10] > str(fonte["atualizado_em"] or "")[:10]]
+    if novos:
+        conn.executemany(
+            "INSERT OR IGNORE INTO extrato_ajustes (transacao_id, categoria_id_manual, "
+            "calculo_override, atualizado_em) VALUES (?, ?, ?, ?)", novos)
+        conn.commit()
+
+
 def garantir_extrato_materializado(conn: sqlite3.Connection) -> None:
     """Mantém uma cópia da view e só a refaz quando sua origem mudou."""
     with _CACHE_EXTRATO_LOCK:
+        _herdar_ajustes_parcelas(conn)
         assinatura = _assinatura_extrato(conn)
         salva = conn.execute(
             "SELECT valor FROM app_meta WHERE chave = ?", (_CACHE_EXTRATO_CHAVE,)
@@ -754,6 +818,39 @@ def _abrir() -> sqlite3.Connection:
     return conn
 
 
+def arvore_por_uso(conn: sqlite3.Connection, planas: list[dict]) -> list[dict]:
+    """Pais seguidos dos filhos, das categorias MAIS USADAS para as menos.
+
+    Uso = transações dos últimos 12 meses na categoria; o pai soma os filhos.
+    Quem nunca foi usada mantém a ordem cadastrada, no fim. Os seletores
+    (filtro, edição, regras) mostram nesta ordem: a que se escolhe sempre fica
+    em cima, sem rolar.
+    """
+    uso: dict[str, int] = {}
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'extrato_efetivo_cache'").fetchone():
+        uso = {l[0]: l[1] for l in conn.execute(
+            "SELECT categoria_id, COUNT(*) FROM extrato_efetivo_cache "
+            "WHERE categoria_id IS NOT NULL AND data >= date('now', '-12 months') "
+            "GROUP BY categoria_id")}
+    filhos_de: dict[str, list] = {}
+    for c in planas:
+        c["uso"] = uso.get(c["id"], 0)
+        if c["paiId"]:
+            filhos_de.setdefault(c["paiId"], []).append(c)
+    pos = {c["id"]: i for i, c in enumerate(planas)}
+    chave = lambda c, total: (-total, pos[c["id"]])
+    pais = [c for c in planas if not c["paiId"]]
+    total_pai = {c["id"]: c["uso"] + sum(f["uso"] for f in filhos_de.get(c["id"], [])) for c in pais}
+    ordenadas = []
+    for pai in sorted(pais, key=lambda c: chave(c, total_pai[c["id"]])):
+        ordenadas.append(pai)
+        ordenadas.extend(sorted(filhos_de.get(pai["id"], []), key=lambda f: chave(f, f["uso"])))
+    # Órfã (pai desativado) não pode sumir do seletor.
+    vistos = {c["id"] for c in ordenadas}
+    ordenadas.extend(c for c in planas if c["id"] not in vistos)
+    return ordenadas
+
+
 def categorias_payload() -> dict:
     """Lista achatada, já na ordem da árvore: cada pai seguido dos seus filhos.
 
@@ -781,20 +878,7 @@ def categorias_payload() -> dict:
                 "WHERE c.ativo = 1 ORDER BY c.ordem"
             )
         ]
-
-    pais = [c for c in linhas if not c["paiId"]]
-    filhos_de: dict[str, list] = {}
-    for c in linhas:
-        if c["paiId"]:
-            filhos_de.setdefault(c["paiId"], []).append(c)
-
-    ordenadas = []
-    for pai in pais:
-        ordenadas.append(pai)
-        ordenadas.extend(filhos_de.get(pai["id"], []))
-    # Órfã (pai desativado) não pode sumir do seletor.
-    vistos = {c["id"] for c in ordenadas}
-    ordenadas.extend(c for c in linhas if c["id"] not in vistos)
+        ordenadas = arvore_por_uso(conn, linhas)
 
     return {"categorias": ordenadas, "emojisSugeridos": EMOJIS_SUGERIDOS}
 

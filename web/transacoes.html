@@ -376,10 +376,10 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
       <button type="button" class="pf-campo" id="fCat" aria-expanded="false"></button>
       <div class="pf-lista" id="fCatLista" hidden>
         <div class="pf-busca"><input type="search" id="fCatBusca" placeholder="Buscar categoria…" autocomplete="off" />
-          <button type="button" class="pf-fechar" id="fCatFechar" aria-label="Fechar lista">▴</button></div>
+          <button type="button" class="pf-fechar" id="fCatFechar" aria-label="Fechar lista"></button></div>
         <div id="fCatItens" class="pf-itens"></div>
         <div class="pf-lista-rodape"><span id="fCatConta"></span>
-          <span class="pf-acoes"><button type="button" class="pf-inverter" id="fCatInverter" aria-pressed="false">⇄ Excluir</button>
+          <span class="pf-acoes"><button type="button" class="pf-inverter" id="fCatInverter" aria-pressed="false">Excluir</button>
           <button type="button" id="fCatLimpar">Limpar</button></span></div>
       </div></div>
   </div>
@@ -1270,6 +1270,8 @@ function ligar() {
     if (abrir) { document.getElementById(busca).value = ""; render(); document.getElementById(busca).focus(); }
   };
   document.getElementById("fCat").addEventListener("click", alternarLista("fCat", "fCatLista", "fCatBusca", renderCatLista));
+  document.getElementById("fCatFechar").innerHTML = icone("fechar_lista", 14);
+  document.getElementById("fCatInverter").insertAdjacentHTML("afterbegin", icone("inverter", 13));
   document.getElementById("fCatBusca").addEventListener("input", renderCatLista);
   const fecharCat = () => { document.getElementById("fCatLista").hidden = true; document.getElementById("fCat").hidden = false; };
   document.getElementById("fCatBusca").addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); fecharCat(); } });

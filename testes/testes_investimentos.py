@@ -406,6 +406,11 @@ class CarteiraTests(unittest.TestCase):
         self.assertEqual(twr['valor'], 0.0)
 
     def test_xirr_usa_o_historico_de_movimentos(self):
+        # Um ano exato entre a compra e a foto: "hoje" é o dia da foto, senão o
+        # retorno anual cai a cada mês que passa.
+        import investimentos_rentabilidade
+        import relogio
+        relogio.congelar(self, '2026-09-01T18:00:00', [investimentos, investimentos_rentabilidade])
         self.item('btg', 'BTG')
         chave = self.posicao('btg', 'cdb', 1100, 'CDB BTG')
         self.movimento(chave, 'compra', 1000, data='2025-09-01')

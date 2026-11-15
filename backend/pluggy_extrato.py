@@ -1428,11 +1428,11 @@ def _aplicar_faturas_pagas(
         if not 0 <= indice < 12 or pago <= 0:
             continue
         # Adiantamento não é a fatura: pagar R$ 182 antes do fechamento de uma
-        # fatura de R$ 3 mil deixava o ciclo valendo R$ 182. Pagamento bem
-        # menor que as compras do ciclo fica de fora (o abatimento dos
-        # adiantamentos é feito em _conciliar_pagamentos_adicionais).
+        # fatura de R$ 3 mil deixava o ciclo valendo R$ 182. Só conta como a
+        # fatura o pagamento que cobre quase tudo (90% das compras do ciclo);
+        # o resto é adiantamento, abatido em _conciliar_pagamentos_adicionais.
         compras = float(valores[conta_id][indice] or 0)
-        if compras > 0 and pago < compras * 0.5:
+        if compras > 0 and pago < compras * 0.9:
             continue
         valores[conta_id][indice] = round(pago, 2)
         origens[conta_id][indice] = "pagamento"

@@ -480,55 +480,57 @@ function campoMesTodos(raiz = document) {
 
 /* ------------------------------------------------------------ navegação */
 
+/* Ícones do app: um conjunto só em SVG, mesmo traço e mesmo peso, na cor do
+ * texto (o impeccable condena glifos Unicode como ícone: cada um vem de uma
+ * fonte, com peso e alinhamento diferentes). `icone(nome)` devolve o <svg>. */
+const ICONES = {
+  painel: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18M9 15.5l2 2 4-4"/>',
+  transacoes: '<path d="M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/>',
+  categorias: '<path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15.5 3.7A9 9 0 0 1 20.3 8.5H15.5z"/>',
+  cartao: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6.5 15h4"/>',
+  banco: '<path d="M3 9.5 12 4l9 5.5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+  investimentos: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  entradas: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
+  regras: '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+  meta: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+  emprestimo: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  marca: '<path d="M12 3 21 12 12 21 3 12z"/>',
+  fechar_lista: '<path d="M6 15l6-6 6 6"/>',
+  inverter: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+};
+function icone(nome, tamanho = 16) {
+  const caminho = ICONES[nome];
+  if (!caminho) return "";
+  return `<svg class="icone-svg" viewBox="0 0 24 24" width="${tamanho}" height="${tamanho}" fill="none" stroke="currentColor"
+    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${caminho}</svg>`;
+}
+
 const PAGINAS = [
-  { href: "visao_geral.html", ic: "◎", nome: "Visão Geral" },
-  { href: "contas_fixas2.html", ic: "◫", nome: "Contas Fixas" },
-  { href: "transacoes.html", ic: "☰", nome: "Transações" },
-  { href: "categorias.html", ic: "◑", nome: "Categorias" },
-  { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões e Contas" },
-  { href: "investimentos.html", ic: "↗", nome: "Investimentos" },
-  { href: "entradas.html", ic: "↑", nome: "Entradas e Regras" },
-  { href: "planejamento.html", ic: "◇", nome: "Planejamento e Empréstimos" },
+  { href: "visao_geral.html", ic: "painel", nome: "Visão Geral" },
+  { href: "contas_fixas2.html", ic: "calendario", nome: "Contas Fixas" },
+  { href: "transacoes.html", ic: "transacoes", nome: "Transações" },
+  { href: "categorias.html", ic: "categorias", nome: "Categorias" },
+  { href: "cartoes_pluggy.html", ic: "cartao", nome: "Cartões e Contas" },
+  { href: "investimentos.html", ic: "investimentos", nome: "Investimentos" },
+  { href: "entradas.html", ic: "entradas", nome: "Entradas e Regras" },
+  { href: "planejamento.html", ic: "meta", nome: "Planejamento e Empréstimos" },
 ];
 
-/* Ícone da aba = o símbolo da página no menu, em PNG de fundo transparente.
- * Desenhado num canvas e não um arquivo por tela: toda página já chama
- * montarNav, então uma página nova ganha o ícone dela sem ninguém desenhar.
- * 64px para ficar nítido em tela de alta densidade; o navegador reduz. */
-function iconeDaAba(simbolo) {
-  if (!simbolo) return;
-  const lado = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = lado;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  // Mede e desenha com a MESMA linha de base: medir com "middle" e desenhar
-  // com "alphabetic" deixava o símbolo no alto do quadrado.
-  const fonte = px => `600 ${px}px "Segoe UI Symbol", "Segoe UI", "Apple Symbols", sans-serif`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  const medir = px => {
-    ctx.font = fonte(px);
-    const m = ctx.measureText(simbolo);
-    return { esq: m.actualBoundingBoxLeft || 0, dir: m.actualBoundingBoxRight || m.width,
-             topo: m.actualBoundingBoxAscent || px * .7, base: m.actualBoundingBoxDescent || 0 };
-  };
-  // Tamanho pelo desenho real, não pela fonte: "⇋" é largo e "☰" é baixo, e
-  // os dois têm de ocupar o mesmo tanto do quadrado. Alvo: 58 de 64px.
-  const referencia = 100;
-  const r = medir(referencia);
-  const escala = 58 / Math.max(r.esq + r.dir, r.topo + r.base, 1);
-  const m = medir(referencia * escala);
-  ctx.fillStyle = "#8cc0f5";
-  ctx.fillText(simbolo, (lado - (m.esq + m.dir)) / 2 + m.esq, (lado - (m.topo + m.base)) / 2 + m.topo);
+/* Ícone da aba = o ícone da página no menu, o mesmo SVG em azul claro. */
+function iconeDaAba(nome) {
+  const caminho = ICONES[nome];
+  if (!caminho) return;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8cc0f5"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${caminho}</svg>`;
   let link = document.querySelector('link[rel="icon"]');
   if (!link) {
     link = document.createElement("link");
     link.rel = "icon";
     document.head.appendChild(link);
   }
-  link.type = "image/png";
-  link.href = canvas.toDataURL("image/png");
+  link.type = "image/svg+xml";
+  link.href = "data:image/svg+xml," + encodeURIComponent(svg);
 }
 
 function montarNav(atual) {
@@ -536,12 +538,12 @@ function montarNav(atual) {
   const el = document.querySelector(".nav");
   if (!el) return;
   el.innerHTML = `
-    <div class="nav-marca"><span class="selo">◆</span><span>Open Finance</span></div>
+    <div class="nav-marca"><span class="selo">${icone("marca", 13)}</span><span>Open Finance</span></div>
     <div class="nav-secao">Pluggy</div>
     ${PAGINAS.map(p => `
       <a href="${p.href}" class="${p.href === atual ? "ativo" : ""}"
          ${p.href === atual ? 'aria-current="page"' : ""}>
-        <span class="ic">${p.ic}</span><span>${p.nome}</span>
+        <span class="ic">${icone(p.ic)}</span><span>${p.nome}</span>
       </a>`).join("")}
     <div class="nav-rodape">Guilherme</div>`;
 }
@@ -550,16 +552,16 @@ function montarNav(atual) {
  * topo (ex.: Cartões | Contas). A primeira da lista é a que o menu abre. */
 const GRUPOS_TELAS = {
   cartoes: [
-    { href: "cartoes_pluggy.html", ic: "▤", nome: "Cartões" },
-    { href: "contas.html", ic: "⇋", nome: "Contas" },
+    { href: "cartoes_pluggy.html", ic: "cartao", nome: "Cartões" },
+    { href: "contas.html", ic: "banco", nome: "Contas" },
   ],
   planejamento: [
-    { href: "planejamento.html", ic: "◇", nome: "Planejamento" },
-    { href: "emprestimos.html", ic: "⇄", nome: "Empréstimos" },
+    { href: "planejamento.html", ic: "meta", nome: "Planejamento" },
+    { href: "emprestimos.html", ic: "emprestimo", nome: "Empréstimos" },
   ],
   entradas: [
-    { href: "entradas.html", ic: "↑", nome: "Entradas" },
-    { href: "extrato_regras.html", ic: "ϟ", nome: "Regras" },
+    { href: "entradas.html", ic: "entradas", nome: "Entradas" },
+    { href: "extrato_regras.html", ic: "regras", nome: "Regras" },
   ],
 };
 
@@ -578,7 +580,7 @@ function montarAlternador(grupo, atual, alvo = document.getElementById("alternad
     alvo.setAttribute("role", "tablist");
     alvo.innerHTML = telas.map(t => `
       <a href="${t.href}" role="tab" aria-selected="${t.href === atual}" class="${t.href === atual ? "ativo" : ""}">
-        <span class="ic" aria-hidden="true">${t.ic}</span>${esc(t.nome)}</a>`).join("");
+        <span class="ic" aria-hidden="true">${icone(t.ic, 14)}</span>${esc(t.nome)}</a>`).join("");
   }
   return telas[0]?.href || atual;
 }
@@ -700,7 +702,7 @@ function montarOnde(raiz, { obter, mudar, aoAbrir = () => {} }) {
   raiz.innerHTML = `<button type="button" class="pf-campo" aria-expanded="false"></button>
     <div class="pf-lista" hidden>
       <div class="pf-busca"><input type="search" placeholder="Buscar conta ou cartão…" autocomplete="off" aria-label="Buscar conta ou cartão" />
-        <button type="button" class="pf-fechar" data-onde-fechar aria-label="Fechar lista">▴</button></div>
+        <button type="button" class="pf-fechar" data-onde-fechar aria-label="Fechar lista">${icone("fechar_lista", 14)}</button></div>
       <div class="pf-itens tudo"></div>
       <div class="pf-lista-rodape"><span></span><button type="button" data-onde-limpar>Limpar</button></div>
     </div>`;
@@ -807,4 +809,48 @@ setTimeout(() => document.documentElement.classList.remove("primeira-pintura"), 
     el.innerHTML = el.tagName === "TBODY" ? `<tr><td colspan="99">${html}</td></tr>` : html;
     el.setAttribute("aria-busy", "true");
   });
+})();
+
+/* Números que rolam até o valor novo (ex.: trocar de mês). Só o que está
+   marcado com data-contar="chave" e só quando o valor MUDA: abrir a tela não
+   anima nada. Quem pediu para reduzir movimento vê a troca direto. */
+(function contadores() {
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const anteriores = new Map();
+  const RE = /([−-])?\s*R\$\s*([\d.]+,\d{2})/;
+  const numero = s => Number(s.replace(/\./g, "").replace(",", "."));
+  const formatar = v => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function animar(el) {
+    const texto = el.textContent, m = texto.match(RE);
+    if (!m) return;
+    const alvo = numero(m[2]) * (m[1] ? -1 : 1);
+    const chave = el.dataset.contar, de = anteriores.get(chave);
+    anteriores.set(chave, alvo);
+    if (de === undefined || Math.abs(de - alvo) < 0.005) return;
+    const inicio = performance.now(), duracao = 450;
+    el._animando = true;
+    const passo = agora => {
+      const t = Math.min(1, (agora - inicio) / duracao), e = 1 - Math.pow(1 - t, 3);
+      const v = de + (alvo - de) * e;
+      el.textContent = texto.replace(m[0], `${m[1] && t === 1 ? m[1] : (v < 0 ? "−" : (m[1] || ""))}R$ ${formatar(Math.abs(v))}`);
+      if (t < 1) requestAnimationFrame(passo);
+      else { el.textContent = texto; el._ultimo = texto; el._animando = false; }
+    };
+    requestAnimationFrame(passo);
+  }
+
+  let agendado = false;
+  new MutationObserver(() => {
+    if (agendado) return;
+    agendado = true;
+    requestAnimationFrame(() => {
+      agendado = false;
+      document.querySelectorAll("[data-contar]").forEach(el => {
+        if (el._animando || el.textContent === el._ultimo) return;
+        el._ultimo = el.textContent;
+        animar(el);
+      });
+    });
+  }).observe(document.body, { subtree: true, childList: true, characterData: true });
 })();

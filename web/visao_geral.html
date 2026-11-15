@@ -304,7 +304,7 @@ function renderKpis() {
     <article class="vg-kpi" ${c.ir ? `data-ir="${esc(c.ir)}" role="link" tabindex="0"
       title="${esc(c.dica ? c.dica + " · " : "")}Abrir ${esc(c.rot.toLowerCase())} em detalhe"` : ""}>
       <div class="rot">${esc(c.rot)}<span class="ir">↗</span></div>
-      <div class="val ${c.cls || ""}">${c.val}</div><div class="pe">${c.pe}</div></article>`).join("");
+      <div class="val ${c.cls || ""}" data-contar="kpi-${esc(c.rot)}">${c.val}</div><div class="pe">${c.pe}</div></article>`).join("");
 }
 
 /* ------------------------------------------------------------- gráficos */

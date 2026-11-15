@@ -6,11 +6,17 @@ import banco
 import recorrentes as rec
 import pluggy_extrato as px
 import testes_faturas_genericas as fixtures
+import relogio
 
 
 class RecorrentesTests(unittest.TestCase):
     def setUp(self):
         fixtures.FaturasGenericasTests.setUp(self)
+        # "Hoje" é 04/09/2026 em TODOS os módulos que leem a data, não só em
+        # recorrentes: senão os testes quebram a cada virada de mês.
+        import ciclos, extrato_camada, fixas, fixas2, previsao_fatura, recorrencias_gestao
+        relogio.congelar(self, "2026-09-04T12:00:00",
+                         [rec, px, recorrencias_gestao, fixas, fixas2, extrato_camada, previsao_fatura, ciclos])
         p = patch.object(rec, "_mes_atual", return_value="2026-09")
         p.start()
         self.addCleanup(p.stop)
@@ -28,6 +34,15 @@ class RecorrentesTests(unittest.TestCase):
                 (tx, conta, f"2026-{mes:02d}-15", f"2026-{mes:02d}", mes, descricao, valor,
                  1 if parcela else None, parcela, json.dumps({})),
             )
+
+    def previstos(self, mes, conta=None):
+        """Estimativas de recorrência projetadas para o mês (2026)."""
+        with banco.connect() as conn:
+            return [x for x in rec.projetados(conn, 2026)
+                    if x["mes"] == mes and (conta is None or x["contaId"] == conta)]
+
+    def sem_estimativa_na_lista(self, filtros):
+        self.assertFalse(any(x.get("recorrente") for x in px.extrato_payload(filtros)["transacoes"]))
 
     def aceitar(self):
         s = next(s for s in rec.sugestoes_payload()["sugestoes"] if s["lojista"] == "netflix")
@@ -61,10 +76,10 @@ class RecorrentesTests(unittest.TestCase):
         self.assertTrue(apple["faixaValor"])
         rec.salvar_previsao(apple["chave"])
         self.inserir("apple-avulsa-set", 9, "Apple.Com/Bill", 8.9)
-        d = px.extrato_payload({"mesDe":"2026-10", "mesAte":"2026-10"})
-        self.assertEqual(next(t for t in d["transacoes"] if t.get("recorrente"))["valor"], 19.9)
+        self.assertEqual([x["valor"] for x in self.previstos(10)], [19.9])
         self.inserir("apple-real-set", 9, "Apple.Com/Bill", 19.9)
-        self.assertFalse(any(t.get("recorrente") for t in px.extrato_payload({"mesDe":"2026-10", "mesAte":"2026-10"})["transacoes"]))
+        self.assertEqual(self.previstos(10), [])
+        self.sem_estimativa_na_lista({"mesDe": "2026-10", "mesAte": "2026-10"})
 
     def test_duplicidade_e_historico_curto_nao_sao_sugeridos(self):
         self.inserir("netflix-copia", 8, "Netflix.com", 20.9)
@@ -87,8 +102,7 @@ class RecorrentesTests(unittest.TestCase):
         for s in servicos:
             rec.salvar_previsao(s["chave"])
         self.inserir("servico-a-set", 9, "App Store", 20)
-        dados = px.extrato_payload({"mesDe":"2026-10", "mesAte":"2026-10"})
-        self.assertEqual([t["valor"] for t in dados["transacoes"] if t.get("recorrente")], [50])
+        self.assertEqual([x["valor"] for x in self.previstos(10)], [50])
 
     def test_datas_na_virada_nao_sao_gasto_frequente(self):
         for mes in (6,7,8):
@@ -107,26 +121,23 @@ class RecorrentesTests(unittest.TestCase):
         with banco.connect() as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM fixas_contas").fetchone()[0], antes)
         f = {"mesDe": "2026-10", "mesAte": "2026-10"}
-        d = px.extrato_payload(f)
-        extras = [t for t in d["transacoes"] if t.get("recorrente")]
+        extras = self.previstos(10)
         self.assertEqual(len(extras), 1)
         self.assertEqual(extras[0]["valor"], 20.9)
         self.assertIsNone(extras[0]["parcelaTotal"])
-        self.assertEqual(next(m for m in d["evolucaoMensal"] if m["mes"] == "2026-10")["saidas"], d["resumo"]["saidas"])
+        self.sem_estimativa_na_lista(f)
         cartoes = px.cartoes_payload(2026)
         self.assertEqual(cartoes["valores"]["cartao-b"][9], 70.9)
         rec.salvar_previsao(s["chave"], False)
-        self.assertFalse(any(t.get("recorrente") for t in px.extrato_payload(f)["transacoes"]))
+        self.assertEqual(self.previstos(10), [])
         rec.salvar_previsao(s["chave"], True)
-        self.assertTrue(any(t.get("recorrente") for t in px.extrato_payload(f)["transacoes"]))
+        self.assertEqual(len(self.previstos(10)), 1)
 
     def test_real_substitui_previsto_e_atualiza_valor(self):
         self.aceitar()
         self.inserir("netflix-setembro", 9, "NETFLIX ENTRETENIMENTO", 25.9)
-        outubro = px.extrato_payload({"mesDe": "2026-10", "mesAte": "2026-10"})
-        self.assertFalse(any(t.get("recorrente") for t in outubro["transacoes"]))
-        novembro = px.extrato_payload({"mesDe": "2026-11", "mesAte": "2026-11"})
-        self.assertEqual(next(t for t in novembro["transacoes"] if t.get("recorrente"))["valor"], 25.9)
+        self.assertEqual(self.previstos(10), [])
+        self.assertEqual([x["valor"] for x in self.previstos(11)], [25.9])
 
     def test_fixa_posterior_impede_duplicacao(self):
         self.aceitar()
@@ -146,13 +157,10 @@ class RecorrentesTests(unittest.TestCase):
             self.inserir(f"livelo-{mes}", mes, "CLUBE LIVELO", 44.9, conta="conta-b")
         s = next(s for s in rec.sugestoes_payload()["sugestoes"] if s["lojista"] == "livelo")
         rec.salvar_previsao(s["chave"])
-        f = {"mesDe": "2026-10", "mesAte": "2026-10", "cartao": "nenhum"}
-        d = px.extrato_payload(f)
-        self.assertEqual(d["resumo"]["saidas"], 44.9)
-        self.assertEqual(d["transacoes"][0]["contaId"], "conta-b")
-        self.assertEqual(px.extrato_payload({**f, "conta": "conta-b"})["resumo"]["saidas"], 44.9)
-        self.assertEqual(px.extrato_payload({**f, "conta": "conta-a"})["resumo"]["saidas"], 0)
-        self.assertFalse(any(t.get("recorrente") for t in px.extrato_payload({**f, "cartao": "todos"})["transacoes"]))
+        self.assertEqual([x["valor"] for x in self.previstos(10, "conta-b")], [44.9])
+        self.assertEqual(self.previstos(10, "conta-a"), [])
+        self.sem_estimativa_na_lista({"mesDe": "2026-10", "mesAte": "2026-10", "cartao": "nenhum"})
+        self.sem_estimativa_na_lista({"mesDe": "2026-10", "mesAte": "2026-10", "cartao": "todos"})
 
 
 if __name__ == "__main__":

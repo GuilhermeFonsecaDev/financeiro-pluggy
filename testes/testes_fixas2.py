@@ -16,6 +16,7 @@ import extrato_camada as cam
 import fixas
 import fixas2
 import importar_pluggy
+import relogio
 
 FORMAS = [{"id": "pix", "nome": "PIX", "tipo": "pagamento"},
           {"id": "tag:btg", "nome": "BTG", "tipo": "cartao"}]
@@ -47,6 +48,11 @@ def reemb(valor, como="dinheiro"):
 
 
 class Regra(unittest.TestCase):
+    def setUp(self):
+        # Os casos são de outubro/2026 como mês corrente: com o relógio real,
+        # outubro vira "passado" e as contas pendentes mudam de regra.
+        relogio.congelar(self, "2026-10-15T12:00:00", [fixas2, fixas])
+
     def calcular(self, itens, faturas=(), reembolsos=(), mes="2026-10"):
         with mock.patch.object(fixas, "mes_payload", return_value={"itens": itens, "formas": FORMAS}), \
              mock.patch.object(fixas2, "_faturas", return_value=(list(faturas), {"tag:btg": "tag:btg"})), \

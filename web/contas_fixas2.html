@@ -192,7 +192,7 @@
     </div>
     <aside class="v-cartao composicao" aria-labelledby="composicaoTitulo">
       <h2 class="v-tit" id="composicaoTitulo">Composição do mês <span class="composicao-mes" id="compMes"></span></h2>
-      <div class="composicao-saldo" id="compSaldoCard"><span class="v-subtit">Saldo do mês</span><strong class="v-big" id="compSaldo">R$ 0,00</strong></div>
+      <div class="composicao-saldo" id="compSaldoCard"><span class="v-subtit">Saldo do mês</span><strong class="v-big" id="compSaldo" data-contar="saldo">R$ 0,00</strong></div>
       <p class="v-legenda"><span><i style="background:var(--verde)"></i>Receitas <b id="compReceitas">R$ 0,00</b></span><span class="v-sep">·</span><span><i style="background:var(--vermelho)"></i>Despesas <b id="compDespesas">R$ 0,00</b></span></p>
       <div class="composicao-barra" id="compBarra" role="img"><div id="compBarraPreenchimento"></div></div>
       <div class="composicao-percentuais"><span id="compComprometido"></span><span id="compPercentualSaldo"></span></div>
@@ -930,7 +930,7 @@ function renderCardsFaturas() {
         <article class="fatura-card banco" data-card-id="${esc(c.id)}"
                  tabindex="0" role="link" aria-label="Abrir transações de ${esc(c.nome)} em ${esc(labelMes(MES))}">
           <div class="fatura-topo"><span class="fatura-rotulo">${esc(c.nome)}</span><span class="fatura-selos">${info}</span></div>
-          <div class="fatura-valor">${fmtBRL(c.previsto)}</div>
+          <div class="fatura-valor" data-contar="fatura-${esc(c.id)}">${fmtBRL(c.previsto)}</div>
           <div class="fatura-barra"><span style="width:${pct.toFixed(1)}%;background:${c.cor}"></span></div>
           <div class="fatura-linhas"><span>Fatura de ${esc(labelMes(MES))}</span><span>${c.detalhes.length} ${c.detalhes.length === 1 ? "vínculo reconhecido" : "vínculos reconhecidos"}</span></div>
         </article>`;

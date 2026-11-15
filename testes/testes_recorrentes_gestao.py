@@ -38,8 +38,16 @@ class RecorrentesGestaoTests(unittest.TestCase):
     def extrato(self, mes="2026-10", **filtros):
         return px.extrato_payload({"mesDe": mes, "mesAte": mes, **filtros})
 
-    def recorrencias(self, mes="2026-10", **filtros):
-        return [t for t in self.extrato(mes, **filtros)["transacoes"] if t.get("recorrente")]
+    def recorrencias(self, mes="2026-10", conta=None, cartao=None):
+        """Estimativas projetadas no mês. Elas ficam nas faturas previstas e
+        em Contas Fixas, não na lista de transações (regra do usuário)."""
+        ano, numero = int(mes[:4]), int(mes[5:7])
+        alvo = conta or cartao
+        with banco.connect() as conn:
+            subtipos = {r[0]: r[1] for r in conn.execute("SELECT conta_id, subtipo FROM pluggy_contas")}
+            itens = [x for x in rec.projetados(conn, ano)
+                     if x["mes"] == numero and (alvo is None or x["contaId"] == alvo)]
+        return [{**x, "id": f'{x["compraId"]}:{mes}', "contaSubtipo": subtipos.get(x["contaId"])} for x in itens]
 
     def conteudos_importados(self):
         with banco.connect() as conn:
@@ -72,10 +80,11 @@ class RecorrentesGestaoTests(unittest.TestCase):
         self.assertEqual(len({t["id"] for t in primeiras}), 2)
         self.assertEqual([t["id"] for t in primeiras], [t["id"] for t in self.recorrencias()])
         self.assertFalse({t["id"] for t in primeiras} & {t["id"] for t in self.recorrencias("2026-11")})
+        # As duas estimativas somam 41,40 no mês, mas não entram na lista nem
+        # no total de saídas das Transações.
+        self.assertAlmostEqual(sum(x["valor"] for x in self.recorrencias(conta="conta-b")), 41.4)
         completo = self.extrato(conta="conta-b")
-        self.assertAlmostEqual(completo["resumo"]["saidas"], 41.4)
-        outubro = next(m for m in completo["evolucaoMensal"] if m["mes"] == "2026-10")
-        self.assertAlmostEqual(outubro["saidas"], 41.4)
+        self.assertFalse(any(x.get("recorrente") for x in completo["transacoes"]))
 
     def test_manual_no_cartao_entra_na_fatura_e_real_a_substitui(self):
         antes = px.cartoes_payload(2026)["valores"]["cartao-b"][9]

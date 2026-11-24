@@ -113,7 +113,7 @@ function renderAvisoSemVinculo() {
     aviso = document.createElement("span");
     aviso.id = "avisoSemVinculo";
     aviso.className = "estado f2-aviso";
-    el("estado").insertAdjacentElement("afterend", aviso);
+    el("avisosFaturas").appendChild(aviso);
   }
   const pendentes = semVinculo();
   const nomes = pendentes.map(p => p.titulo);

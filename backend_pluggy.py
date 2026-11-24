@@ -115,6 +115,18 @@ def revisao_banco() -> tuple:
     return tuple(partes)
 
 
+
+def _condicoes_da_query(query) -> list | None:
+    """?cond=<json> da prévia do cadastro de conta fixa (lista de condições)."""
+    bruto = (query.get("cond", [""])[0] or "").strip()
+    if not bruto:
+        return None
+    try:
+        lista = json.loads(bruto)
+    except ValueError:
+        return None
+    return lista if isinstance(lista, list) else None
+
 class PluggyHandler(SimpleHTTPRequestHandler):
     server_version = "BackendPluggy/1.0"
 
@@ -364,6 +376,9 @@ class PluggyHandler(SimpleHTTPRequestHandler):
                 self.send_json(extrato_payload(filtros))
             elif path == "/api/extrato":
                 self.send_json(extrato_payload(self.query_extrato(query)))
+            elif path == "/api/extrato/detalhe":
+                import detalhe_transacao
+                self.send_json(detalhe_transacao.payload((query.get("id", [""])[0] or "").strip()))
             elif path == "/api/cartoes-identidade":
                 self.send_json(cartoes_id.payload())
             elif path == "/api/contas-identidade":
@@ -377,7 +392,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             elif path == "/api/fixas/recorrentes":
                 self.send_json(recorrentes.sugestoes_payload())
             elif re.fullmatch(r"/api/fixas/[\w-]+/historico", path):
-                self.send_json(fixas.historico_payload(path.split("/")[3]))
+                self.send_json(fixas.historico_payload(
+                    path.split("/")[3], int((query.get("meses", ["0"])[0] or "0") or 0)))
             elif path == "/api/fixas2":
                 self.send_json(fixas2.payload(self.query_mes(query)))
             elif path == "/api/fixas":
@@ -385,7 +401,8 @@ class PluggyHandler(SimpleHTTPRequestHandler):
             elif path == "/api/fixas/candidatas":
                 self.send_json(fixas.candidatas_payload(
                     self.query_mes(query), (query.get("q", [""])[0] or "").strip(),
-                    como_regra=(query.get("regra", [""])[0] or "") == "1"))
+                    como_regra=(query.get("regra", [""])[0] or "") == "1",
+                    condicoes=_condicoes_da_query(query)))
             elif path == "/api/contas":
                 # Fora do polling de /api/pluggy-status: o resumo por banco é
                 # pedido ao abrir a tela e ao fim de cada sincronização.

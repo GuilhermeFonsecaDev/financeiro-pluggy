@@ -1021,6 +1021,7 @@ def projetados(conn, ano):
     if not linhas:
         return []
     conn.create_function("norm", 1, cam.normalizar, deterministic=True)
+    import condicoes as _cond; _cond.registrar(conn)
     cam.garantir_camada(conn)
     px.garantir_extrato_materializado(conn)
     ativas = px.contas_ativas(conn)

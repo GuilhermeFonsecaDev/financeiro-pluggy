@@ -26,6 +26,7 @@ from datetime import date
 from functools import lru_cache
 
 import banco as fin
+import condicoes as cond
 import ciclos
 
 CATEGORIA_PADRAO = "outros"
@@ -52,6 +53,7 @@ def conectar() -> sqlite3.Connection:
     """Conexao do projeto + a funcao norm() usada pela view extrato_efetivo."""
     conn = fin.connect()
     conn.create_function("norm", 1, normalizar, deterministic=True)
+    cond.registrar(conn)
     return conn
 
 
@@ -389,16 +391,15 @@ _FAIXA_VALOR = """
   AND (r.valor_min IS NULL OR ABS(COALESCE(a.valor_manual, t.valor)) >= r.valor_min)
   AND (r.valor_max IS NULL OR ABS(COALESCE(a.valor_manual, t.valor)) <= r.valor_max)
 """
+# As condições da regra (termo, operador, ligação E/OU) viram um JSON e quem
+# decide é condicoes.casa -- ver backend/condicoes.py. Termo sem operador
+# próprio usa o da regra; regras antigas ficam todas ligadas por OU.
+CONDICOES_REGRA = (
+    "(SELECT json_group_array(json_array(rt.termo, rt.operador, rt.ligacao) ORDER BY rt.ordem) "
+    "   FROM extrato_regra_termos rt WHERE rt.regra_id = r.id)"
+)
 _TERMO_CASA_ORIGINAL = f"""
-  EXISTS (
-    SELECT 1 FROM extrato_regra_termos rt
-     WHERE rt.regra_id = r.id AND
-       CASE r.operador
-         WHEN 'igual'      THEN {_CAMPO_ORIGINAL} = norm(rt.termo)
-         WHEN 'comeca_com' THEN {_CAMPO_ORIGINAL} LIKE norm(rt.termo) || '%'
-         ELSE                   {_CAMPO_ORIGINAL} LIKE '%' || norm(rt.termo) || '%'
-       END
-  )
+  casa_cond(r.operador, (SELECT json_group_array(json_array(rt.termo, rt.operador, rt.ligacao) ORDER BY rt.ordem) FROM extrato_regra_termos rt WHERE rt.regra_id = r.id), {_CAMPO_ORIGINAL}) = 1
 """
 _CASA_RENOMEAR = f"""
   r.ativo = 1 AND {_TERMO_CASA_ORIGINAL}{_FAIXA_VALOR}
@@ -424,15 +425,7 @@ _CAMPO = (
     "             ELSE norm(de.valor) END"
 )
 _TERMO_CASA_EFETIVO = f"""
-  EXISTS (
-    SELECT 1 FROM extrato_regra_termos rt
-     WHERE rt.regra_id = r.id AND
-       CASE r.operador
-         WHEN 'igual'      THEN {_CAMPO} = norm(rt.termo)
-         WHEN 'comeca_com' THEN {_CAMPO} LIKE norm(rt.termo) || '%'
-         ELSE                   {_CAMPO} LIKE '%' || norm(rt.termo) || '%'
-       END
-  )
+  casa_cond(r.operador, (SELECT json_group_array(json_array(rt.termo, rt.operador, rt.ligacao) ORDER BY rt.ordem) FROM extrato_regra_termos rt WHERE rt.regra_id = r.id), {_CAMPO}) = 1
 """
 _CASA = f"""
   r.ativo = 1 AND (
@@ -444,6 +437,10 @@ _CASA = f"""
   ){_FAIXA_VALOR}
 """
 
+# Regra de entrada antiga tem só o termo; a nova guarda a lista em JSON.
+CONDICOES_ENTRADA = "COALESCE(e.condicoes, json_array(json_array(e.termo, '', 'OU')))"
+
+
 def entrada_casa(descricao: str, data: str) -> str:
     """Condicao SQL de uma regra de entrada casar com um lancamento.
 
@@ -454,13 +451,7 @@ def entrada_casa(descricao: str, data: str) -> str:
     a mesma regra escrita de dois jeitos que possam divergir.
     """
     return f"""
-  e.ativo = 1 AND (
-    CASE e.operador
-      WHEN 'igual'      THEN norm({descricao}) = norm(e.termo)
-      WHEN 'comeca_com' THEN norm({descricao}) LIKE norm(e.termo) || '%'
-      ELSE                   norm({descricao}) LIKE '%' || norm(e.termo) || '%'
-    END
-  ) AND CAST(SUBSTR({data}, 9, 2) AS INTEGER)
+  e.ativo = 1 AND casa_cond(e.operador, COALESCE(e.condicoes, json_array(json_array(e.termo, '', 'OU'))), {descricao}) = 1 AND CAST(SUBSTR({data}, 9, 2) AS INTEGER)
         BETWEEN e.dia_inicio AND e.dia_fim
 """
 
@@ -702,11 +693,11 @@ def _calcular_assinatura_extrato(conn: sqlite3.Connection) -> str:
         # tocar mais nada deixava o cache achando que nada mudou, e a
         # descricao renomeada antiga ficava presa ate outra coisa invalidar
         # por acaso.
-        "SELECT regra_id, ordem, termo FROM extrato_regra_termos "
+        "SELECT regra_id, ordem, termo, operador, ligacao FROM extrato_regra_termos "
         "ORDER BY regra_id, ordem",
         "SELECT categoria_original, categoria_id FROM extrato_mapeamento_categorias "
         "ORDER BY categoria_original",
-        "SELECT id, operador, termo, ativo, dia_inicio, dia_fim, deslocamento_meses "
+        "SELECT id, operador, termo, ativo, dia_inicio, dia_fim, deslocamento_meses, condicoes "
         "FROM extrato_regras_entradas ORDER BY id",
         # A competencia de fatura sai do ciclo do cartao, que nasce dos
         # fechamentos informados pelo banco. Sem estas duas consultas aqui, a
@@ -747,7 +738,8 @@ def _herdar_ajustes_parcelas(conn: sqlite3.Connection) -> None:
     grupos: dict[tuple, dict[str, list]] = {}
     for l in conn.execute(
         "SELECT t.transacao_id, t.conta_id, t.parcela_total, t.descricao, t.data, "
-        "       a.transacao_id AS ajustada, a.categoria_id_manual, a.calculo_override, a.atualizado_em "
+        "       a.transacao_id AS ajustada, a.categoria_id_manual, a.calculo_override, a.atualizado_em, "
+        "       a.descricao_manual, a.tipo_manual, a.conta_id_manual "
         "FROM pluggy_transacoes t LEFT JOIN extrato_ajustes a ON a.transacao_id = t.transacao_id "
         "WHERE t.parcela_total > 1"
     ):
@@ -755,7 +747,8 @@ def _herdar_ajustes_parcelas(conn: sqlite3.Connection) -> None:
                               {"fonte": [], "sem": []})
         if l["ajustada"] is None:
             g["sem"].append(l)
-        elif l["categoria_id_manual"] is not None or l["calculo_override"] is not None:
+        elif any(l[c] is not None for c in ("categoria_id_manual", "calculo_override",
+                                             "descricao_manual", "tipo_manual", "conta_id_manual")):
             g["fonte"].append(l)
     agora = datetime.now().isoformat(timespec="seconds")
     novos = []
@@ -766,12 +759,14 @@ def _herdar_ajustes_parcelas(conn: sqlite3.Connection) -> None:
         # Só a parcela com data DEPOIS da edição (ainda era futura quando a
         # pessoa editou). As anteriores ficaram como estavam de propósito, ou
         # são histórico antigo, e não mudam.
-        novos += [(l["transacao_id"], fonte["categoria_id_manual"], fonte["calculo_override"], agora)
+        novos += [(l["transacao_id"], fonte["categoria_id_manual"], fonte["calculo_override"],
+                   fonte["descricao_manual"], fonte["tipo_manual"], fonte["conta_id_manual"], agora)
                   for l in g["sem"] if str(l["data"] or "")[:10] > str(fonte["atualizado_em"] or "")[:10]]
     if novos:
         conn.executemany(
             "INSERT OR IGNORE INTO extrato_ajustes (transacao_id, categoria_id_manual, "
-            "calculo_override, atualizado_em) VALUES (?, ?, ?, ?)", novos)
+            "calculo_override, descricao_manual, tipo_manual, conta_id_manual, atualizado_em) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", novos)
         conn.commit()
 
 
@@ -910,7 +905,9 @@ def _validar_categoria(dados: dict, conn: sqlite3.Connection,
     # So subcategoria tem emoji. Categoria (sem pai) vira sempre o quadrado
     # colorido -- reforcado aqui pra valer mesmo se algum cliente antigo ainda
     # mandar emoji num payload de categoria-pai.
-    if not pai_id:
+    # Ícone ("ic:nome", ver app.js) vale também para a categoria pai; emoji
+    # antigo continua só em subcategoria.
+    if not pai_id and not emoji.startswith("ic:"):
         emoji = ""
     if pai_id:
         if pai_id == id_atual:
@@ -1023,24 +1020,9 @@ def regras_payload() -> dict:
                    (SELECT COUNT(*) FROM pluggy_transacoes t
                      LEFT JOIN extrato_ajustes a
                        ON a.transacao_id = t.transacao_id
-                     WHERE EXISTS (
-                               SELECT 1 FROM extrato_regra_termos rt
-                                WHERE rt.regra_id = r.id AND
-                                  CASE r.operador
-                                    WHEN 'igual' THEN
-                                      (CASE r.campo WHEN 'categoria_original'
-                                         THEN norm(t.categoria) ELSE norm(t.descricao) END)
-                                      = norm(rt.termo)
-                                    WHEN 'comeca_com' THEN
-                                      (CASE r.campo WHEN 'categoria_original'
-                                         THEN norm(t.categoria) ELSE norm(t.descricao) END)
-                                      LIKE norm(rt.termo) || '%'
-                                    ELSE
-                                      (CASE r.campo WHEN 'categoria_original'
-                                         THEN norm(t.categoria) ELSE norm(t.descricao) END)
-                                      LIKE '%' || norm(rt.termo) || '%'
-                                  END
-                             )
+                     WHERE casa_cond(r.operador, (SELECT json_group_array(json_array(rt.termo, rt.operador, rt.ligacao) ORDER BY rt.ordem) FROM extrato_regra_termos rt WHERE rt.regra_id = r.id),
+                             CASE r.campo WHEN 'categoria_original'
+                               THEN t.categoria ELSE t.descricao END) = 1
                        AND (r.valor_min IS NULL OR
                             ABS(COALESCE(a.valor_manual, t.valor)) >= r.valor_min)
                        AND (r.valor_max IS NULL OR
@@ -1052,10 +1034,16 @@ def regras_payload() -> dict:
             """
         ))
         termos_por_regra: dict[str, list[str]] = {}
+        condicoes_por_regra: dict[str, list[dict]] = {}
+        operador_regra = {l["id"]: l["operador"] for l in linhas}
         for termo in conn.execute(
-            "SELECT regra_id, termo FROM extrato_regra_termos ORDER BY regra_id, ordem"
+            "SELECT regra_id, termo, operador, ligacao FROM extrato_regra_termos ORDER BY regra_id, ordem"
         ):
             termos_por_regra.setdefault(termo["regra_id"], []).append(termo["termo"])
+            condicoes_por_regra.setdefault(termo["regra_id"], []).append({
+                "termo": termo["termo"],
+                "operador": termo["operador"] or operador_regra.get(termo["regra_id"]) or "contem",
+                "ligacao": termo["ligacao"] or "OU"})
         return {
             "regras": [
                 {
@@ -1065,6 +1053,8 @@ def regras_payload() -> dict:
                     "operador": l["operador"],
                     "termo": l["termo"],
                     "termos": termos_por_regra.get(l["id"], [l["termo"]]),
+                    "condicoes": condicoes_por_regra.get(l["id"]) or [
+                        {"termo": l["termo"], "operador": l["operador"], "ligacao": "OU"}],
                     "valorMin": l["valor_min"],
                     "valorMax": l["valor_max"],
                     "categoriaId": l["categoria_id"],
@@ -1098,7 +1088,8 @@ def regras_payload() -> dict:
             ],
             "entradas": [
                 {"id": e["id"], "nome": e["nome"], "operador": e["operador"],
-                 "termo": e["termo"], "diaInicio": e["dia_inicio"],
+                 "termo": e["termo"], "condicoes": _condicoes_entrada(e),
+                 "diaInicio": e["dia_inicio"],
                  "diaFim": e["dia_fim"], "deslocamentoMeses": e["deslocamento_meses"],
                  "ativo": bool(e["ativo"])}
                 for e in conn.execute(
@@ -1121,14 +1112,14 @@ def previa_regra(dados: dict, limite: int = 8) -> dict:
     Casa como a view casa a renomeacao (descricao manual ou original), e mostra
     o antes (como a transacao esta hoje) e o depois (o que a regra poria).
     """
-    recebidos = dados.get("termos")
-    if not isinstance(recebidos, list):
-        recebidos = [dados.get("termo")]
-    termos = [normalizar(t) for t in recebidos if str(t or "").strip()]
-    if not termos:
-        return {"total": 0, "amostra": []}
     campo = dados.get("campo") if dados.get("campo") in CAMPOS_VALIDOS else "descricao"
     operador = dados.get("operador") if dados.get("operador") in OPERADORES_VALIDOS else "contem"
+    try:
+        condicoes = cond.limpar(_condicoes_recebidas(dados), operador)
+    except ValueError:
+        condicoes = []
+    if not condicoes:
+        return {"total": 0, "amostra": []}
 
     def numero(chave: str) -> float | None:
         bruto = str(dados.get(chave) if dados.get(chave) is not None else "").strip()
@@ -1145,12 +1136,7 @@ def previa_regra(dados: dict, limite: int = 8) -> dict:
     minimo, maximo = numero("valorMin"), numero("valorMax")
 
     def casa(texto: str) -> bool:
-        alvo = normalizar(texto)
-        if operador == "igual":
-            return any(alvo == t for t in termos)
-        if operador == "comeca_com":
-            return any(alvo.startswith(t) for t in termos)
-        return any(t in alvo for t in termos)
+        return cond.casa(texto, condicoes, operador)
 
     with _abrir() as conn:
         categorias = {c["id"]: c for c in conn.execute(
@@ -1198,28 +1184,18 @@ def previa_regra(dados: dict, limite: int = 8) -> dict:
 
 
 def _validar_regra(dados: dict) -> dict:
-    recebidos = dados.get("termos")
-    if not isinstance(recebidos, list):
-        recebidos = [dados.get("termo")]
-    termos: list[str] = []
-    termos_normalizados: set[str] = set()
-    for recebido in recebidos:
-        termo_atual = str(recebido or "").strip()[:240]
-        chave = normalizar(termo_atual)
-        if termo_atual and chave not in termos_normalizados:
-            termos.append(termo_atual)
-            termos_normalizados.add(chave)
-    if not termos:
+    operador = str(dados.get("operador") or "contem")
+    if operador not in OPERADORES_VALIDOS:
+        raise ValueError(f"Operador inválido: {operador}")
+    condicoes = cond.limpar(_condicoes_recebidas(dados), operador)
+    if not condicoes:
         raise ValueError("Informe pelo menos um termo a procurar.")
-    termo = termos[0]
+    termos = [c["termo"] for c in condicoes]
+    termo = next(c["termo"] for c in condicoes if c["operador"] != "nao_contem")
 
     campo = str(dados.get("campo") or "descricao")
     if campo not in CAMPOS_VALIDOS:
         raise ValueError(f"Campo inválido: {campo}")
-
-    operador = str(dados.get("operador") or "contem")
-    if operador not in OPERADORES_VALIDOS:
-        raise ValueError(f"Operador inválido: {operador}")
 
     categoria_id = dados.get("categoriaId") or None
     descricao_nova = str(dados.get("descricaoNova") or "").strip()[:240] or None
@@ -1261,6 +1237,7 @@ def _validar_regra(dados: dict) -> dict:
         "operador": operador,
         "termo": termo,
         "termos": termos,
+        "condicoes": condicoes,
         "valor_min": valor_min,
         "valor_max": valor_max,
         "categoria_id": categoria_id,
@@ -1293,7 +1270,7 @@ def criar_regra(dados: dict) -> dict:
              r["prioridade"], r["ativo"],
              datetime.now().isoformat(timespec="seconds")),
         )
-        _substituir_termos_regra(conn, novo_id, r["termos"])
+        _substituir_termos_regra(conn, novo_id, r["condicoes"])
         conn.commit()
     return {"ok": True, "id": novo_id}
 
@@ -1322,7 +1299,7 @@ def atualizar_regra(regra_id: str, dados: dict) -> dict:
              r["descricao_nova"], r["ignorar_calculos"], r["prioridade"],
              r["ativo"], regra_id),
         )
-        _substituir_termos_regra(conn, regra_id, r["termos"])
+        _substituir_termos_regra(conn, regra_id, r["condicoes"])
         conn.commit()
     return {"ok": True, "id": regra_id}
 
@@ -1347,12 +1324,13 @@ def remover_regra(regra_id: str) -> dict:
 # --------------------------------------------------------------------------
 
 def _validar_regra_entrada(dados: dict) -> dict:
-    termo = str(dados.get("termo") or "").strip()
-    if not termo:
-        raise ValueError("Informe o termo a procurar na descrição.")
     operador = str(dados.get("operador") or "contem")
     if operador not in OPERADORES_VALIDOS:
         raise ValueError(f"Operador inválido: {operador}")
+    condicoes = cond.limpar(_condicoes_recebidas(dados), operador)
+    if not condicoes:
+        raise ValueError("Informe o termo a procurar na descrição.")
+    termo = next(c["termo"] for c in condicoes if c["operador"] != "nao_contem")
     nome = str(dados.get("nome") or termo).strip()[:120]
     try:
         dia_inicio = int(dados.get("diaInicio", 1))
@@ -1368,6 +1346,9 @@ def _validar_regra_entrada(dados: dict) -> dict:
         "nome": nome,
         "operador": operador,
         "termo": termo,
+        # Um termo só com o operador da regra é o formato antigo: fica sem JSON.
+        "condicoes": None if len(condicoes) == 1 and condicoes[0]["operador"] == operador
+                     else _json_condicoes(condicoes),
         "dia_inicio": dia_inicio,
         "dia_fim": dia_fim,
         "deslocamento_meses": deslocamento,
@@ -1376,13 +1357,41 @@ def _validar_regra_entrada(dados: dict) -> dict:
 
 
 def _substituir_termos_regra(
-    conn: sqlite3.Connection, regra_id: str, termos: list[str]
+    conn: sqlite3.Connection, regra_id: str, condicoes: list
 ) -> None:
     conn.execute("DELETE FROM extrato_regra_termos WHERE regra_id = ?", (regra_id,))
+    linhas = [c if isinstance(c, dict) else {"termo": c} for c in condicoes]
     conn.executemany(
-        "INSERT INTO extrato_regra_termos (regra_id, ordem, termo) VALUES (?, ?, ?)",
-        [(regra_id, ordem, termo) for ordem, termo in enumerate(termos)],
+        "INSERT INTO extrato_regra_termos (regra_id, ordem, termo, operador, ligacao) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(regra_id, ordem, c["termo"], c.get("operador") or "", c.get("ligacao") or "OU")
+         for ordem, c in enumerate(linhas)],
     )
+
+
+def _condicoes_recebidas(dados: dict) -> list:
+    """Aceita o formato novo (condicoes) e os antigos (termos / termo)."""
+    if isinstance(dados.get("condicoes"), list):
+        return dados["condicoes"]
+    if isinstance(dados.get("termos"), list):
+        return [{"termo": t} for t in dados["termos"]]
+    return [{"termo": dados.get("termo")}]
+
+
+def _condicoes_entrada(e) -> list[dict]:
+    import json
+    try:
+        lista = json.loads(e["condicoes"]) if e["condicoes"] else None
+    except (TypeError, ValueError, IndexError, KeyError):
+        lista = None
+    if lista:
+        return [{"termo": x[0], "operador": x[1] or e["operador"], "ligacao": x[2] or "OU"} for x in lista]
+    return [{"termo": e["termo"], "operador": e["operador"], "ligacao": "OU"}]
+
+
+def _json_condicoes(condicoes: list[dict]) -> str:
+    import json
+    return json.dumps([[c["termo"], c["operador"], c["ligacao"]] for c in condicoes], ensure_ascii=False)
 
 
 # Um valor só, sem escopo por mês ou ano: é "quanto eu espero receber por
@@ -1549,7 +1558,7 @@ def entradas_payload(mes: str) -> dict:
                 "id": l["id"],
                 "nome": l["nome"],
                 "operador": l["operador"],
-                "termo": l["termo"],
+                "termo": l["termo"], "condicoes": _condicoes_entrada(l),
                 "diaInicio": l["dia_inicio"],
                 "diaFim": l["dia_fim"],
                 "deslocamentoMeses": l["deslocamento_meses"],
@@ -1567,11 +1576,7 @@ def entradas_payload(mes: str) -> dict:
                                            WHERE x.transacao_id = t.transacao_id)
                            AND CAST(SUBSTR(t.data, 9, 2) AS INTEGER)
                                BETWEEN e.dia_inicio AND e.dia_fim AND (
-                           CASE e.operador
-                             WHEN 'igual' THEN norm(t.descricao) = norm(e.termo)
-                             WHEN 'comeca_com' THEN norm(t.descricao) LIKE norm(e.termo) || '%'
-                             ELSE norm(t.descricao) LIKE '%' || norm(e.termo) || '%'
-                           END
+                           casa_cond(e.operador, COALESCE(e.condicoes, json_array(json_array(e.termo, '', 'OU'))), t.descricao) = 1
                          )) AS afetadas,
                        (SELECT COUNT(*) FROM extrato_efetivo_cache t
                          WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
@@ -1581,11 +1586,7 @@ def entradas_payload(mes: str) -> dict:
                                PRINTF('%+d month', e.deslocamento_meses))) = ?
                            AND CAST(SUBSTR(t.data, 9, 2) AS INTEGER)
                                BETWEEN e.dia_inicio AND e.dia_fim AND (
-                           CASE e.operador
-                             WHEN 'igual' THEN norm(t.descricao) = norm(e.termo)
-                             WHEN 'comeca_com' THEN norm(t.descricao) LIKE norm(e.termo) || '%'
-                             ELSE norm(t.descricao) LIKE '%' || norm(e.termo) || '%'
-                           END
+                           casa_cond(e.operador, COALESCE(e.condicoes, json_array(json_array(e.termo, '', 'OU'))), t.descricao) = 1
                          )) AS afetadas_mes,
                        (SELECT COALESCE(SUM(ABS(t.valor)), 0) FROM extrato_efetivo_cache t
                          WHERE t.tipo = 'CREDIT' AND conta_ativa(t.conta_id) = 1
@@ -1595,11 +1596,7 @@ def entradas_payload(mes: str) -> dict:
                                PRINTF('%+d month', e.deslocamento_meses))) = ?
                            AND CAST(SUBSTR(t.data, 9, 2) AS INTEGER)
                                BETWEEN e.dia_inicio AND e.dia_fim AND (
-                           CASE e.operador
-                             WHEN 'igual' THEN norm(t.descricao) = norm(e.termo)
-                             WHEN 'comeca_com' THEN norm(t.descricao) LIKE norm(e.termo) || '%'
-                             ELSE norm(t.descricao) LIKE '%' || norm(e.termo) || '%'
-                           END
+                           casa_cond(e.operador, COALESCE(e.condicoes, json_array(json_array(e.termo, '', 'OU'))), t.descricao) = 1
                          )) AS total_mes
                 FROM extrato_regras_entradas e
                 ORDER BY e.criado_em, e.id
@@ -1852,10 +1849,13 @@ def _janela_do_grafico(fim: str) -> dict:
 
 def previa_regra_entrada(dados: dict, limite: int = 8) -> dict:
     """Quais creditos uma regra de entrada ainda nao salva pegaria, sem gravar."""
-    termo = normalizar(str(dados.get("termo") or "").strip())
-    if not termo:
-        return {"total": 0, "valor": 0, "amostra": []}
     operador = dados.get("operador") if dados.get("operador") in OPERADORES_VALIDOS else "contem"
+    try:
+        condicoes = cond.limpar(_condicoes_recebidas(dados), operador)
+    except ValueError:
+        condicoes = []
+    if not condicoes:
+        return {"total": 0, "valor": 0, "amostra": []}
     try:
         inicio = max(1, min(31, int(dados.get("diaInicio") or 1)))
         fim = max(inicio, min(31, int(dados.get("diaFim") or 31)))
@@ -1875,9 +1875,7 @@ def previa_regra_entrada(dados: dict, limite: int = 8) -> dict:
             " ORDER BY t.data DESC, t.transacao_id").fetchall()
     total, soma, amostra = 0, 0.0, []
     for l in linhas:
-        alvo = normalizar(l["descricao"])
-        casou = (alvo == termo if operador == "igual"
-                 else alvo.startswith(termo) if operador == "comeca_com" else termo in alvo)
+        casou = cond.casa(l["descricao"], condicoes, operador)
         if not casou or not (inicio <= int(l["data"][8:10]) <= fim):
             continue
         total += 1
@@ -1925,9 +1923,9 @@ def criar_regra_entrada(dados: dict) -> dict:
     with _abrir() as conn:
         conn.execute(
             "INSERT INTO extrato_regras_entradas "
-            "(id, nome, operador, termo, dia_inicio, dia_fim, deslocamento_meses, ativo, criado_em) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (regra_id, regra["nome"], regra["operador"], regra["termo"],
+            "(id, nome, operador, termo, condicoes, dia_inicio, dia_fim, deslocamento_meses, ativo, criado_em) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (regra_id, regra["nome"], regra["operador"], regra["termo"], regra["condicoes"],
              regra["dia_inicio"], regra["dia_fim"], regra["deslocamento_meses"],
              regra["ativo"], datetime.now().isoformat(timespec="seconds")),
         )
@@ -1943,9 +1941,9 @@ def atualizar_regra_entrada(regra_id: str, dados: dict) -> dict:
         ).fetchone():
             raise ValueError("Regra de entrada não encontrada.")
         conn.execute(
-            "UPDATE extrato_regras_entradas SET nome = ?, operador = ?, termo = ?, "
+            "UPDATE extrato_regras_entradas SET nome = ?, operador = ?, termo = ?, condicoes = ?, "
             "dia_inicio = ?, dia_fim = ?, deslocamento_meses = ?, ativo = ? WHERE id = ?",
-            (regra["nome"], regra["operador"], regra["termo"],
+            (regra["nome"], regra["operador"], regra["termo"], regra["condicoes"],
              regra["dia_inicio"], regra["dia_fim"], regra["deslocamento_meses"], regra["ativo"],
              regra_id),
         )
@@ -1986,6 +1984,32 @@ def _parcelas_irmas(conn: sqlite3.Connection, original: sqlite3.Row) -> list[str
         (original["conta_id"], total, original["transacao_id"]),
     ).fetchall()
     return [l["transacao_id"] for l in linhas if base(l["descricao"]) == alvo]
+
+
+_COLUNAS_AJUSTE = ("categoria_id_manual", "calculo_override", "data_manual", "descricao_manual",
+                   "valor_manual", "tipo_manual", "status_manual", "conta_id_manual",
+                   "parcela_numero_manual", "parcela_total_manual")
+
+
+def _aplicar_ajuste(conn: sqlite3.Connection, transacao_id: str, campos: dict) -> None:
+    """Grava só as colunas de `campos` no ajuste da transação, preservando as
+    outras. Ajuste que fica todo vazio é apagado (a transação volta à original)."""
+    from datetime import datetime
+
+    existente = conn.execute(
+        "SELECT * FROM extrato_ajustes WHERE transacao_id = ?", (transacao_id,)).fetchone()
+    valores = {col: (existente[col] if existente else None) for col in _COLUNAS_AJUSTE}
+    valores.update(campos)
+    if all(v is None for v in valores.values()):
+        conn.execute("DELETE FROM extrato_ajustes WHERE transacao_id = ?", (transacao_id,))
+        return
+    colunas = ", ".join(_COLUNAS_AJUSTE)
+    conn.execute(
+        f"INSERT INTO extrato_ajustes (transacao_id, {colunas}, atualizado_em) "
+        f"VALUES ({', '.join('?' for _ in range(len(_COLUNAS_AJUSTE) + 2))}) "
+        "ON CONFLICT(transacao_id) DO UPDATE SET "
+        + ", ".join(f"{c} = excluded.{c}" for c in _COLUNAS_AJUSTE) + ", atualizado_em = excluded.atualizado_em",
+        (transacao_id, *[valores[c] for c in _COLUNAS_AJUSTE], datetime.now().isoformat(timespec="seconds")))
 
 
 def _definir_categoria_manual(conn: sqlite3.Connection, transacao_id: str,
@@ -2037,8 +2061,9 @@ def ajustar_transacao(transacao_id: str, dados: dict) -> dict:
             raise ValueError("Transação não encontrada.")
 
         if dados.get("restaurarTudo"):
-            conn.execute("DELETE FROM extrato_ajustes WHERE transacao_id = ?",
-                         (transacao_id,))
+            # Restaurar desfaz a edição da compra: vale para todas as parcelas.
+            for tid in [transacao_id, *_parcelas_irmas(conn, original)]:
+                conn.execute("DELETE FROM extrato_ajustes WHERE transacao_id = ?", (tid,))
             conn.commit()
             return {"ok": True, "id": transacao_id, "restaurada": True}
 
@@ -2141,21 +2166,35 @@ def ajustar_transacao(transacao_id: str, dados: dict) -> dict:
                  datetime.now().isoformat(timespec="seconds")),
             )
 
-        # Parcelamento: a mesma compra virou uma transação por mês, e mudar a
-        # categoria de uma sem mudar as outras deixava o gasto espalhado em
-        # categorias diferentes só por acaso de qual parcela foi revisada. Só
-        # dispara quando o pedido é exclusivamente a categoria -- o popover
-        # rápido do chip manda só isso; a edição completa manda o formulário
-        # inteiro, e ali valor/data de uma parcela não deve arrastar as outras.
+        # Parcelamento: a mesma compra virou uma transação por mês. Toda edição
+        # que é da COMPRA (categoria, nome, fora dos cálculos, tipo, conta e o
+        # valor da parcela) vai para as irmãs; data, situação e número da
+        # parcela são de cada uma e ficam. Só propaga o que mudou nesta edição
+        # (o chip rápido manda só a categoria, e ela vai sempre).
+        novos = {
+            "categoria_id_manual": categoria_id, "calculo_override": override,
+            "descricao_manual": descricao_manual, "tipo_manual": tipo_manual,
+            "conta_id_manual": conta_id_manual, "valor_manual": valor_manual,
+        }
+        if set(dados.keys()) == {"categoriaId"}:
+            mudou = {"categoria_id_manual": categoria_id}
+        else:
+            mudou = {col: v for col, v in novos.items()
+                     if (existente[col] if existente else None) != v}
         irmas_atualizadas = 0
-        # Na edição completa, só a categoria acompanha as irmãs, e só quando
-        # ela de fato mudou (valor, data e descrição continuam desta parcela).
-        mudou_categoria = "categoriaId" in dados and (
-            (existente["categoria_id_manual"] if existente else None) != categoria_id)
-        if set(dados.keys()) == {"categoriaId"} or mudou_categoria:
+        if mudou:
             for irma_id in _parcelas_irmas(conn, original):
-                _definir_categoria_manual(conn, irma_id, categoria_id)
-                irmas_atualizadas += 1
+                campos = dict(mudou)
+                # Valor só vai para a parcela de mesmo valor original (a
+                # primeira às vezes difere por arredondamento).
+                if "valor_manual" in campos:
+                    valor_irma = conn.execute("SELECT valor FROM pluggy_transacoes WHERE transacao_id = ?",
+                                              (irma_id,)).fetchone()
+                    if not valor_irma or abs(abs(float(valor_irma[0] or 0)) - abs(float(original["valor"] or 0))) > 0.005:
+                        campos.pop("valor_manual")
+                if campos:
+                    _aplicar_ajuste(conn, irma_id, campos)
+                    irmas_atualizadas += 1
 
         conn.commit()
 
@@ -2257,8 +2296,21 @@ def _aplicar_camada(conn: sqlite3.Connection) -> None:
         ("dia_inicio", "ALTER TABLE extrato_regras_entradas ADD COLUMN dia_inicio INTEGER NOT NULL DEFAULT 1"),
         ("dia_fim", "ALTER TABLE extrato_regras_entradas ADD COLUMN dia_fim INTEGER NOT NULL DEFAULT 31"),
         ("deslocamento_meses", "ALTER TABLE extrato_regras_entradas ADD COLUMN deslocamento_meses INTEGER NOT NULL DEFAULT 0"),
+        ("condicoes", "ALTER TABLE extrato_regras_entradas ADD COLUMN condicoes TEXT"),
     ):
         if coluna not in colunas_entradas:
+            conn.execute(ddl)
+
+    # Condições E/OU: operador próprio de cada termo ('' = o da regra) e a
+    # ligação com o termo anterior. O padrão OU mantém as regras antigas.
+    colunas_termos = {
+        l["name"] for l in conn.execute("PRAGMA table_info(extrato_regra_termos)")
+    }
+    for coluna, ddl in (
+        ("operador", "ALTER TABLE extrato_regra_termos ADD COLUMN operador TEXT NOT NULL DEFAULT ''"),
+        ("ligacao", "ALTER TABLE extrato_regra_termos ADD COLUMN ligacao TEXT NOT NULL DEFAULT 'OU'"),
+    ):
+        if coluna not in colunas_termos:
             conn.execute(ddl)
 
     agora = datetime.now().isoformat(timespec="seconds")

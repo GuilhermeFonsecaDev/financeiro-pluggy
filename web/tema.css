@@ -773,3 +773,94 @@ html.primeira-pintura .v-bl > .v-f { transform-origin: left center; animation: m
 .pf-item.sel.excluir::after {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
           mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E"); }
+
+/* Ícone e inicial das categorias (app.js, simboloCategoria). */
+.cat-svg { display:block; flex:none; }
+.cat-inicial { font-weight:700; line-height:1; }
+
+/* ------------------------------------------------------------ escala */
+/* Em telas largas, a interface inteira cresce junto (textos, ícones,
+   espaçamentos), em vez de ficar miúda num monitor grande. As contas de
+   posição em app.js (popovers) descontam esse zoom. */
+@media (min-width: 1500px) { html { zoom: 1.08; } }
+@media (min-width: 1800px) { html { zoom: 1.15; } }
+
+/* Painel de detalhes da transação (abre pelo ⓘ da linha). */
+.tx-painel-fundo { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity var(--mov-medio, .22s) ease; }
+.tx-painel-fundo.aberto { opacity: 1; pointer-events: auto; }
+.tx-painel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 81; width: min(460px, 100%); overflow-y: auto;
+  background: var(--surface); border-left: 1px solid var(--line-forte); transform: translateX(100%);
+  transition: transform var(--mov-medio, .22s) var(--mov-suave, ease); }
+.tx-painel.aberto { transform: none; }
+.txp-topo { display: flex; gap: 14px; align-items: flex-start; padding: 20px; border-bottom: 1px solid var(--line); }
+.txp-topo .tx-ic { width: 44px; height: 44px; min-height: 44px; flex: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; }
+.txp-nome { font-size: 17px; font-weight: 650; line-height: 1.3; }
+.txp-loc { display: flex; gap: 6px; align-items: center; color: var(--text-3); font-size: 12.5px; margin-top: 3px; }
+.txp-valor { margin-left: auto; text-align: right; white-space: nowrap; }
+.txp-valor b { font-size: 21px; font-variant-numeric: tabular-nums; }
+.txp-valor small { display: block; color: var(--text-3); font-size: 12px; }
+.txp-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.txp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line-forte); color: var(--text-2); }
+.txp-chip i { width: 7px; height: 7px; border-radius: 50%; }
+.txp-sec { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.txp-st { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 10px; }
+.txp-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+.txp-k { font-size: 12px; color: var(--text-3); }
+.txp-v { font-size: 13.5px; font-weight: 550; }
+.txp-mask { font-family: Consolas, monospace; font-size: 12.5px; }
+.txp-parc { display: flex; gap: 4px; height: 40px; }
+/* Número da parcela em destaque: "3 de 10". */
+.txp-parc-num { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.txp-parc-num b { font-size: 30px; line-height: 1; font-weight: 700; color: var(--cor); font-variant-numeric: tabular-nums; }
+.txp-parc-num span { font-size: 16px; font-weight: 600; color: var(--text-2); }
+.txp-parc-num small { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.txp-parc-chip { display: inline-block; margin-top: 4px; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 650;
+  color: var(--text); background: var(--surface-3); border: 1px solid var(--line-forte); }
+.txp-parc i { flex: 1; border-radius: 4px; background: var(--surface-3); }
+.txp-parc i.paga { background: color-mix(in srgb, var(--cor) 45%, transparent); }
+.txp-parc i.atual { background: var(--cor); }
+.txp-parc-r { display: flex; gap: 4px; margin-top: 5px; }
+.txp-parc-r span { flex: 1; text-align: center; font-size: 10.5px; color: var(--text-3); overflow: hidden; }
+.txp-parc-r span.a { color: var(--text); font-weight: 600; }
+.txp-nota { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.txp-hist { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.txp-hist div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.txp-hist b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.txp-spark { display: flex; gap: 3px; align-items: flex-end; height: 36px; margin-top: 10px; }
+.txp-spark i { flex: 1; border-radius: 3px; background: color-mix(in srgb, var(--azul) 55%, transparent); min-height: 2px; }
+.txp-acoes { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px 20px; }
+.txp-carregando { padding: 20px; color: var(--text-3); }
+
+/* Ajustes unslop-ui nos painéis: menos caixas, títulos em texto normal,
+   contexto em linha simples, um único botão primário. */
+.txp-topo { border-bottom: 0; padding: 22px 20px 6px; align-items: baseline; }
+.txp-nome { font-size: 16px; font-weight: 600; }
+.txp-valor b { font-size: 20px; font-weight: 600; }
+.txp-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 20px 14px; color: var(--text-2); font-size: 13px; }
+.txp-meta > span { display: inline-flex; align-items: center; gap: 6px; }
+.txp-meta i { width: 7px; height: 7px; border-radius: 50%; }
+.txp-sec { border-bottom: 0; padding: 12px 20px; }
+.txp-st { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+.txp-v { font-weight: 500; }
+.txp-parc i { border-radius: 2px; }
+.txp-resumo { font-size: 13.5px; color: var(--text-2); }
+.txp-resumo b { color: var(--text); font-weight: 600; }
+.txp-acoes { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 14px; }
+
+/* Editor de condições E / OU (app.js: montarCondicoes). */
+.cond-editor { display: flex; flex-direction: column; }
+.cond-linha { display: grid; grid-template-columns: 128px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.cond-linha select, .cond-linha input { min-height: 34px; }
+.cond-linha select.nao { color: var(--vermelho); }
+.cond-linha input { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.cond-linha .icone { color: var(--text-3); }
+.cond-lig { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.cond-lig::before, .cond-lig::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.cond-tg { display: inline-flex; border: 1px solid var(--line-forte); border-radius: 6px; padding: 2px; }
+.cond-tg button { min-height: 0; padding: 2px 10px; border: 0; border-radius: 4px; background: none; font-size: 11.5px; font-weight: 700; color: var(--text-3); }
+.cond-tg button.ativo { background: var(--azul); color: #fff; }
+.cond-add { align-self: flex-start; min-height: 0; margin-top: 8px; padding: 2px 0; border: 0; background: none; color: var(--azul); font-size: 12.5px; }
+.cond-add:hover { background: none; text-decoration: underline; }
+.cond-k, .regra-cond b.cond-k { color: var(--azul); font-size: 11.5px; font-weight: 700; }
+.cond-t { font-family: ui-monospace, Consolas, monospace; color: var(--text); }

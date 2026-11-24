@@ -159,9 +159,14 @@ tr.total-row td:first-child { background: var(--surface-3); }
 
 /* Selecao em cinza, como o resto do projeto marca item ativo. Azul aqui
    competia com o azul do total e com as cores das tags. */
-tr.mes-sel td { background:var(--surface-3); }
-tr.mes-sel td:first-child { background:var(--surface-3); }
+/* Mês selecionado em azul suave -- no cinza ficava igual à linha "Total ano". */
+tr.mes-sel td, tr.mes-sel td:first-child { background:color-mix(in srgb, var(--azul) 12%, var(--surface)); }
+tr.mes-sel td:first-child { box-shadow: inset 3px 0 0 var(--azul); }
 tbody tr { cursor:pointer; }
+/* Mês previsto na tabela: itálico e mais apagado, com selo. */
+tr.mes-futuro td { font-style: italic; color: var(--text-2); }
+tr.mes-futuro .valor, tr.mes-futuro .total-cell { opacity: .8; }
+.selo-prevista { display: inline-block; margin-left: 6px; padding: 0 7px; border: 1px solid var(--line-forte); border-radius: 999px; font-size: 10.5px; font-style: normal; font-weight: 500; color: var(--text-3); }
 </style>
 </head>
 <body>
@@ -200,7 +205,7 @@ tbody tr { cursor:pointer; }
     <section class="v-cartao">
       <h2 class="v-tit">Mês a mês</h2>
       <div class="v-legenda" id="legendaAno"></div>
-      <div id="anoEmpilhado"><svg class="v-graf" id="grafAno" height="170"></svg></div>
+      <div id="anoEmpilhado"><svg class="v-graf" id="grafAno" height="230"></svg></div>
       <p class="v-rodape" id="rodapeAno"></p>
     </section>
 
@@ -322,6 +327,10 @@ function mesEmFoco() {
   return 0;
 }
 
+/* Cor do limite pelo uso: verde até 70%, laranja até 90%, vermelho acima --
+   99% e 47% tinham a mesma barra na cor do cartão. */
+function corUso(pct) { return pct >= 90 ? "var(--vermelho)" : pct >= 70 ? "var(--laranja)" : "var(--verde)"; }
+
 function renderCarteira() {
   const lista = cartoes();
   const alvo = document.getElementById("carteira");
@@ -348,8 +357,8 @@ function renderCarteira() {
         <div class="fatura">${fmtBRL(valor)}</div>
         ${credito > 0 ? `<div class="limite">${fmtBRL(credito)} em pagamentos adicionais abatidos automaticamente</div>` : ""}
         ${limite ? `
-          <div class="trilha"><i style="width:${limite.pct.toFixed(1)}%"></i></div>
-          <div class="limite">${limite.pct.toFixed(0)}% de ${fmtBRL(limite.total)} usado</div>
+          <div class="trilha"><i style="width:${limite.pct.toFixed(1)}%;background:${corUso(limite.pct)}"></i></div>
+          <div class="limite" title="limite de ${fmtBRL(limite.total)}"><span style="color:${corUso(limite.pct)}">${limite.pct.toFixed(0)}% usado</span> · ${fmtBRL(Math.max(0, limite.total - limite.usado))} livre</div>
         ` : `<div class="limite">limite não informado</div>`}
       </div>
     </article>`;
@@ -455,12 +464,17 @@ function renderTable() {
     </tr>
   `;
 
+  // Meses antes do primeiro valor de um cartão mostram "—" (o cartão ainda
+  // não existia), não R$ 0,00. Meses depois do atual são previstos.
+  const primeiro = Object.fromEntries(lista.map(c => [c.id, MONTHS.findIndex((_, i) => valorMes(c.id, i) > 0)]));
+  const hoje = new Date(), anoSel = Number(selectedYear);
+  const futuro = i => anoSel > hoje.getFullYear() || (anoSel === hoje.getFullYear() && i > hoje.getMonth());
   const linhas = MONTHS.map((mes, indice) => `
-    <tr class="${indice === mesSelecionado ? "mes-sel" : ""}" data-mes="${indice}">
+    <tr class="${indice === mesSelecionado ? "mes-sel" : ""} ${futuro(indice) ? "mes-futuro" : ""}" data-mes="${indice}">
       <td>
         <span class="card-name">
           <span class="dot month"></span>
-          ${mes}
+          ${mes}${futuro(indice) ? ' <span class="selo-prevista">prevista</span>' : ""}
         </span>
       </td>
       ${lista.map(cartao => {
@@ -471,7 +485,9 @@ function renderTable() {
         return `
         <td title="${esc(rotuloOrigem(origemMes(cartao.id, indice)))}">
           <div class="valor-cell">
-            <span class="valor ${valor === 0 ? "zero" : ""}">${fmtBRL(valor)}</span>
+            ${valor === 0 && (primeiro[cartao.id] < 0 || indice < primeiro[cartao.id])
+              ? '<span class="valor zero" title="cartão sem fatura até aqui">—</span>'
+              : `<span class="valor ${valor === 0 ? "zero" : ""}">${fmtBRL(valor)}</span>`}
           </div>
         </td>`;
       }).join("")}

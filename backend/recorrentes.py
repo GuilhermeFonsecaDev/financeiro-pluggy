@@ -75,6 +75,7 @@ def _abrir() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     px.garantir_tabelas(conn)
     conn.create_function("norm", 1, cam.normalizar, deterministic=True)
+    import condicoes as _cond; _cond.registrar(conn)
     cam.garantir_camada(conn)
     px.garantir_extrato_materializado(conn)
     import fixas

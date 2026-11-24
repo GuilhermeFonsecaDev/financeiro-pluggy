@@ -407,6 +407,10 @@ def _completar_faturas_abertas_e_parcelas(
     # Ciclo que JA tem fatura fechada fica de fora: aquele valor veio do banco,
     # e somar uma pendente residual ali contaria o mesmo gasto duas vezes.
     ultimo_aberto: dict[str, int] = {}
+    ignorada_aberta = ("(SELECT a.calculo_override FROM extrato_ajustes a "
+                       "WHERE a.transacao_id = t.transacao_id)"
+                       if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'extrato_ajustes'").fetchone()
+                       else "NULL")
     for linha in conn.execute(
         f"""
         SELECT
@@ -425,6 +429,9 @@ def _completar_faturas_abertas_e_parcelas(
         WHERE t.conta_id IN ({marcadores})
           AND t.fatura_id = ''
           AND t.status = 'PENDING'
+          -- Lançamento marcado "fora dos cálculos" na tela de Transações não
+          -- soma na fatura aberta (o extrato já o tirava; aqui ele ficava).
+          AND COALESCE({ignorada_aberta}, 1) <> 0
           AND NOT EXISTS (
                 SELECT 1 FROM pluggy_faturas f
                 WHERE f.conta_id = t.conta_id
@@ -1438,6 +1445,43 @@ def _aplicar_faturas_pagas(
         origens[conta_id][indice] = "pagamento"
 
 
+def _pagamentos_pela_conta(conn, cartao_id, ja_no_cartao):
+    """Pagamentos de fatura vistos na CONTA CORRENTE do mesmo banco que ainda
+    não chegaram ao cartão.
+
+    O banco costuma mostrar o débito na conta antes de o crédito aparecer no
+    cartão (a Pluggy traz o cartão com atraso). Sem isso, um adiantamento
+    feito ontem só abatia a fatura dias depois. Vale para qualquer banco:
+    conta e cartão da mesma conexão (item), desde que a conexão tenha UM
+    cartão só -- com dois não dá para saber qual fatura foi paga. Um pagamento
+    que já existe no cartão (mesmo valor, até 3 dias de diferença) não entra
+    de novo.
+    """
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'pluggy_contas'").fetchone():
+        return []   # banco de teste só com transações
+    item = conn.execute("SELECT item_id FROM pluggy_contas WHERE conta_id = ?", (cartao_id,)).fetchone()
+    if not item or not item[0]:
+        return []
+    cartoes = conn.execute(
+        "SELECT COUNT(*) FROM pluggy_contas WHERE item_id = ? AND tipo = 'CREDIT'", (item[0],)).fetchone()[0]
+    if cartoes != 1:
+        return []
+    extras = []
+    for r in conn.execute(
+        """SELECT t.transacao_id, t.data, ABS(t.valor) valor FROM pluggy_transacoes t
+           JOIN pluggy_contas c ON c.conta_id = t.conta_id
+           WHERE c.item_id = ? AND c.tipo = 'BANK' AND t.tipo = 'DEBIT'
+             AND t.descricao LIKE '%FATURA%'
+             AND (t.descricao LIKE '%PAGAMENTO%' OR t.descricao LIKE '%PAGTO%')""", (item[0],)):
+        r = dict(r)
+        if any(round(m['valor'] * 100) == round(r['valor'] * 100)
+               and abs(_dias_entre(m['data'], r['data'])) <= 3 for m in ja_no_cartao):
+            continue
+        extras.append({'transacao_id': f"conta:{r['transacao_id']}", 'data': r['data'],
+                       'status': 'POSTED', 'fatura_id': '', 'valor': r['valor'], 'pela_conta': True})
+    return extras
+
+
 def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
                                      componentes=None):
     """Abate crédito confirmado após quitação integral da fatura anterior.
@@ -1455,6 +1499,8 @@ def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
             f"SELECT t.transacao_id, t.data, t.status, t.fatura_id, ABS(t.valor) valor "
             f"FROM pluggy_transacoes t WHERE t.conta_id=? AND t.tipo='CREDIT' "
             f"AND {EH_PAGAMENTO_FATURA} ORDER BY t.data, t.transacao_id", (conta,))]
+        movimentos += _pagamentos_pela_conta(conn, conta, movimentos)
+        movimentos.sort(key=lambda m: (m['data'][:10], m['transacao_id']))
         for ciclo in conn.execute(
             "SELECT inicio,fim,competencia FROM pluggy_ciclos WHERE conta_id=? AND competencia LIKE ?",
             (conta, f"{ano}-%"),
@@ -1515,7 +1561,9 @@ def _conciliar_pagamentos_adicionais(conn, ano, ids_cartoes, valores, origens,
                 'faturaAnteriorId': anterior['fatura_id'], 'quitacaoId': quitacao['transacao_id'],
                 'pagamentosIds': [m['transacao_id'] for m in extras],
                 'pagamentos': [{'data': m['data'][:10], 'valor': round(m['valor'], 2),
-                                'pendente': m['status'] == 'PENDING'} for m in extras]})
+                                'pendente': m['status'] == 'PENDING',
+                                **({'pelaConta': True} if m.get('pela_conta') else {})}
+                               for m in extras]})
     return conciliacoes
 
 
@@ -2404,7 +2452,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
                    t.entrada_considerada, t.editada_manualmente,
                    cat.nome AS categoria_nome, cat.cor AS categoria_cor,
                    cat.emoji AS categoria_emoji,
-                   t.parcela_numero, t.parcela_total, t.fatura_id,
+                   t.parcela_numero, t.parcela_total, t.fatura_id, t.competencia_fatura,
                    c.nome AS conta_nome, c.subtipo AS conta_subtipo,
                    t.conta_id, c.raw_json AS conta_raw,
                    json_extract(pt.raw_json, '$.paymentData.paymentMethod') AS metodo_pagamento
@@ -2426,6 +2474,7 @@ def extrato_payload(filtros: dict[str, Any]) -> dict[str, Any]:
             "id": linha["transacao_id"],
             "data": data_local(linha["data"]),
             "mesRef": linha["mes_ref"],
+            "competenciaFatura": linha["competencia_fatura"],
             "descricao": linha["descricao"],
             "valor": linha["valor"],
             "valorNormalizado": linha["valor_normalizado"],

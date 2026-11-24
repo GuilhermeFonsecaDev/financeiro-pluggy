@@ -12,9 +12,24 @@
 .filtros-barra .busca { flex: 1 1 220px; max-width: 340px; }
 .filtro-ativo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--azul-suave); border: 1px solid color-mix(in srgb, var(--azul) 32%, transparent); color: #8cc0f5; font-size: 12px; font-weight: 550; }
 .filtro-ativo.excluido { background:color-mix(in srgb, var(--vermelho) 12%, transparent); border-color:color-mix(in srgb, var(--vermelho) 35%, transparent); color:#f39a9a; }
+/* Troca de filtro sem tranco: o conteúdo atual esmaece enquanto o novo vem
+   e o novo entra com um fade curto. A categoria clicada responde na hora. */
+.tx-trocando { opacity:.45; transition:opacity var(--mov-rapido) ease; }
+.tx-entrar { animation:tx-entrar var(--mov-medio) var(--mov-suave); }
+@keyframes tx-entrar { from { opacity:0; transform:translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { @keyframes tx-entrar { from { opacity:0; } } }
+.cat-linha.clicada { box-shadow:inset 0 0 0 1.5px var(--selecionado-borda); }
 .filtro-ativo .ponto-f { width:8px; height:8px; border-radius:50%; flex:none; }
 .filtro-ativo button { min-height: 18px; width: 18px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 14px; line-height: 1; }
 .contador { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
+/* Entradas/saídas/resultado do mês na barra de cima, à direita: a faixa de
+   meses fica só com os cards (mais altos). */
+.resumo-topo { display: flex; align-items: baseline; gap: 18px; margin-left: auto; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.resumo-topo:empty { display: none; }
+.resumo-topo i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.resumo-topo b { color: var(--text); font-weight: 600; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.resumo-topo + .contador { margin-left: 18px; padding-left: 18px; border-left: 1px solid var(--line); }
+@media (max-width: 1100px) { .resumo-topo { display: none; } }
 
 .evolucao-painel { margin-bottom: 14px; padding: 14px 16px 10px; overflow: hidden; }
 /* A tira vive dentro de um trilho relativo para as setas ancorarem nas
@@ -23,12 +38,12 @@
 /* A barra de rolagem só aparece no hover: a tira é para ser lida de relance,
    e barra sempre acesa disputa atenção com os números. As setas continuam à
    vista, que é o controle principal. */
-.evolucao-scroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; padding-bottom: 5px; scroll-behavior: smooth; transition: scrollbar-color .18s ease; }
-.evolucao-trilho:hover .evolucao-scroll { scrollbar-color: #3a424d transparent; }
-.evolucao-scroll::-webkit-scrollbar { height: 6px; }
-.evolucao-scroll::-webkit-scrollbar-track { background: transparent; }
-.evolucao-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; transition: background .18s ease; }
-.evolucao-trilho:hover .evolucao-scroll::-webkit-scrollbar-thumb { background: #3a424d; }
+.evolucao-scroll { overflow-x: auto; scrollbar-width: none; padding: 9px 0 2px; scroll-behavior: smooth; }
+.evolucao-scroll::-webkit-scrollbar { display: none; }
+/* Arrastando: sem animação (o scroll segue o mouse direto) e sem selecionar texto. */
+.evolucao-scroll { cursor: grab; user-select: none; }
+.evolucao-scroll.arrastando { cursor: grabbing; scroll-behavior: auto; }
+.evolucao-scroll.arrastando .mes-evolucao { cursor: grabbing; pointer-events: none; }
 
 /* A seta fica sempre à vista quando há para onde rolar (.visivel, posto pelo
    JS) e desaparece ao chegar na ponta -- seta que não faz nada é pior que
@@ -48,11 +63,11 @@
 .evolucao-seta.esquerda { left: -6px; }
 .evolucao-seta.direita { right: -6px; }
 
-.evolucao-faixa { position: relative; display: flex; width: 100%; height: 140px; }
+.evolucao-faixa { position: relative; display: flex; width: 100%; height: 150px; }
 /* flex-column com justify-content no topo: o <button> centraliza o conteúdo
    verticalmente por conta própria (caixa anônima do user-agent), e só um
    contexto de layout explícito desliga isso. */
-.mes-evolucao { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; flex: 1 0 112px; width: auto; min-width: 112px; height: 138px; padding: 12px 9px 12px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
+.mes-evolucao { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; flex: 1 0 112px; width: auto; min-width: 112px; height: 148px; padding: 13px 9px 13px; border: 1px solid transparent; border-radius: 12px; background: rgba(8,10,13,.52); color: var(--text-2); text-align: center; cursor: pointer; }
 .mes-evolucao + .mes-evolucao { margin-left: 8px; }
 .mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-2); }
 .mes-evolucao.ativo { border-color: color-mix(in srgb, var(--azul) 55%, transparent); background: color-mix(in srgb, var(--azul) 9%, transparent); }
@@ -66,9 +81,9 @@
 /* Nome no topo do card, centralizado; a linha desenha abaixo dele e o valor
    ancora no rodapé. Sem "display:block" no botão o flex do tema centralizava
    o nome no meio do card. */
-.mes-evolucao .mes-nome { display:block; font-size:12px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.mes-evolucao .mes-nome { display:block; font-size:13px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
 .mes-evolucao .mes-valor { position:absolute; left:6px; right:6px; bottom:14px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
-.evolucao-svg { position:absolute; z-index:3; left:0; top:44px; height:56px; pointer-events:none; overflow:visible; }
+.evolucao-svg { position:absolute; z-index:3; left:0; top:44px; height:62px; pointer-events:none; overflow:visible; }
 .evolucao-svg path { fill:none; stroke:var(--azul); stroke-width:2.2; vector-effect:non-scaling-stroke; }
 .evolucao-svg circle { fill:var(--surface); stroke:var(--azul); stroke-width:2; vector-effect:non-scaling-stroke; }
 .evolucao-rodape { display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:10px 4px 0; border-top:1px solid var(--line); font-size:12.5px; }
@@ -80,6 +95,46 @@
 .dia { padding: 14px 10px 6px; color: var(--text-3); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
 tr.ignorada td { opacity: .42; }
 tr.ignorada .num { text-decoration: line-through; }
+/* Grupos (parcelas da mesma compra / fora dos cálculos): uma linha que abre.
+   Mesmas bordas das linhas comuns: ícone, texto e valor alinhados com o resto. */
+#linhas tr.tx-grupo > td:first-child { padding-left: 0; }
+#linhas tr.tx-grupo > td:last-child { padding-right: 0; }
+tr.tx-grupo { cursor: pointer; }
+tr.tx-grupo.ignorada-grupo td { opacity: .6; }
+tr.tx-grupo.ignorada-grupo .desc { font-weight: 500; }
+.tx-ic-grupo { color: var(--text-3); cursor: pointer; }
+/* A seta mora no próprio título ("10 parcelas ⌄"), não numa coluna à parte. */
+.tx-grupo-qtd { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 5px 0 8px; border: 1px solid var(--line-forte); border-radius: 999px;
+  font-size: 11px; font-weight: 500; color: var(--text-2); vertical-align: 1px; transition: background var(--mov-rapido, .15s) ease, border-color var(--mov-rapido, .15s) ease; }
+tr.tx-grupo:hover .tx-grupo-qtd { background: var(--surface-3); border-color: var(--text-3); color: var(--text); }
+.tx-grupo-qtd svg { transform: rotate(180deg); transition: transform var(--mov-rapido, .15s) ease; }
+tr.tx-grupo.aberto .tx-grupo-qtd svg { transform: none; }
+/* Filhos: sem ícone (o do grupo vale para a compra) e sem recuo extra -- o
+   texto começa na mesma coluna das outras descrições. Uma faixa fina à
+   esquerda liga os filhos ao grupo. */
+#linhas tr[data-filho-de] > td { padding-top: 4px; padding-bottom: 4px; }
+#linhas tr[data-filho-de] > td:first-child { position: relative; }
+#linhas tr[data-filho-de] > td:first-child::before { content: ""; position: absolute; left: 15px; top: 0; bottom: 0; border-left: 1px solid var(--line-forte); }
+#linhas tr[data-filho-de].parcela-filha .desc { font-weight: 500; color: var(--text-2); font-size: 13px; }
+#linhas tr[data-filho-de].parcela-filha .num { font-weight: 500; color: var(--text-2); }
+/* Coluna de ações sem largura: o valor encosta na borda direita como todo o
+   resto, e o ⋯ aparece por cima do espaço que o valor abre ao passar o mouse. */
+@media (hover: hover) {
+  #linhas td.acoes { width: 0 !important; padding: 0 !important; position: relative; }
+  #linhas td.acoes > * { position: absolute; right: 0; top: 50%; transform: translateY(-50%); opacity: 0; transition: opacity var(--mov-rapido, .15s) ease; }
+  #linhas tr[data-tx] td.num { transition: padding-right var(--mov-rapido, .15s) ease; }
+  #linhas tr[data-tx]:hover td.num, #linhas tr[data-tx]:focus-within td.num { padding-right: 72px; }
+  #linhas tr[data-tx]:hover td.acoes > *, #linhas tr[data-tx]:focus-within td.acoes > * { opacity: 1; }
+}
+#linhas td.num { padding-right: 0; }
+.acoes-linha { display: flex; gap: 4px; align-items: center; }
+/* Parcela de outra fatura: apagada, não soma no dia; o "fatura de jan" leva até ela. */
+#linhas tr.fora-foco .desc, #linhas tr.fora-foco .num { opacity: .5; }
+.fatura-de { color: var(--text-3); font-weight: 450; }
+.fatura-de.ir { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.fatura-de.ir:hover { color: var(--text); }
+.acoes-linha .icone { display: inline-grid; place-items: center; }
+/* Estilos do painel de detalhes: em tema.css (compartilhado com Contas Fixas). */
 .desc { font-weight: 550; }
 .desc small { display: block; margin-top: 1px; color: var(--text-3); font-size: 11.5px; font-weight: 450; }
 .conta-tag { color: var(--text-3); font-size: 12px; white-space: nowrap; }
@@ -110,7 +165,6 @@ tr.ignorada .num { text-decoration: line-through; }
 .edicao-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .edicao-grid .full { grid-column:1 / -1; }
 #editarRestaurar[hidden] { display:none; }
-tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7px; color:#8cc0f5; font-size:9.5px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; }
 @media (max-width:820px) { .edicao-grid { grid-template-columns:1fr; } }
 
 /* Mesmo seletor de emoji com busca da tela de Categorias -- criar categoria
@@ -156,12 +210,19 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
    12px, sem sombra. O escolhido ganha a borda azul. */
 .mes-evolucao { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; color: var(--text-3); }
 .mes-evolucao:hover { border-color: var(--line-forte); background: var(--surface-3); }
-.mes-evolucao.ativo { border-color: var(--azul); background: var(--surface-3); color: var(--text); }
+.mes-evolucao.ativo { border-color: color-mix(in srgb, var(--azul) 75%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azul) 40%, transparent); background: var(--surface-3); color: var(--text); }
+.mes-evolucao.ativo .mes-nome { color: var(--text); font-weight: 600; }
+.mes-evolucao.virada { margin-left: 24px; overflow: visible; }
+.mes-evolucao.virada::before { content: ""; position: absolute; left: -13px; top: 6px; bottom: 6px; border-left: 1px dashed var(--line-forte); }
+.mes-evolucao .mes-ano { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); padding: 0 6px; font-size: 10.5px; line-height: 1.2; color: var(--text-3); background: var(--surface); border-radius: 4px; }
+.resumo-mes { gap: 4px 20px; align-items: baseline; }
+.resumo-mes .kpi b { font-size: 15px; }
+.resumo-mes .leve { margin-left: auto; color: var(--text-3); font-size: 12.5px; }
 .mes-evolucao.atual:not(.ativo) .mes-nome { color: var(--text); font-weight: 600; }
 /* Meses seguintes: mesmo quadro e mesma cor; só a linha muda (ver .previsto). */
 .evolucao-svg path.previsto { stroke: var(--text-3); stroke-dasharray: 5 5; }
 .evolucao-svg circle.previsto { stroke: var(--text-3); }
-.mes-evolucao .mes-valor { font-size: 12.5px; font-weight: 600; }
+.mes-evolucao .mes-valor { font-size: 14px; font-weight: 600; }
 .mes-evolucao .mes-valor.positivo { color: var(--verde); }
 .mes-evolucao .mes-valor.negativo { color: var(--vermelho); }
 .evolucao-svg path { stroke-width: 2; }
@@ -177,7 +238,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
 #linhas tr.dia-linha:first-child td { padding-top: 2px; }
 .dia-cab { display: flex; justify-content: space-between; gap: 10px; color: var(--text-3); font-size: 13.5px; font-weight: 600; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
 .dia-cab b { font-weight: 550; font-variant-numeric: tabular-nums; }
-.tx-ic { width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 8px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; cursor: pointer; }
+.tx-ic { width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 8px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; cursor: pointer; }
 .tx-ic.proj { cursor: default; opacity: .7; }
 .tx-ic.manual { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azul) 45%, transparent); }
 .tx-ic:hover:not(.proj) { filter: brightness(1.25); }
@@ -235,6 +296,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
     </span>
     <span id="filtrosAtivos" style="display:flex;gap:6px;flex-wrap:wrap"></span>
     <input class="busca" id="busca" type="search" placeholder="Buscar na descrição" autocomplete="off" />
+    <span class="resumo-topo" id="resumoTopo"></span>
     <span class="contador" id="contador">—</span>
   </div>
 
@@ -281,7 +343,7 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
         <div class="campo"><span>Emoji</span>
           <input id="catEmoji" type="hidden" />
           <button class="cat-emoji-botao vazio" id="catEmojiBotao" type="button" data-abre-pop
-            aria-label="Escolher emoji" aria-haspopup="dialog" aria-expanded="false">
+            aria-label="Escolher ícone" aria-haspopup="dialog" aria-expanded="false">
             <span id="catEmojiPreview">＋</span>
           </button>
         </div>
@@ -304,10 +366,10 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
   </div>
 </div>
 
-<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher emoji" hidden>
-  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar emoji..." autocomplete="off" /></div>
+<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher ícone" hidden>
+  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar ícone…" autocomplete="off" /></div>
   <div class="emoji-grade" id="emojiGrade"></div>
-  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem emoji</button></div>
+  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem ícone</button></div>
 </div>
 
 <!-- menu de ações da transação -->
@@ -386,6 +448,8 @@ tr.editada .desc::after { content:"editada"; display:inline-block; margin-left:7
   <div class="pf-rodape" id="fResumo"></div>
 </div>
 
+<div class="tx-painel-fundo" id="txPainelFundo"></div>
+<aside class="tx-painel" id="txPainel" aria-hidden="true" aria-label="Detalhes da transação"></aside>
 <script src="app.js"></script>
 <script src="graficos.js"></script>
 <script>
@@ -551,9 +615,7 @@ let PERIODO_CUSTOM_ABERTO = false;
 
 /** Quadrado da categoria no filtro: o emoji, ou a inicial quando não há. */
 function iconeFiltroCat(c) {
-  const conteudo = c.emoji ? esc(c.emoji)
-    : `<b style="color:${/^#[0-9a-f]{6}$/i.test(c.cor || "") ? c.cor : "var(--text-2)"}">${esc((c.nome || "?").trim().charAt(0).toUpperCase())}</b>`;
-  return `<span class="emo-f" style="${tingeCategoria(c)}">${conteudo}</span>`;
+  return `<span class="emo-f" style="${tingeCategoria(c)}">${simboloCategoria(c, 13)}</span>`;
 }
 
 function renderCatLista() {
@@ -591,8 +653,7 @@ function tingeCategoria(cat) {
 }
 
 function marcaCategoria(cat, tamanho = 13) {
-  return cat.emoji
-    ? `<span style="font-size:${tamanho}px;line-height:1">${esc(cat.emoji)}</span>`
+  return cat.emoji ? simboloCategoria(cat, tamanho)
     : `<span class="ponto" style="background:${esc(cat.cor || "#9ba1ab")}"></span>`;
 }
 
@@ -600,11 +661,11 @@ function marcaCategoria(cat, tamanho = 13) {
    o nome dela desce pra linha de baixo, junto com a conta. */
 function chipCategoria(tx) {
   if (tx.projetada) {
-    return `<span class="tx-ic proj" style="${tingeCategoria(tx.categoria)}" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">${marcaCategoria(tx.categoria, 15)}</span>`;
+    return `<span class="tx-ic proj" style="${tingeCategoria(tx.categoria)}" title="Projeção: cobrança futura ainda não lançada pelo banco, categoria herdada da compra original">${marcaCategoria(tx.categoria, 18)}</span>`;
   }
   const manual = tx.origemCategorizacao === "manual";
   const dica = `${tx.categoria.nome} · original: ${tx.categoriaOriginal || "(vazia)"} · origem: ${tx.origemCategorizacao} · clique para trocar`;
-  return `<button class="tx-ic ${manual ? "manual" : ""}" style="${tingeCategoria(tx.categoria)}" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}">${marcaCategoria(tx.categoria, 15)}</button>`;
+  return `<button class="tx-ic ${manual ? "manual" : ""}" style="${tingeCategoria(tx.categoria)}" data-abre-pop data-cat-de="${esc(tx.id)}" title="${esc(dica)}">${marcaCategoria(tx.categoria, 18)}</button>`;
 }
 
 function renderPopCategorias(termo = "") {
@@ -654,13 +715,196 @@ function htmlLista() {
     grupos[grupos.length - 1].itens.push(tx);
   });
   return grupos.map(g => {
-    const total = g.itens.filter(t => t.incluidaNosCalculos).reduce((a, t) => a + Number(t.valorNormalizado || 0), 0);
+    // Parcelas lançadas juntas: só a(s) da fatura em foco aparecem. Sobrando
+    // uma, ela vira uma linha comum ("parcela 1/3"), como qualquer parcela; as
+    // outras aparecem quando a fatura delas for aberta.
+    const blocos = blocosDoDia(g.dia, g.itens).flatMap(b => {
+      if (b.tipo !== "parc") return [b];
+      const foco = focoParcelas(b.itens);
+      const itens = b.itens.filter(tx => foco.has(tx.id));
+      return itens.length === 1 ? [{ tx: itens[0] }] : [{ ...b, itens }];
+    });
+    const visiveis = blocos.flatMap(b => b.grupo ? b.itens : [b.tx]);
+    const total = visiveis.filter(t => t.incluidaNosCalculos).reduce((a, t) => a + Number(t.valorNormalizado || 0), 0);
     return `<tr class="dia-linha"><td colspan="4"><div class="dia-cab"><span>${esc(rotuloDia(g.dia))}</span><b>${fmtSinal(total)}</b></div></td></tr>`
-      + g.itens.map(linha).join("");
+      + blocos.map(b => b.grupo ? linhaGrupo(b) : linha(b.tx)).join("");
   }).join("");
 }
 
-function linha(tx) {
+/* Dentro de um dia, junta o que repete:
+ *  - parcelas da mesma compra (mesma descrição, mesmo total de parcelas e
+ *    mesmo cartão/conta) viram uma linha "N parcelas";
+ *  - o que está fora dos cálculos (transferência entre contas próprias,
+ *    aplicação/resgate, IRRF...) vira uma linha recolhida.
+ * Só agrupa a partir de 2 itens; o grupo fica na posição do primeiro. Os
+ * itens continuam na lista (escondidos) e abrem pelo ▾. */
+const GRUPOS_ABERTOS = new Set();
+function blocosDoDia(dia, itens) {
+  const chave = tx => {
+    if (!tx.incluidaNosCalculos) return `${dia}|fora`;
+    if (Number(tx.parcelaTotal) > 1 && !tx.projetada) {
+      return `${dia}|parc|${String(tx.descricao || "").trim().toLowerCase()}|${tx.parcelaTotal}|${tx.cartaoId || tx.contaId || ""}`;
+    }
+    return null;
+  };
+  const contagem = new Map();
+  itens.forEach(tx => { const k = chave(tx); if (k) contagem.set(k, (contagem.get(k) || 0) + 1); });
+  const blocos = [], porChave = new Map();
+  itens.forEach(tx => {
+    const k = chave(tx);
+    if (!k || contagem.get(k) < 2) { blocos.push({ tx }); return; }
+    if (!porChave.has(k)) {
+      const bloco = { grupo: k, tipo: k.split("|")[1], itens: [] };
+      porChave.set(k, bloco);
+      blocos.push(bloco);
+    }
+    porChave.get(k).itens.push(tx);
+  });
+  return blocos;
+}
+
+/* Parcelas lançadas juntas (todas com a data da compra): qual delas pesa na
+   fatura em foco. Com período escolhido, a(s) que caem nele; sem período, a
+   próxima fatura a partir de hoje. No modo "Mês" (por data da compra) todas. */
+function focoParcelas(itens) {
+  if (filtros.modo === "mes") return new Set(itens.map(t => t.id));
+  const de = filtros.from, ate = filtros.to || filtros.from;
+  let foco = de ? itens.filter(t => t.competenciaFatura && t.competenciaFatura >= de && t.competenciaFatura <= ate) : [];
+  if (!foco.length) {
+    const hoje = new Date().toISOString().slice(0, 7);
+    const ord = [...itens].sort((a, b) => String(a.competenciaFatura || "").localeCompare(String(b.competenciaFatura || "")));
+    foco = [ord.find(t => String(t.competenciaFatura || "") >= hoje) || ord[0]];
+  }
+  return new Set(foco.map(t => t.id));
+}
+const mesFatura = m => m ? `${MESES_PAINEL[Number(m.slice(5, 7)) - 1]}${m.slice(0, 4) !== String(new Date().getFullYear()) ? "/" + m.slice(2, 4) : ""}` : "";
+
+function linhaGrupo(b) {
+  const aberto = GRUPOS_ABERTOS.has(b.grupo);
+  const foco = b.tipo === "parc" ? focoParcelas(b.itens) : null;
+  const totalCompra = b.itens.reduce((a, tx) => a + Number(tx.valorNormalizado || 0), 0);
+  // O valor da linha é o que pesa na fatura em foco; o total da compra vai no detalhe.
+  const total = foco ? b.itens.filter(tx => foco.has(tx.id)).reduce((a, tx) => a + Number(tx.valorNormalizado || 0), 0) : totalCompra;
+  const primeiro = b.itens[0];
+  let titulo, detalhe, icone;
+  if (b.tipo === "parc") {
+    const nums = b.itens.map(tx => Number(tx.parcelaNumero) || 0).sort((x, y) => x - y);
+    titulo = `${esc(primeiro.descricao)} <span class="tx-grupo-qtd">${b.itens.length} parcelas ${SETA_GRUPO()}</span>`;
+    detalhe = [primeiro.categoria?.nome, primeiro.rotuloInstrumento || primeiro.nomeExibicao || primeiro.contaNome,
+               foco.size < b.itens.length ? `de ${fmtBRL(Math.abs(totalCompra))} em ${primeiro.parcelaTotal || b.itens.length}×`
+                 : `${nums[0]}/${primeiro.parcelaTotal} → ${nums[nums.length - 1]}/${primeiro.parcelaTotal}`].filter(Boolean).join(" · ");
+    icone = chipCategoria(primeiro);
+  } else {
+    const proprias = b.itens.every(tx => /transfer/i.test(tx.categoria?.nome || "") || /pr[oó]pria/i.test(tx.motivoExclusao || ""));
+    // Mesmo formato das parcelas: a tag diz o que é ("6 movimentos"), não só o número solto.
+    titulo = `${proprias ? "Entre contas próprias" : "Fora dos cálculos"} <span class="tx-grupo-qtd">${b.itens.length} ${b.itens.length === 1 ? "movimento" : "movimentos"} ${SETA_GRUPO()}</span>`;
+    // Primeiras palavras de cada descrição, sem repetir: "Tef, Envio transferência, IRRF".
+    const nomes = [...new Set(b.itens.map(tx => String(tx.descricao || "").split(/\s+-\s+|\s+/).slice(0, 2).join(" ")))];
+    detalhe = `${nomes.slice(0, 4).join(", ")}${nomes.length > 4 ? "…" : ""} · fora dos cálculos`;
+    icone = `<span class="tx-ic tx-ic-grupo">${icone_("inverter", 16)}</span>`;
+  }
+  // Parcelas em ordem (1/10, 2/10...) e só com o número: o resto já está no grupo.
+  const itens = b.tipo === "parc" ? [...b.itens].sort((x, y) => (x.parcelaNumero || 0) - (y.parcelaNumero || 0)) : b.itens;
+  const filhos = itens.map(tx => linha(tx, { filhoDe: b.grupo, aberto, parcela: b.tipo === "parc",
+    emFoco: !foco || foco.has(tx.id) })).join("");
+  return `
+    <tr class="tx-grupo ${b.tipo === "fora" ? "ignorada-grupo" : ""} ${aberto ? "aberto" : ""}" data-grupo="${esc(b.grupo)}"
+        aria-expanded="${aberto}" title="${aberto ? "Recolher" : "Mostrar os lançamentos"}">
+      <td style="width:34px">${icone}</td>
+      <td class="desc">${titulo}<small>${esc(detalhe)}</small></td>
+      <td class="num ${b.tipo === "fora" ? "fora" : total < 0 ? "negativo" : "positivo"}" style="width:1%">${b.tipo === "fora" ? "" : fmtSinal(total)}</td>
+      <td class="acoes"></td>
+    </tr>${filhos}`;
+}
+const icone_ = (nome, tam) => (typeof icone === "function" ? icone(nome, tam) : "");
+const SETA_GRUPO = () => icone_("fechar_lista", 12);
+
+/* ------------------------------------------------- painel de detalhes */
+const MESES_PAINEL = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const mesCurto = m => MESES_PAINEL[Number(m.slice(5, 7)) - 1] + (m.slice(0, 4) !== String(new Date().getFullYear()) ? `/${m.slice(2, 4)}` : "");
+
+async function abrirDetalheTx(id) {
+  const tx = TRANSACOES.get(id);
+  if (!tx) return;
+  const painel = document.getElementById("txPainel");
+  painel.innerHTML = cabecalhoDetalhe(tx) + `<div class="txp-carregando">Carregando…</div>`;
+  painel.classList.add("aberto"); painel.setAttribute("aria-hidden", "false");
+  document.getElementById("txPainelFundo").classList.add("aberto");
+  try {
+    const d = await pedir(`/extrato/detalhe?id=${encodeURIComponent(id)}`);
+    if (TX_DETALHE_ABERTA !== id) return;
+    painel.innerHTML = cabecalhoDetalhe(tx, d) + corpoDetalhe(tx, d);
+  } catch (err) {
+    painel.querySelector(".txp-carregando").textContent = err.message;
+  }
+  TX_DETALHE_ABERTA = id;
+}
+let TX_DETALHE_ABERTA = null;
+function fecharDetalheTx() {
+  TX_DETALHE_ABERTA = null;
+  const painel = document.getElementById("txPainel");
+  painel.classList.remove("aberto"); painel.setAttribute("aria-hidden", "true");
+  document.getElementById("txPainelFundo").classList.remove("aberto");
+}
+
+function cabecalhoDetalhe(tx, d = {}) {
+  TX_DETALHE_ABERTA = tx.id;
+  return `<div class="txp-topo">
+    <div style="min-width:0"><div class="txp-nome">${esc(tx.descricao)}</div></div>
+    <div class="txp-valor"><b class="${tx.valorNormalizado < 0 ? "" : "positivo"}">${fmtSinal(tx.valorNormalizado)}</b></div>
+    <button class="icone" data-fechar-detalhe aria-label="Fechar">${icone("fechar", 16)}</button></div>`;
+}
+function marcaPainel(tx) {
+  return `<span class="tx-ic" style="${tingeCategoria(tx.categoria)}">${marcaCategoria(tx.categoria, 22)}</span>`;
+}
+
+function corpoDetalhe(tx, d) {
+  const cor = /^#[0-9a-f]{6}$/i.test(tx.categoria?.cor || "") ? tx.categoria.cor : "#4a95ea";
+  // Linha de contexto em texto simples (sem pílulas): categoria, local, situação.
+  const meta = [`<span><i style="background:${esc(cor)}"></i>${esc(tx.categoria?.nome || "Sem categoria")}</span>`];
+  if (d.local) meta.push(`<span>${esc([d.local.cidade, d.local.pais].filter(Boolean).join(", "))}</span>`);
+  if (!tx.incluidaNosCalculos) meta.push(`<span>Fora dos cálculos</span>`);
+  const campo = (k, v, mask = false) => v ? `<div><div class="txp-k">${k}</div><div class="txp-v ${mask ? "txp-mask" : ""}">${esc(v)}</div></div>` : "";
+  const quando = d.dataHora ? new Date(d.dataHora).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", ",") : fmtData(tx.data);
+  const fatura = d.fatura ? labelMes(d.fatura) : "";
+  const compra = [campo("Data", quando),
+    campo(d.finalCartao || d.fatura ? "Cartão" : "Conta", d.finalCartao ? `${tx.rotuloInstrumento?.split(" - ")[0] || "Cartão"} final ${d.finalCartao}` : (tx.rotuloInstrumento || tx.contaNome || "")),
+    campo("Fatura", fatura),
+    d.parcelas ? campo("Total", `${fmtBRL(d.parcelas.totalCompra)} em ${d.parcelas.total}×`) : "",
+    d.operacao ? campo("Tipo", d.operacao.replaceAll("_", " ").toLowerCase().replace(/^./, c => c.toUpperCase())) : "",
+    d.mcc ? campo(`Ramo (MCC ${d.mcc.codigo})`, d.mcc.nome || "Não identificado") : ""].join("");
+  let html = `<div class="txp-meta">${meta.join("")}</div>
+    <div class="txp-sec"><div class="txp-st">${d.contraparte ? "Lançamento" : "Compra"}</div><div class="txp-grade">${compra}</div></div>`;
+  if (d.parcelas) {
+    const p = d.parcelas;
+    html += `<div class="txp-sec" style="--cor:${esc(cor)}"><div class="txp-st">Parcelas</div>
+      <div class="txp-parc-num"><b>${p.numero}</b><span>de ${p.total}</span>
+        <small>${fmtBRL(p.valorParcela)} por mês</small></div>
+      <div class="txp-parc">${p.meses.map((m, i) => `<i class="${i + 1 < p.numero ? "paga" : i + 1 === p.numero ? "atual" : ""}" title="${i + 1}/${p.total} · ${labelMes(m)}"></i>`).join("")}</div>
+      <div class="txp-parc-r">${p.meses.map((m, i) => `<span class="${i + 1 === p.numero ? "a" : ""}">${esc(mesCurto(m))}</span>`).join("")}</div>
+      <div class="txp-nota">${p.restantes ? `Faltam ${fmtBRL(p.aPagar)}, até ${labelMes(p.meses.at(-1)).toLowerCase()}.` : "Última parcela."}</div></div>`;
+  }
+  if (d.contraparte) {
+    const c = d.contraparte;
+    html += `<div class="txp-sec"><div class="txp-st">${esc(c.papel)}</div><div class="txp-grade">
+      ${campo("Nome", c.nome)}${campo("Banco", c.banco)}${campo(c.tipoDocumento || "Documento", c.documento, true)}${campo("Agência", c.agencia, true)}${campo("Conta", c.conta, true)}
+    </div></div>`;
+  }
+  if (d.historico) {
+    const h = d.historico;
+    const qtd = `${h.quantidade} ${h.porDocumento ? (h.quantidade === 1 ? "envio" : "envios") : (h.quantidade === 1 ? "compra" : "compras")}`;
+    const extra = h.porDocumento && h.recebido ? `${fmtBRL(h.recebido)} recebido` : `média de ${fmtBRL(h.media)}`;
+    html += `<div class="txp-sec"><div class="txp-st">${h.porDocumento ? "Com esta pessoa" : "Nesta loja"}, últimos 12 meses</div>
+      <div class="txp-resumo"><b>${qtd}</b>, ${fmtBRL(h.total)} no total, ${extra}.</div></div>`;
+  }
+  html += `<div class="txp-acoes">
+    <button class="primario" data-detalhe-buscar="${esc(tx.descricao)}">Ver ${d.contraparte ? "todas com esta pessoa" : "compras desta loja"}</button>
+    <span style="flex:1"></span>
+    <button class="sutil" data-detalhe-editar="${esc(tx.id)}">Editar</button></div>`;
+  return html;
+}
+
+function linha(tx, { filhoDe = null, aberto = false, parcela = false, emFoco = true } = {}) {
   const det = [tx.categoria?.nome, tx.rotuloInstrumento || tx.nomeExibicao || tx.contaNome].filter(Boolean);
   if (tx.parcelaTotal > 1) det.push(`parcela ${tx.parcelaNumero}/${tx.parcelaTotal}`);
   if (!tx.incluidaNosCalculos) det.push(tx.motivoExclusao || "fora dos cálculos");
@@ -669,13 +913,17 @@ function linha(tx) {
     ? `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações da projeção">⋯</button>`
     : tx.projetada
       ? `<span class="icone" title="Projeção recorrente">≈</span>`
-      : `<button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
+      : `<button class="icone" data-detalhe-tx="${esc(tx.id)}" title="Detalhes" aria-label="Detalhes da transação">${icone("info", 15)}</button><button class="icone" data-abre-pop data-acoes-de="${esc(tx.id)}" title="Ações">⋯</button>`;
   return `
-    <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""}">
-      <td style="width:34px">${chipCategoria(tx)}</td>
-      <td class="desc" title="${esc([fmtData(tx.data), tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}</td>
+    <tr data-tx="${esc(tx.id)}" class="${tx.incluidaNosCalculos ? "" : "ignorada"} ${tx.editadaManualmente ? "editada" : ""} ${parcela ? "parcela-filha" : ""} ${emFoco ? "" : "fora-foco"}"
+        ${filhoDe ? `data-filho-de="${esc(filhoDe)}" ${aberto ? "" : "hidden"}` : ""}>
+      <td style="width:34px">${filhoDe ? "" : chipCategoria(tx)}</td>
+      <td class="desc" title="${esc([fmtData(tx.data), tx.contaNome, tx.cartaoOriginal || tx.cartaoNomeOriginal || tx.nomeOriginal].filter(Boolean).join(" · "))}">${parcela
+        ? `Parcela ${esc(tx.parcelaNumero)}/${esc(tx.parcelaTotal)}${tx.competenciaFatura && filtros.modo !== "mes"
+            ? ` <span class="fatura-de ${emFoco ? "" : "ir"}" ${emFoco ? "" : `data-ir-fatura="${esc(tx.competenciaFatura)}" title="Ver a fatura de ${esc(labelMes(tx.competenciaFatura))}"`}>· fatura de ${esc(mesFatura(tx.competenciaFatura))}</span>` : ""}`
+        : `${esc(tx.descricao)}${det.length ? `<small>${esc(det.join(" · "))}</small>` : ""}`}</td>
       <td class="num ${tx.valorNormalizado < 0 ? "negativo" : "positivo"}" style="width:1%">${fmtSinal(tx.valorNormalizado)}</td>
-      <td style="width:34px">${acoes}</td>
+      <td class="acoes" style="width:34px"><span class="acoes-linha">${acoes}</span></td>
     </tr>`;
 }
 
@@ -689,6 +937,11 @@ function origemEntradasTexto(origem) {
 /** Nome curto para o card: o ano corrente fica implícito (só "Agosto"), os
  *  outros ganham sufixo curto ("Agosto '25") — a tira agora atravessa anos,
  *  e sem isso dois "Janeiro" ficariam indistinguíveis. */
+function valorCurtoMes(v) {
+  const n = Math.abs(Number(v || 0));
+  return `${v < 0 ? "−" : ""}R$ ${(n / 1000).toFixed(1).replace(".", ",")}k`;
+}
+
 function nomeMesCard(mesRef, anoCorrente) {
   const nome = labelMes(mesRef);
   const ano = mesRef.slice(0, 4);
@@ -746,10 +999,16 @@ function renderMetricas(r, serie = [], porCategoria = []) {
   const amplitude = Math.max(1, maximo - minimo);
   // A altura do viewBox acompanha .evolucao-svg no CSS; os 8px de folga em
   // cima e embaixo evitam o ponto colar na borda do desenho.
-  const alturaSvg = 56;
-  const passo = 120, largura = Math.max(1, itens.length * passo - 8);
+  const alturaSvg = 62;
+  // Virada de ano: o primeiro mês de um ano novo ganha 16px a mais à esquerda
+  // (divisória tracejada + rótulo do ano); os pontos da linha andam junto.
+  const VIRADA = 16;
+  const viradas = itens.map((i, n) => n > 0 && i.mes.slice(0, 4) !== itens[n - 1].mes.slice(0, 4));
+  let desloc = 0;
+  const deslocamentos = viradas.map(v => (desloc += v ? VIRADA : 0));
+  const passo = 120, largura = Math.max(1, itens.length * passo - 8 + desloc);
   const pontos = itens.map((i, indice) => {
-    const x = indice * passo + 56;
+    const x = indice * passo + 56 + deslocamentos[indice];
     const y = (alturaSvg - 8) - ((Number(i.resultado || 0) - minimo) / amplitude * (alturaSvg - 16));
     return { x, y, temDados: !!(i.quantidade || i.entradas || i.saidas), futuro: i.mes > mesAtual };
   });
@@ -764,22 +1023,21 @@ function renderMetricas(r, serie = [], porCategoria = []) {
   const selecionados = itens.filter(i => mesNoPeriodo(i.mes));
   const foco = selecionados.length === 1 ? selecionados[0] : (selecionados.length ? null : mapa.get(mesAtual));
   const resumo = [];
+  // O mês já aparece marcado na faixa; aqui ficam só os valores cheios.
   if (foco) {
-    resumo.push(`<span>${esc(labelMes(foco.mes))}</span>`);
-    resumo.push(`<span><i style="background:var(--verde)"></i>entradas <b>${fmtBRLCurto(foco.entradas || 0)}</b></span>`);
-    resumo.push(`<span><i style="background:var(--vermelho)"></i>saídas <b>${fmtBRLCurto(Math.abs(foco.saidas || 0))}</b></span>`);
-    resumo.push(`<span>resultado <b>${fmtBRLCurto(foco.resultado || 0)}</b></span>`);
-    if (foco.quantidade) resumo.push(`<span><b>${foco.quantidade}</b> lançamentos</span>`);
+    const corRes = (foco.resultado || 0) < 0 ? "var(--vermelho)" : "var(--verde)";
+    resumo.push(`<span class="kpi"><i style="background:var(--verde)"></i>entradas <b>${fmtBRL(foco.entradas || 0)}</b></span>`);
+    resumo.push(`<span class="kpi"><i style="background:var(--vermelho)"></i>saídas <b>${fmtBRL(Math.abs(foco.saidas || 0))}</b></span>`);
+    resumo.push(`<span class="kpi">resultado <b style="color:${corRes}">${fmtBRL(foco.resultado || 0)}</b></span>`);
   }
-  if (porCategoria[0]) resumo.push(`<span>maior categoria <b>${esc(porCategoria[0].categoria)}</b></span>`);
+  document.getElementById("resumoTopo").innerHTML = resumo.join("");
   document.getElementById("metricas").innerHTML = `
     <h2 class="v-tit">Mês a mês</h2>
-    ${resumo.length ? `<p class="v-legenda">${resumo.join('<span class="v-sep">·</span>')}</p>` : ""}
     <div class="evolucao-trilho">
     <button class="evolucao-seta esquerda" data-rolar="-1" aria-label="Meses anteriores">‹</button>
     <button class="evolucao-seta direita" data-rolar="1" aria-label="Meses seguintes">›</button>
     <div class="evolucao-scroll"><div class="evolucao-faixa" style="min-width:${largura}px">
-      ${itens.map(i => {
+      ${itens.map((i, n) => {
         const dados = i.quantidade || i.entradas || i.saidas;
         const cls = !dados ? "futuro" : i.resultado >= 0 ? "positivo" : "negativo";
         // Entradas ou saídas estimadas: entradas quando as 4 do mês ainda não
@@ -791,11 +1049,14 @@ function renderMetricas(r, serie = [], porCategoria = []) {
         const avisos = [];
         if (i.entradasEstimativa) avisos.push(`entradas projetadas ${origemEntradasTexto(i.entradasOrigem)} (recebido até agora: ${fmtBRL(i.entradasRecebidas)})`);
         if (i.saidasEstimativa) avisos.push("saídas previstas: parcelas e recorrências");
-        const titulo = avisos.length ? avisos.join(" · ") : "";
-        return `<button class="mes-evolucao ${mesNoPeriodo(i.mes) ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
+        const resumoMes = dados ? [labelMes(i.mes), `entradas ${fmtBRL(i.entradas || 0)}`,
+          `saídas ${fmtBRL(Math.abs(i.saidas || 0))}`, `resultado ${fmtBRL(i.resultado || 0)}`] : [labelMes(i.mes)];
+        const titulo = [...resumoMes, ...avisos].join("\n");
+        return `<button class="mes-evolucao ${viradas[n] ? "virada" : ""} ${mesNoPeriodo(i.mes) ? "ativo" : ""} ${i.mes === mesAtual ? "atual" : ""} ${!dados ? "futuro" : ""} ${estimado ? "estimado" : ""}"
                 data-mes-evolucao="${i.mes}" ${titulo ? `title="${esc(titulo)}"` : ""}>
-          <span class="mes-nome">${esc(nomeMesCard(i.mes, ano))}</span>
-          <span class="mes-valor ${cls} ${estimado ? "estimado-valor" : ""}">${dados ? fmtBRLCurto(i.resultado) : "—"}</span>
+          ${viradas[n] ? `<span class="mes-ano">${i.mes.slice(0, 4)}</span>` : ""}
+          <span class="mes-nome">${esc(MESES[Number(i.mes.slice(5, 7)) - 1])}</span>
+          <span class="mes-valor ${cls} ${estimado ? "estimado-valor" : ""}">${dados ? valorCurtoMes(i.resultado) : "—"}</span>
         </button>`;
       }).join("")}
       <svg class="evolucao-svg" width="100%" viewBox="0 0 ${largura} ${alturaSvg}" preserveAspectRatio="none" aria-hidden="true">
@@ -834,7 +1095,7 @@ function renderMetricas(r, serie = [], porCategoria = []) {
    numa lista de 18 categorias. O que importa pro alinhamento e a caixa de
    16px em volta, igual pra bolinha e pro emoji da subcategoria. */
 function marcaLinhaCategoria(i) {
-  if (i.emoji) return `<span class="cat-marca">${esc(i.emoji)}</span>`;
+  if (i.emoji) return `<span class="cat-marca">${simboloCategoria({ emoji: i.emoji, cor: i.cor, nome: i.categoria }, 14)}</span>`;
   return `<span class="cat-marca"><span class="cat-ponto" style="background:${
     esc(i.cor || "#9ba1ab")}"></span></span>`;
 }
@@ -876,11 +1137,24 @@ function renderCategorias(itens) {
   }).join("")}</div>`;
 }
 
+// Blocos que trocam de conteúdo a cada filtro: esmaecem e voltam com fade.
+const BLOCOS_TROCA = () => [document.querySelector(".tabela-wrap"), document.getElementById("categorias"),
+                            document.getElementById("metricas")].filter(Boolean);
+
 async function carregar({ mais = false } = {}) {
   const token = ++requisicao;
   setEstado("estado", "Carregando…");
-  const p = await pedir(`/extrato?${qs()}`);
+  if (!mais) BLOCOS_TROCA().forEach(b => b.classList.add("tx-trocando"));
+  let p;
+  try { p = await pedir(`/extrato?${qs()}`); }
+  finally { if (token === requisicao) BLOCOS_TROCA().forEach(b => b.classList.remove("tx-trocando")); }
   if (token !== requisicao) return;   // resposta obsoleta: o filtro já mudou
+  if (!mais) BLOCOS_TROCA().forEach(b => {
+    b.classList.remove("tx-entrar");
+    void b.offsetWidth;   // reinicia a animação mesmo se a classe já estava
+    b.classList.add("tx-entrar");
+    b.addEventListener("animationend", () => b.classList.remove("tx-entrar"), { once: true });
+  });
 
   const corpo = document.getElementById("linhas");
   if (!mais) TRANSACOES.clear();
@@ -938,15 +1212,14 @@ function normalizarBusca(valor) {
 
 function renderEmojiPicker(filtro = "") {
   const termo = normalizarBusca(filtro.trim());
-  const catalogo = EMOJI_CATALOGO.length
-    ? EMOJI_CATALOGO
-    : EMOJIS.map(emoji => ({ emoji, nome: "", grupo: "" }));
+  // Ícones das categorias (app.js): o mesmo traço do menu, em vez de emoji.
+  const catalogo = catalogoIcones().map(i => ({ emoji: i.valor, nome: i.nome, grupo: i.busca }));
   EMOJI_FILTRADOS = catalogo.filter(item => !termo ||
-    normalizarBusca(`${item.emoji} ${item.nome} ${item.grupo} ${EMOJI_BUSCA[item.emoji] || ""}`).includes(termo));
+    normalizarBusca(`${item.nome} ${item.grupo}`).includes(termo));
   EMOJI_RENDERIZADOS = 0;
   document.getElementById("emojiGrade").innerHTML = EMOJI_FILTRADOS.length
     ? ""
-    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum emoji encontrado.</div>';
+    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum ícone encontrado.</div>';
   renderMaisEmojis();
 }
 
@@ -956,7 +1229,7 @@ function renderMaisEmojis() {
   if (!lote.length) return;
   grade.insertAdjacentHTML("beforeend", lote.map(item =>
     `<button class="emoji-opcao" type="button" data-emoji="${esc(item.emoji)}"
-      aria-label="Usar ${esc(item.emoji)} — ${esc(item.nome)}" title="${esc(item.nome)}">${esc(item.emoji)}</button>`).join(""));
+      aria-label="Usar o ícone ${esc(item.nome)}" title="${esc(item.nome)}">${simboloCategoria({ emoji: item.emoji, nome: "A", cor: "#a7aebb" }, 18)}</button>`).join(""));
   EMOJI_RENDERIZADOS += lote.length;
   marcarEmojiSelecionado();
 }
@@ -964,7 +1237,9 @@ function renderMaisEmojis() {
 function marcarEmojiSelecionado() {
   const atual = document.getElementById("catEmoji").value.trim();
   const botao = document.getElementById("catEmojiBotao");
-  document.getElementById("catEmojiPreview").textContent = atual || "＋";
+  const corPrevia = document.getElementById("catCor")?.value || "#a7aebb";
+  document.getElementById("catEmojiPreview").innerHTML = atual
+    ? simboloCategoria({ emoji: atual, nome: document.getElementById("catNome")?.value || "?", cor: corPrevia }, 20) : "＋";
   botao.classList.toggle("vazio", !atual);
   document.querySelectorAll("#emojiGrade [data-emoji]").forEach(botao => {
     botao.classList.toggle("selecionado", botao.dataset.emoji === atual);
@@ -975,15 +1250,17 @@ function marcarEmojiSelecionado() {
  *  categoria-pai: o botão de emoji trava e qualquer emoji já escolhido
  *  é descartado, pra não ficar um valor invisível esperando pra ser salvo. */
 function atualizarDisponibilidadeEmoji() {
-  const ehSubcategoria = !!document.getElementById("catPai").value;
+  // Com ícones, categoria pai também tem o seu (antes só subcategoria tinha emoji).
+  const ehSubcategoria = true;
   const botao = document.getElementById("catEmojiBotao");
   botao.disabled = !ehSubcategoria;
-  botao.title = ehSubcategoria ? "" : "Só subcategorias têm emoji";
+  botao.title = ehSubcategoria ? "" : "Só subcategorias têm ícone";
   if (!ehSubcategoria) document.getElementById("catEmoji").value = "";
   marcarEmojiSelecionado();
 }
 
 async function carregarCatalogoEmojis() {
+  return;   // seletor usa os ícones do app.js; os emojis em JSON não são mais usados
   try {
     const arquivos = Array.from({ length:16 }, (_, i) =>
       `assets/emojis/emoji-${String(i).padStart(2, "0")}.json`);
@@ -1083,7 +1360,7 @@ function abrirModalEdicao(tx) {
   // Categoria pai vira título de grupo (também escolhível); subcategorias
   // recuadas embaixo. A lista tem busca (selectComBusca, app.js).
   document.getElementById("eCategoria").innerHTML = CATEGORIAS.map(c =>
-    `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${c.paiId ? `${esc(c.emoji)} ` : ""}${esc(c.nome)}</option>`).join("");
+    `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${esc(emojiTexto(c))}${esc(c.nome)}</option>`).join("");
   selectComBusca(document.getElementById("eCategoria"), { placeholder: "Buscar categoria…" });
   document.getElementById("eCategoria").value = tx.categoria.id;
   document.getElementById("editarRestaurar").hidden = !tx.editadaManualmente;
@@ -1196,9 +1473,50 @@ function sincronizarModo() {
   }
 }
 
+/* Arrastar a faixa de meses com o mouse: segurou e puxou, os meses vão
+   junto. Só conta como arrasto depois de 5px -- abaixo disso é clique e
+   seleciona o mês normalmente; depois disso o clique que vem no fim é
+   engolido para não trocar o mês sem querer. No toque o scroll nativo já
+   faz isso, então só o mouse passa por aqui. */
+let arrastoFaixa = null, arrastouFaixa = false;
+const VELOCIDADE_ARRASTO = 0.6;
+function ligarArrastoFaixa(painel) {
+  painel.addEventListener("pointerdown", e => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    const scroll = e.target.closest(".evolucao-scroll");
+    if (!scroll) return;
+    arrastoFaixa = { scroll, x: e.clientX, inicio: scroll.scrollLeft, id: e.pointerId };
+    arrastouFaixa = false;
+  });
+  window.addEventListener("pointermove", e => {
+    if (!arrastoFaixa || e.pointerId !== arrastoFaixa.id) return;
+    const dx = e.clientX - arrastoFaixa.x;
+    if (!arrastouFaixa && Math.abs(dx) < 5) return;
+    if (!arrastouFaixa) {
+      arrastouFaixa = true;
+      arrastoFaixa.scroll.classList.add("arrastando");
+      arrastoFaixa.scroll.setPointerCapture?.(e.pointerId);
+    }
+    // 0,6: a faixa anda um pouco menos que o mouse -- 1:1 parecia rápido demais.
+    arrastoFaixa.scroll.scrollLeft = arrastoFaixa.inicio - dx * VELOCIDADE_ARRASTO;
+  });
+  const soltar = () => {
+    if (!arrastoFaixa) return;
+    arrastoFaixa.scroll.classList.remove("arrastando");
+    arrastoFaixa = null;
+    // O click dispara logo depois do pointerup; zera no próximo ciclo.
+    setTimeout(() => { arrastouFaixa = false; }, 0);
+  };
+  window.addEventListener("pointerup", soltar);
+  window.addEventListener("pointercancel", soltar);
+  painel.addEventListener("dragstart", e => { if (e.target.closest(".evolucao-scroll")) e.preventDefault(); });
+}
+
 function ligar() {
   // Delegado no painel porque a tira é recriada a cada carga.
+  ligarArrastoFaixa(document.getElementById("metricas"));
   document.getElementById("metricas").addEventListener("click", e => {
+    if (arrastouFaixa && e.target.closest(".evolucao-scroll")) { e.preventDefault(); return; }
     const seta = e.target.closest("[data-rolar]");
     if (seta) {
       const scroll = document.querySelector(".evolucao-scroll");
@@ -1371,6 +1689,25 @@ function ligar() {
     recarregar();
   });
 
+  // Painel de detalhes: fechar (×, fundo, Esc), buscar a loja, editar.
+  document.getElementById("txPainelFundo").addEventListener("click", fecharDetalheTx);
+  document.getElementById("txPainel").addEventListener("click", e => {
+    if (e.target.closest("[data-fechar-detalhe]")) return fecharDetalheTx();
+    const buscar = e.target.closest("[data-detalhe-buscar]");
+    if (buscar) {
+      // Nome da loja sem contador de parcela e sem a cidade.
+      const termo = buscar.dataset.detalheBuscar.replace(/\d{1,2}\s*\/\s*\d{1,2}/g, "").split(/\s{2,}/)[0].trim();
+      document.getElementById("busca").value = termo;
+      filtros.q = termo;
+      fecharDetalheTx();
+      recarregar();
+      return;
+    }
+    const editar = e.target.closest("[data-detalhe-editar]");
+    if (editar) { const tx = TRANSACOES.get(editar.dataset.detalheEditar); fecharDetalheTx(); if (tx) abrirModalEdicao(tx); }
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && TX_DETALHE_ABERTA) fecharDetalheTx(); });
+
   document.getElementById("busca").addEventListener("input", e => {
     clearTimeout(buscaTimer);
     const v = e.target.value.trim();
@@ -1389,6 +1726,9 @@ function ligar() {
     const l = e.target.closest("[data-categoria]");
     if (!l) return;
     const c = l.dataset.categoria;
+    // Resposta imediata: a linha clicada já fica marcada enquanto a lista vem.
+    document.querySelectorAll("#categorias .cat-linha.clicada").forEach(x => x.classList.remove("clicada"));
+    l.classList.add("clicada");
     filtros.notcategory = "";
     if (filtros.category !== c) {
       filtros.category = c;
@@ -1407,6 +1747,26 @@ function ligar() {
 
   // Chip abre a caixinha de categoria; ⋯ abre o menu de ações.
   document.getElementById("linhas").addEventListener("click", e => {
+    const ir = e.target.closest("[data-ir-fatura]");
+    if (ir) {
+      e.stopPropagation();
+      filtros.from = filtros.to = ir.dataset.irFatura;
+      recarregar();
+      return;
+    }
+    const det = e.target.closest("[data-detalhe-tx]");
+    if (det) { e.stopPropagation(); abrirDetalheTx(det.dataset.detalheTx); return; }
+    const grupo = e.target.closest("tr.tx-grupo");
+    if (grupo && !e.target.closest("[data-cat-de]")) {
+      const k = grupo.dataset.grupo;
+      const abrir = !GRUPOS_ABERTOS.has(k);
+      abrir ? GRUPOS_ABERTOS.add(k) : GRUPOS_ABERTOS.delete(k);
+      grupo.classList.toggle("aberto", abrir);
+      grupo.setAttribute("aria-expanded", String(abrir));
+      grupo.title = abrir ? "Recolher" : "Mostrar os lançamentos";
+      document.querySelectorAll(`tr[data-filho-de="${CSS.escape(k)}"]`).forEach(tr => { tr.hidden = !abrir; });
+      return;
+    }
     const chip = e.target.closest("[data-cat-de]");
     if (chip) {
       txAberta = chip.dataset.catDe;

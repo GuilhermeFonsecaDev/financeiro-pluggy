@@ -230,6 +230,13 @@ let _ancoraAberta = null;
  * para fora se ancorasse sempre para baixo.
  */
 /** Coloca o popover abaixo da âncora, virando para cima se não couber. */
+/** Zoom da página (tema.css, "escala"). Medidas da tela (getBoundingClientRect,
+ *  innerWidth) vêm já ampliadas; top/left em px são multiplicados pelo zoom,
+ *  então a posição é dividida por ele antes de ir para o estilo. */
+function zoomDaPagina() {
+  return parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+}
+
 function posicionarPop(elemento, ancora, alinhar = "esquerda") {
   const a = ancora.getBoundingClientRect();
   const p = elemento.getBoundingClientRect();
@@ -242,8 +249,9 @@ function posicionarPop(elemento, ancora, alinhar = "esquerda") {
   let esq = alinhar === "direita" ? a.right - p.width : a.left;
   esq = Math.min(Math.max(margem, esq), window.innerWidth - p.width - margem);
 
-  elemento.style.top = `${topo}px`;
-  elemento.style.left = `${esq}px`;
+  const z = zoomDaPagina();
+  elemento.style.top = `${topo / z}px`;
+  elemento.style.left = `${esq / z}px`;
   // Guarda onde ficou em relação à âncora: ao rolar a página ele acompanha.
   elemento._ancoragem = { ancora, dy: topo - a.top, dx: esq - a.left };
 }
@@ -256,8 +264,9 @@ function acompanharPops() {
     const ref = pop._ancoragem;
     if (!ref || !ref.ancora.isConnected) continue;
     const a = ref.ancora.getBoundingClientRect();
-    pop.style.top = `${a.top + ref.dy}px`;
-    pop.style.left = `${a.left + ref.dx}px`;
+    const z = zoomDaPagina();
+    pop.style.top = `${(a.top + ref.dy) / z}px`;
+    pop.style.left = `${(a.left + ref.dx) / z}px`;
   }
 }
 // Captura: rolagem de elemento não sobe até a janela, mas passa por ela aqui.
@@ -498,6 +507,16 @@ const ICONES = {
   marca: '<path d="M12 3 21 12 12 21 3 12z"/>',
   fechar_lista: '<path d="M6 15l6-6 6 6"/>',
   inverter: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  seta_direita: '<path d="M9.5 6l6 6-6 6"/>',
+  fechar: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  mais_novo: '<path d="M12 5v14M5 12h14"/>',
+  local: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  calculadora: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7.5h7"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 15.5h.01M12 15.5h.01M15.5 15.5h.01M8.5 18.5h.01M12 18.5h.01M15.5 18.5h.01"/>',
+  alerta: '<path d="M12 6v7.5"/><path d="M12 17.6v.1"/>',
+  traco: '<path d="M7 12h10"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.7v.1"/>',
+  mais: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
 };
 function icone(nome, tamanho = 16) {
   const caminho = ICONES[nome];
@@ -659,7 +678,7 @@ function selectComBusca(select, { placeholder = "Buscar…" } = {}) {
   botao.addEventListener("click", () => {
     busca.value = "";
     desenhar();
-    pop.style.minWidth = `${botao.getBoundingClientRect().width}px`;
+    pop.style.minWidth = `${botao.getBoundingClientRect().width / zoomDaPagina()}px`;
     if (abrirPop(pop, botao)) setTimeout(() => busca.focus(), 0);
   });
   busca.addEventListener("input", desenhar);
@@ -854,3 +873,235 @@ setTimeout(() => document.documentElement.classList.remove("primeira-pintura"), 
     });
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
 })();
+
+/* ---------------------------------------------------- ícones das categorias */
+/* Cada categoria guarda no campo "emoji" o nome do ícone com o prefixo "ic:"
+   ("ic:carrinho"), ou "ic:@" para a inicial do nome (pessoas). Emoji antigo,
+   sem prefixo, continua aparecendo como era. Mesmo traço do menu. */
+const ICONES_CATEGORIA = {
+  troca: "<path d=\"M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7\"/>",
+  ciclo: "<path d=\"M17 3l3 3-3 3M4 12v-1a5 5 0 0 1 5-5h11M7 21l-3-3 3-3M20 12v1a5 5 0 0 1-5 5H4\"/>",
+  raio: "<path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"/>",
+  cartao: "<rect x=\"2.5\" y=\"5\" width=\"19\" height=\"14\" rx=\"2\"/><path d=\"M2.5 10h19M6.5 15h4\"/>",
+  banco: "<path d=\"M3 9.5 12 4l9 5.5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18\"/>",
+  codigo: "<path d=\"M4 5v14M7 5v14M10 5v14M13.5 5v14M16 5v14M20 5v14\"/>",
+  carrinho: "<circle cx=\"9\" cy=\"20\" r=\"1.3\"/><circle cx=\"17.5\" cy=\"20\" r=\"1.3\"/><path d=\"M2.5 3h3l2.6 12.2a1.5 1.5 0 0 0 1.5 1.2h8a1.5 1.5 0 0 0 1.5-1.2L21 7H6.4\"/>",
+  talheres: "<path d=\"M4 3v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V3M7 3v18\"/><path d=\"M20 15V3a4.5 4.5 0 0 0-4.5 4.5V13a2 2 0 0 0 2 2H20zm0 0v6\"/>",
+  lanche: "<path d=\"M4 10a8 5 0 0 1 16 0z\"/><path d=\"M3 14h18M5 18h14a1 1 0 0 0 1-1v-1H4v1a1 1 0 0 0 1 1z\"/>",
+  pessoas: "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20a6.5 6.5 0 0 1 13 0\"/><path d=\"M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6\"/>",
+  pata: "<circle cx=\"8\" cy=\"7\" r=\"1.7\"/><circle cx=\"16\" cy=\"7\" r=\"1.7\"/><circle cx=\"4.5\" cy=\"12\" r=\"1.7\"/><circle cx=\"19.5\" cy=\"12\" r=\"1.7\"/><path d=\"M12 12c-3 0-5.5 4-5.5 6.2 0 1.5 1.3 2 2.5 1.6 1-.3 2-.8 3-.8s2 .5 3 .8c1.2.4 2.5-.1 2.5-1.6C17.5 16 15 12 12 12z\"/>",
+  tesoura: "<circle cx=\"6\" cy=\"7\" r=\"2.5\"/><circle cx=\"6\" cy=\"17\" r=\"2.5\"/><path d=\"M8 8.5 20 18M8 15.5 20 6\"/>",
+  sacola: "<path d=\"M5 8h14l-1 12H6z\"/><path d=\"M9 8V6a3 3 0 0 1 6 0v2\"/>",
+  camisa: "<path d=\"M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3a4 4 0 0 1-8 0z\"/>",
+  casa: "<path d=\"M3 11 12 4l9 7\"/><path d=\"M5 10v10h14V10\"/><path d=\"M10 20v-6h4v6\"/>",
+  notebook: "<rect x=\"4\" y=\"5\" width=\"16\" height=\"11\" rx=\"1.5\"/><path d=\"M2 19h20\"/>",
+  joia: "<path d=\"M6 4h12l3 5-9 11L3 9z\"/><path d=\"M3 9h18M10 4l2 5 2-5\"/>",
+  grafico: "<path d=\"M3 17l6-6 4 4 8-8\"/><path d=\"M15 7h6v6\"/>",
+  moedas: "<ellipse cx=\"12\" cy=\"6\" rx=\"7\" ry=\"3\"/><path d=\"M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6\"/>",
+  tela: "<rect x=\"3\" y=\"4\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M10 8.5v5l4.5-2.5z\"/><path d=\"M8 21h8\"/>",
+  play: "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M10 8.5v7l6-3.5z\"/>",
+  carro: "<path d=\"M5 17H3.5a1 1 0 0 1-1-1v-3.2a2 2 0 0 1 .6-1.4L6 8.6A2 2 0 0 1 7.4 8h7.2a2 2 0 0 1 1.5.7l2.4 2.8 2.3.6a1.5 1.5 0 0 1 1.2 1.5V16a1 1 0 0 1-1 1H19\"/><path d=\"M9 17h6M7 11.5h11\"/><circle cx=\"7\" cy=\"17\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/>",
+  estrada: "<path d=\"M5 20 9 4M19 20 15 4M12 6v2M12 11v2M12 16v2\"/>",
+  estacionar: "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><path d=\"M10 16V8h3a2.5 2.5 0 0 1 0 5h-3\"/>",
+  bomba: "<path d=\"M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10\"/><path d=\"M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3\"/>",
+  contrato: "<path d=\"M7 3h7l5 5v13H7z\"/><path d=\"M14 3v5h5M10 13h6M10 17h4\"/>",
+  escudo: "<path d=\"M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6z\"/>",
+  escudo_ok: "<path d=\"M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>",
+  chave_inglesa: "<path d=\"M15 4a4 4 0 0 0-4.6 5.4L4 15.8 6.2 18l6.4-6.4A4 4 0 0 0 18 7l-2.4 2.4-2.1-.5-.5-2.1z\"/>",
+  documento: "<path d=\"M7 3h7l5 5v13H7z\"/><path d=\"M14 3v5h5M10 13h6M10 17h6\"/>",
+  identidade: "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><circle cx=\"9\" cy=\"11\" r=\"2\"/><path d=\"M6 16a3 3 0 0 1 6 0M14 10h4M14 14h3\"/>",
+  brilho: "<path d=\"M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z\"/><path d=\"M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z\"/>",
+  aviao: "<path d=\"M10 14 3 11l1-2 8 1 4-5a2 2 0 0 1 3 3l-5 4 1 8-2 1-3-7z\"/>",
+  ingresso: "<path d=\"M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z\"/><path d=\"M15 7v2M15 11v2M15 15v2\"/>",
+  claquete: "<rect x=\"3\" y=\"9\" width=\"18\" height=\"11\" rx=\"1.5\"/><path d=\"M3 9l1.5-4.5h15L21 9M8.5 4.5 7 9M13.5 4.5 12 9M18.5 4.5 17 9\"/>",
+  controle: "<path d=\"M7.3 6h9.4a3.6 3.6 0 0 1 3.55 3.05l.95 6.2A2.6 2.6 0 0 1 18.6 18.3c-.8 0-1.3-.4-1.8-.9L15.5 16h-7l-1.3 1.4c-.5.5-1 .9-1.8.9a2.6 2.6 0 0 1-2.6-3.05l.95-6.2A3.6 3.6 0 0 1 7.3 6z\"/><path d=\"M7 11h3M8.5 9.5v3M15 10.5h.01M17 12.5h.01\"/>",
+  coracao: "<path d=\"M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z\"/><path d=\"M8 12h2l1-2 2 4 1-2h2\"/>",
+  halter: "<path d=\"M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12\"/>",
+  pilula: "<path d=\"M10.5 4.5a4.95 4.95 0 0 1 7 7l-6 6a4.95 4.95 0 0 1-7-7z\"/><path d=\"M8 9l7 7\"/>",
+  onibus: "<rect x=\"5\" y=\"3\" width=\"14\" height=\"15\" rx=\"2\"/><path d=\"M5 11h14M8 21v-3M16 21v-3\"/><circle cx=\"8.5\" cy=\"14.5\" r=\".9\"/><circle cx=\"15.5\" cy=\"14.5\" r=\".9\"/>",
+  pino: "<path d=\"M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z\"/><circle cx=\"12\" cy=\"9\" r=\"2.5\"/>",
+  maleta: "<rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18\"/>",
+  sinal: "<path d=\"M5 20v-3M10 20v-7M15 20V9M20 20V5\"/>",
+  capelo: "<path d=\"M2 9l10-5 10 5-10 5z\"/><path d=\"M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5M22 9v6\"/>",
+  livro: "<path d=\"M3 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H3zM21 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z\"/>",
+  escola: "<path d=\"M3 21h18M5 21V10l7-5 7 5v11M10 21v-5h4v5\"/>",
+  recibo: "<path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 15l6-6\"/><circle cx=\"9.5\" cy=\"9.5\" r=\".9\"/><circle cx=\"14.5\" cy=\"14.5\" r=\".9\"/>",
+  porcento: "<path d=\"M19 5 5 19\"/><circle cx=\"7\" cy=\"7\" r=\"2.5\"/><circle cx=\"17\" cy=\"17\" r=\"2.5\"/>",
+  entrada: "<path d=\"M12 3v12M7 10l5 5 5-5M4 20h16\"/>",
+  nota: "<rect x=\"2.5\" y=\"6\" width=\"19\" height=\"12\" rx=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\"/><path d=\"M6 9.5h.01M18 14.5h.01\"/>",
+  presente: "<rect x=\"3\" y=\"8\" width=\"18\" height=\"4\" rx=\"1\"/><path d=\"M5 12v8h14v-8M12 8v12M12 8c-1.5-3-5-3.5-5-1.5S10 8 12 8zm0 0c1.5-3 5-3.5 5-1.5S14 8 12 8z\"/>",
+  celular: "<rect x=\"7\" y=\"2.5\" width=\"10\" height=\"19\" rx=\"2\"/><path d=\"M11 18h2\"/>",
+  pontos: "<circle cx=\"6\" cy=\"12\" r=\"1.1\"/><circle cx=\"12\" cy=\"12\" r=\"1.1\"/><circle cx=\"18\" cy=\"12\" r=\"1.1\"/>",
+  chave: "<circle cx=\"8\" cy=\"15\" r=\"4\"/><path d=\"M11 12l9-9M17 6l3 3M14 9l2 2\"/>",
+  predio: "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"1\"/><path d=\"M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M11 21v-3h2v3\"/>",
+  panela: "<path d=\"M4 10h16v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z\"/><path d=\"M2 10h2M20 10h2M9 6.5c0-1 1-1.3 1-2.3M14 6.5c0-1 1-1.3 1-2.3\"/>"
+};
+const ROTULOS_ICONE = {
+  troca: "transferência troca setas empréstimo",
+  ciclo: "transferência própria entre contas",
+  raio: "pix rápido raio",
+  cartao: "cartão crédito fatura",
+  banco: "banco ted tarifa instituição",
+  codigo: "boleto código de barras",
+  panela: "alimentação comida cozinha panela",
+  carrinho: "supermercado mercado compras carrinho",
+  talheres: "restaurante comida garfo faca",
+  lanche: "delivery lanche hambúrguer",
+  pessoas: "pessoas família",
+  pata: "pet cachorro gato animal",
+  tesoura: "barbeiro cabelo tesoura salão",
+  sacola: "compras sacola loja",
+  camisa: "roupas vestuário camisa",
+  casa: "casa moradia lar",
+  notebook: "eletrônicos computador notebook",
+  joia: "joias acessórios diamante",
+  grafico: "investimentos gráfico alta",
+  moedas: "rendimentos moedas dinheiro",
+  tela: "serviços digitais tela",
+  play: "streaming apps assinatura vídeo",
+  carro: "automotivo carro veículo",
+  estrada: "pedágio estrada viagem",
+  estacionar: "estacionamento parking",
+  bomba: "combustível posto gasolina",
+  contrato: "financiamento contrato",
+  escudo: "seguro proteção",
+  escudo_ok: "seguros proteção",
+  chave_inglesa: "manutenção conserto oficina",
+  documento: "documento imposto de renda papel",
+  identidade: "habilitação identidade documento",
+  brilho: "lazer diversão",
+  aviao: "viagem avião",
+  ingresso: "shows eventos ingresso",
+  claquete: "cinema filme",
+  controle: "jogos games videogame",
+  coracao: "saúde coração",
+  halter: "academia exercício",
+  pilula: "farmácia remédio",
+  onibus: "transporte ônibus",
+  pino: "aplicativo uber táxi corrida",
+  maleta: "serviços trabalho",
+  sinal: "telecomunicações celular internet",
+  capelo: "educação formatura",
+  livro: "cursos estudo livro",
+  escola: "faculdade escola",
+  recibo: "impostos taxas recibo",
+  porcento: "iof juros porcentagem",
+  entrada: "receitas entrada",
+  nota: "renda salário dinheiro",
+  presente: "cashback presente",
+  celular: "celular telefone",
+  pontos: "outros",
+  chave: "aluguel chave",
+  predio: "condomínio prédio apartamento"
+};
+
+/** Conteúdo do quadradinho da categoria (o quadrado colorido fica com quem chama). */
+function simboloCategoria(cat, tamanho = 16) {
+  const valor = String(cat?.emoji || "");
+  const cor = /^#[0-9a-f]{6}$/i.test(cat?.cor || "") ? cat.cor : "currentColor";
+  const inicial = () => `<b class="cat-inicial" style="color:${cor};font-size:${Math.round(tamanho * .8)}px">${esc((cat?.nome || "?").trim().charAt(0).toUpperCase())}</b>`;
+  if (valor === "ic:@" || !valor) return inicial();
+  if (valor.startsWith("ic:")) {
+    const caminho = ICONES_CATEGORIA[valor.slice(3)];
+    if (!caminho) return inicial();
+    return `<svg class="cat-svg" viewBox="0 0 24 24" width="${tamanho}" height="${tamanho}" fill="none" stroke="${cor}"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${caminho}</svg>`;
+  }
+  return `<span style="font-size:${tamanho}px;line-height:1">${esc(valor)}</span>`;
+}
+
+/** Para texto puro (opções de select, legendas): só o emoji antigo; ícone não vira texto. */
+function emojiTexto(cat) {
+  const valor = String(cat?.emoji || "");
+  return valor && !valor.startsWith("ic:") ? valor + " " : "";
+}
+
+/** Catálogo do seletor de ícones: [{valor, nome, busca}]. */
+function catalogoIcones() {
+  return [{ valor: "ic:@", nome: "Inicial do nome", busca: "inicial letra pessoa nome" }]
+    .concat(Object.keys(ICONES_CATEGORIA).map(k => ({ valor: "ic:" + k, nome: (ROTULOS_ICONE[k] || k).split(" ")[0], busca: ROTULOS_ICONE[k] || k })));
+}
+
+/* ------------------------------------------------------------------
+   Editor de condições E / OU (regras do extrato, entradas e vínculo das
+   contas fixas). Uma linha por condição: operador + termo + remover; entre
+   duas linhas, o botão E / OU. Quem lê é backend/condicoes.py: o E vale
+   antes do OU, como no SQL.
+   ------------------------------------------------------------------ */
+const OPERADORES_COND = [["contem", "contém"], ["nao_contem", "não contém"], ["comeca_com", "começa com"], ["igual", "é igual a"]];
+
+function montarCondicoes(caixa, lista, { aoMudar = () => {}, placeholder = "ex.: CLARO" } = {}) {
+  const estado = (lista && lista.length ? lista : [{}]).map((c, i) => ({
+    termo: typeof c === "string" ? c : (c.termo || ""),
+    operador: (typeof c === "object" && c.operador) || "contem",
+    ligacao: i && typeof c === "object" && c.ligacao === "E" ? "E" : "OU",
+  }));
+  caixa._cond = estado;
+  caixa.classList.add("cond-editor");
+  const pintar = (foco = -1) => {
+    caixa.innerHTML = estado.map((c, i) => `
+      ${i ? `<div class="cond-lig"><span class="cond-tg">${["E", "OU"].map(l =>
+        `<button type="button" data-cond-lig="${i}" data-v="${l}" class="${c.ligacao === l ? "ativo" : ""}">${l}</button>`).join("")}</span></div>` : ""}
+      <div class="cond-linha">
+        <select data-cond-op="${i}" aria-label="Operador" class="${c.operador === "nao_contem" ? "nao" : ""}">${OPERADORES_COND.map(([v, n]) =>
+          `<option value="${v}" ${v === c.operador ? "selected" : ""}>${n}</option>`).join("")}</select>
+        <input type="text" data-cond-termo="${i}" value="${esc(c.termo)}" placeholder="${i ? "" : esc(placeholder)}" autocomplete="off" aria-label="Termo ${i + 1}" />
+        <button type="button" class="icone" data-cond-rem="${i}" aria-label="Remover condição" title="Remover">×</button>
+      </div>`).join("") + `<button type="button" class="cond-add" data-cond-add>+ condição</button>`;
+    if (foco >= 0) caixa.querySelector(`[data-cond-termo="${foco}"]`)?.focus();
+  };
+  if (!caixa._condLigado) {
+    caixa._condLigado = true;
+    caixa.addEventListener("input", e => {
+      const i = e.target.dataset.condTermo;
+      if (i == null) return;
+      caixa._cond[i].termo = e.target.value;
+      caixa._aoMudar?.();
+    });
+    caixa.addEventListener("change", e => {
+      const i = e.target.dataset.condOp;
+      if (i == null) return;
+      caixa._cond[i].operador = e.target.value;
+      e.target.classList.toggle("nao", e.target.value === "nao_contem");
+      caixa._aoMudar?.();
+    });
+    caixa.addEventListener("keydown", e => {
+      if (e.key !== "Enter" || e.target.dataset.condTermo == null) return;
+      e.preventDefault();
+      caixa._cond.push({ termo: "", operador: "contem", ligacao: "E" });
+      caixa._pintar(caixa._cond.length - 1);
+    });
+    caixa.addEventListener("click", e => {
+      const b = e.target.closest("[data-cond-lig],[data-cond-rem],[data-cond-add]");
+      if (!b) return;
+      if (b.dataset.condLig) caixa._cond[b.dataset.condLig].ligacao = b.dataset.v;
+      else if (b.dataset.condRem) {
+        caixa._cond.splice(Number(b.dataset.condRem), 1);
+        if (!caixa._cond.length) caixa._cond.push({ termo: "", operador: "contem", ligacao: "OU" });
+        caixa._cond[0].ligacao = "OU";
+      } else caixa._cond.push({ termo: "", operador: "contem", ligacao: "E" });
+      caixa._pintar(b.dataset.condAdd != null ? caixa._cond.length - 1 : -1);
+      caixa._aoMudar?.();
+    });
+  }
+  caixa._aoMudar = aoMudar;
+  caixa._pintar = pintar;
+  pintar();
+}
+
+/** Condições preenchidas, prontas para o backend (vazias ficam de fora). */
+function lerCondicoes(caixa) {
+  const saida = [];
+  for (const c of caixa?._cond || []) {
+    const termo = String(c.termo || "").trim();
+    if (!termo) continue;
+    saida.push({ termo, operador: c.operador || "contem", ligacao: saida.length ? c.ligacao : "OU" });
+  }
+  return saida;
+}
+
+/** Frase curta para listas e cards: contém "A" E não contém "B". */
+function frasesCondicoes(lista) {
+  const nomes = Object.fromEntries(OPERADORES_COND);
+  return (lista || []).map((c, i) => `${i ? `<b class="cond-k">${c.ligacao === "E" ? "E" : "OU"}</b> ` : ""}${nomes[c.operador] || "contém"} <span class="cond-t">“${esc(c.termo)}”</span>`).join(" ");
+}

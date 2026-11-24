@@ -70,6 +70,14 @@ CONFIANCA_MINIMA = 0.9
 # Minimo de faturas fechadas para a medicao valer algo.
 AMOSTRA_MINIMA = 20
 
+# A previsao do conector so decide a fatura de uma compra a ate N dias de um
+# fechamento -- e para isso que ela existe (compra nos ultimos dias, passado o
+# fechamento). Longe da fronteira a janela do ciclo e inequivoca, e seguir a
+# previsao ali deixava o app refem de o banco mudar o significado do campo: um
+# cartao passou a mandar o mes do VENCIMENTO no lugar do mes do fechamento e
+# todas as compras do ciclo aberto pularam uma fatura.
+DIAS_FRONTEIRA = 4
+
 
 def _dia(texto: Any) -> date | None:
     """A data em ISO que veio do banco, só a parte do dia."""
@@ -405,14 +413,28 @@ def expressao_competencia(t: str = "t", a: str | None = "a") -> str:
         f"JSON_EXTRACT({t}.raw_json, "
         "'$.creditCardMetadata.billForecastDate')"
     )
-    return f"""
-    COALESCE(
-      (SELECT f.competencia FROM pluggy_faturas f
-        WHERE {t}.fatura_id <> ''
-          AND f.conta_id = {conta}
-          AND f.fatura_id = {t}.fatura_id),
-      (SELECT CASE
-                WHEN SUBSTR({data}, 1, 10) > x.fim
+    dia = f"SUBSTR({data}, 1, 10)"
+    # Parcelas lancadas de uma vez (varias parcelas da MESMA compra, com a
+    # mesma data e a mesma descricao, cada uma com a previsao do seu mes) andam
+    # N-1 meses a partir da fatura da parcela 1. Parcela lancada mes a mes
+    # (uma linha por cobranca) nao anda: a propria data ja a coloca no ciclo.
+    # O que separa os dois casos e existir outra parcela irma no mesmo dia --
+    # nao o banco nem a distancia da previsao, que varia por cartao.
+    numero = (f"COALESCE(CAST(JSON_EXTRACT({t}.raw_json, "
+              "'$.creditCardMetadata.installmentNumber') AS INTEGER), 1)")
+    irma = (f"EXISTS (SELECT 1 FROM pluggy_transacoes s WHERE s.conta_id = {t}.conta_id"
+            f" AND s.transacao_id <> {t}.transacao_id"
+            f" AND SUBSTR(s.data, 1, 10) = SUBSTR({t}.data, 1, 10)"
+            f" AND s.descricao = {t}.descricao"
+            f" AND COALESCE(CAST(JSON_EXTRACT(s.raw_json, '$.creditCardMetadata.installmentNumber') AS INTEGER), 1) <> {numero})")
+    desloc = f"(CASE WHEN {numero} > 1 AND {irma} THEN {numero} - 1 ELSE 0 END)"
+    # Previsao da parcela 1 da mesma compra.
+    previsao_base = (f"STRFTIME('%Y-%m', DATE(SUBSTR({previsao}, 1, 7) || "
+                     f"'-01', '-' || {desloc} || ' months'))")
+    perto = (f"EXISTS (SELECT 1 FROM pluggy_ciclos z WHERE z.conta_id = {conta}"
+             f" AND ABS(JULIANDAY({dia}) - JULIANDAY(z.fim)) <= {DIAS_FRONTEIRA})")
+    pela_previsao = f"""(SELECT CASE
+                WHEN {dia} > x.fim
                   -- compra DEPOIS do fechamento: proximo ciclo
                   THEN (SELECT y.competencia FROM pluggy_ciclos y
                          WHERE y.conta_id = x.conta_id AND y.fim > x.fim
@@ -421,11 +443,32 @@ def expressao_competencia(t: str = "t", a: str | None = "a") -> str:
               END
          FROM pluggy_ciclos x
         WHERE x.conta_id = {conta}
-          AND SUBSTR(x.fim, 1, 7) = SUBSTR({previsao}, 1, 7)
-          AND {previsao} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*'
+          AND SUBSTR(x.fim, 1, 7) = {previsao_base}
+        ORDER BY x.fim LIMIT 1)"""
+    pela_janela = f"""(SELECT w.competencia FROM pluggy_ciclos w
+        WHERE w.conta_id = {conta}
+          AND w.inicio <= {dia} AND w.fim > {dia}
+        ORDER BY w.inicio LIMIT 1)"""
+    # Fatura da parcela 1: perto do fechamento manda a previsao; longe dele,
+    # a janela do ciclo. Depois, anda as N-1 parcelas.
+    # Parcela > 1 lancada sozinha (sem irma no dia) segue so a previsao, como
+    # sempre foi: a data dela e a da compra original e a janela erraria.
+    sozinha = f"({numero} > 1 AND NOT {irma})"
+    previsao_pura = pela_previsao  # desloc = 0 nesse caso, previsao_base = previsao
+    base = (f"(CASE WHEN {sozinha} THEN {previsao_pura} ELSE "
+            f"COALESCE(CASE WHEN {perto} THEN {pela_previsao} END, "
+            f"{pela_janela}, {pela_previsao}) END)")
+    return f"""
+    COALESCE(
+      (SELECT f.competencia FROM pluggy_faturas f
+        WHERE {t}.fatura_id <> ''
+          AND f.conta_id = {conta}
+          AND f.fatura_id = {t}.fatura_id),
+      (SELECT STRFTIME('%Y-%m', DATE({base} || '-01', '+' || {desloc} || ' months'))
+        WHERE {previsao} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*'
           AND EXISTS (SELECT 1 FROM pluggy_cartao_previsao p
-                       WHERE p.conta_id = x.conta_id)
-        ORDER BY x.fim LIMIT 1),
+                       WHERE p.conta_id = {conta})
+          AND {base} IS NOT NULL),
       -- Cartão recém-conectado: ainda não há fatura fechada nem ciclo
       -- reconstruído, mas o BTG já informa em cada parcela o mês previsto da
       -- fatura. Usar esse mês evita concentrar todas as parcelas no mês da

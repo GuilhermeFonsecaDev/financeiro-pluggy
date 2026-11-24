@@ -76,6 +76,28 @@
    grade", mas quebrava num x diferente das outras tres e era isso que dava a
    sensacao de tela desencaixada. */
 .c6 { grid-column:span 6; } .c12 { grid-column:span 12; }
+/* Distribuição com comparativo: uma linha por categoria. */
+.vg-dist { display:flex; flex-direction:column; }
+.vg-dist-cab, .vg-dist-l { display:grid; grid-template-columns:minmax(140px,220px) minmax(0,1fr) 90px 56px 86px 120px; gap:14px; align-items:center; }
+.vg-dist-cab { padding:0 8px 6px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-3); border-bottom:1px solid var(--line); }
+.vg-dist-cab span:nth-child(n+3), .vg-dist-l > :nth-child(n+3) { text-align:right; justify-self:end; }
+.vg-dist-l { padding:9px 8px; border-bottom:1px solid var(--line); color:var(--text); text-decoration:none; border-radius:8px; transition:background var(--mov-rapido, .15s) ease; }
+.vg-dist-l:last-child { border-bottom:0; }
+.vg-dist-l:hover { background:var(--surface-2); }
+.vg-dist-l b { font-variant-numeric:tabular-nums; font-weight:600; }
+.vg-dist-l .mut { color:var(--text-3); font-variant-numeric:tabular-nums; font-size:12.5px; }
+.vg-dist .vg-trilha { display:block; height:6px; border-radius:9px; background:var(--surface-3); overflow:hidden; }
+.vg-dist .vg-trilha i { display:block; height:100%; border-radius:9px; }
+@media (max-width: 760px) { .vg-dist-cab, .vg-dist-l { grid-template-columns:minmax(0,1fr) 80px 70px; } .vg-dist-cab > :nth-child(2), .vg-dist-cab > :nth-child(4), .vg-dist-cab > :nth-child(6), .vg-dist-l > :nth-child(2), .vg-dist-l > :nth-child(4), .vg-dist-l > :nth-child(6) { display:none; } }
+/* Contas em aberto com tudo pago: uma linha só. */
+.fx-compacto { padding-top:12px; padding-bottom:12px; }
+.fx-compacto .v-tit { display:none; }
+.fx-compacto .v-rodape { display:none; }
+.fx-linha { display:flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; font-size:13.5px; }
+.fx-linha b { font-weight:600; }
+.fx-linha .mut, .fx-linha.mut { color:var(--text-3); margin-left:auto; }
+a.fx-linha:hover b { text-decoration:underline; text-underline-offset:3px; }
+
 /* Sankey "Para onde foi": receita -> despesas/restante -> categoria -> sub. */
 .vg-sankey { padding:10px 18px 0; margin:0 -18px; position:relative; }
 .vg-sankey svg { display:block; width:100%; overflow:visible; }
@@ -83,8 +105,11 @@
 .vg-sankey .nd rect { rx:3; }
 .vg-sankey .nd text { font-size:11.5px; fill:var(--text-2); }
 .vg-sankey .nd text.v { font-size:10.5px; fill:var(--text-3); font-variant-numeric:tabular-nums; }
-.vg-sankey .nd[data-ir] { cursor:pointer; }
-.vg-sankey .nd[data-ir]:hover text:not(.v) { fill:var(--text); }
+.vg-sankey .nd[data-ir], .vg-sankey .nd[data-abre] { cursor:pointer; }
+.vg-sankey .nd[data-ir]:hover text:not(.v), .vg-sankey .nd[data-abre]:hover text:not(.v) { fill:var(--text); }
+.vg-sankey .seta-sk { fill:var(--text-3); font-size:10px; }
+.vg-sankey .lk-pega { fill:none; stroke:transparent; pointer-events:stroke; cursor:pointer; }
+.vg-sankey svg { transition: height var(--mov-medio, .22s) ease; }
 .vg-sankey.foco .lk { stroke-opacity:.05; }
 .vg-sankey.foco .lk.on { stroke-opacity:.42; }
 .vg-sankey.foco .nd { opacity:.35; }
@@ -177,34 +202,30 @@
     <section class="v-cartao c12">
       <h2 class="v-tit">Para onde foi <span class="nota" id="notaSankey"></span></h2>
       <div class="vg-sankey" id="sankey"></div>
-      <p class="v-rodape">Da receita para as despesas e daí para cada categoria. Passe o mouse para ver o caminho; clique numa categoria para abrir os lançamentos.</p>
+      <p class="v-rodape">Da receita para as despesas e daí para cada categoria. Passe o mouse para ver o caminho; clique numa categoria (▸) para abrir as subcategorias e numa subcategoria para ver os lançamentos.</p>
     </section>
 
-    <section class="v-cartao c6">
+    <section class="v-cartao c6" id="secGeral">
       <h2 class="v-tit">Gasto geral mês a mês <span class="nota">cartões + conta · 12 meses</span></h2>
       <p class="v-legenda" id="legGeral"></p>
       <svg class="v-graf" id="grafGeral" height="150" role="img" aria-label="Gasto geral por mês"></svg>
       <p class="v-rodape" id="rodGeral"></p>
     </section>
 
-    <section class="v-cartao c6">
+    <section class="v-cartao c6" id="secFixas">
       <h2 class="v-tit">Contas em aberto <span class="nota" id="notaFixas"></span></h2>
       <div id="fixas" data-esqueleto="linhas:4"></div>
       <p class="v-rodape" id="rodFixas"></p>
     </section>
 
-    <section class="v-cartao c6">
+    <!-- Distribuição + comparativo numa lista só: fatia, valor, % e a variação
+         contra o período anterior na mesma linha (eram dois cards sobre as
+         mesmas categorias). -->
+    <section class="v-cartao c12">
       <h2 class="v-tit">Distribuição dos gastos <span class="nota" id="notaCats"></span></h2>
       <p class="v-legenda" id="legDist"></p>
-      <div class="v-barras" id="dist" data-esqueleto="barras:6"></div>
+      <div class="vg-dist" id="dist" data-esqueleto="barras:6"></div>
       <p class="v-rodape" id="rodDist"></p>
-    </section>
-
-    <section class="v-cartao c6">
-      <h2 class="v-tit">Comparativo por categoria <span class="nota" id="notaCmp"></span></h2>
-      <p class="v-legenda"><span><b id="legCmpAtual"></b></span><span class="v-sep">vs</span><span id="legCmpAnt"></span></p>
-      <div class="v-barras vg-rola" id="cmp" data-esqueleto="barras:6"></div>
-      <p class="v-rodape">Barra cheia é o período atual, a clara é o anterior, na mesma escala; a variação fica no selo. <span id="cmpRolar"></span></p>
     </section>
 
     <section class="v-cartao c6">
@@ -399,8 +420,8 @@ function travarCinco(caixa) {
   caixa.style.maxHeight = "";
   const linhas = caixa.querySelectorAll(".v-bl, .vg-cmp");
   if (linhas.length > VISIVEIS_CMP) {
-    caixa.style.maxHeight = `${Math.round(linhas[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
-      - caixa.getBoundingClientRect().top)}px`;
+    caixa.style.maxHeight = `${Math.round((linhas[VISIVEIS_CMP - 1].getBoundingClientRect().bottom
+      - caixa.getBoundingClientRect().top) / zoomDaPagina())}px`;
   }
 }
 
@@ -416,55 +437,58 @@ function chipVar(atual, anterior) {
 /* Lista com barra de fundo no lugar da rosca: o tamanho da barra já mostra a
    fatia, e a variação contra o período anterior fica no mouse. */
 function renderDist() {
-  const cats = D.categorias.slice(0, 8);
-  el("notaCats").textContent = D.categorias.length > 8
-    ? `top 8 de ${D.categorias.length}` : `${D.categorias.length} categorias`;
-  el("legDist").innerHTML = linhaLeg("var(--text-3)", `total <b>${fmtBRL(D.resumo.gasto)}</b>`);
+  const todas = D.categorias.filter(c => c.total > 0);
+  const cats = todas.slice(0, 10);
+  el("notaCats").textContent = `vs ${D.periodo.anteriorRotulo}`;
+  el("legDist").innerHTML = linhaLeg("var(--text-3)", `total <b>${fmtBRL(D.resumo.gasto)}</b>`)
+    + (todas.length > 10 ? `${SEP}<span>${todas.length - 10} menores fora da lista</span>` : "");
   if (!cats.length) {
     el("dist").innerHTML = `<div class="vazio">Sem gasto no período.</div>`;
     el("rodDist").textContent = "";
     return;
   }
   const maior = Math.max(1, ...cats.map(c => c.total));
-  el("dist").innerHTML = vListaBarras(cats.map(c => {
-    const dif = c.anterior > 0 ? (c.total - c.anterior) / c.anterior * 100 : null;
-    return {
-      nome: `${c.emoji ? c.emoji + " " : ""}${c.nome}`,
-      ponto: c.cor, cor: c.cor, fracao: c.total / maior,
-      valor: fmtBRLCurto(c.total), chip: pct(c.share),
-      dica: `${c.nome}: ${fmtBRL(c.total)}${dif === null ? "" : ` · ${dif > 0 ? "▲" : "▼"} ${pct(dif)} vs ${D.periodo.anteriorRotulo}`}`,
-    };
-  }));
-  el("rodDist").textContent = "Selo é a fatia do gasto do período; variação contra o anterior no mouse."
-    + (D.categorias.length > 8 ? " As categorias menores ficam fora da lista." : "");
+  el("dist").innerHTML = `<div class="vg-dist-cab"><span>Categoria</span><span></span><span>Gasto</span><span>Fatia</span><span>Variação</span><span>${esc(D.periodo.anteriorRotulo)}</span></div>`
+    + cats.map(c => {
+      const v = chipVar(c.total, c.anterior);
+      const link = `transacoes.html?${new URLSearchParams({ from: D.periodo.mesDe || D.periodo.mesAte, to: D.periodo.mesAte, category: c.id })}`;
+      return `<a class="vg-dist-l" href="${esc(link)}" title="${esc(`${c.nome}: ${fmtBRL(c.total)} · ${D.periodo.anteriorRotulo}: ${fmtBRL(c.anterior || 0)}`)}">
+        <span class="v-nome"><i class="v-ponto-cor" style="background:${c.cor}"></i>${esc(c.nome)}</span>
+        <span class="vg-trilha"><i style="width:${(c.total / maior * 100).toFixed(1)}%;background:${c.cor}"></i></span>
+        <b>${fmtBRLCurto(c.total)}</b>
+        <span class="mut">${pct(c.share)}</span>
+        <span>${v.chip ? `<span class="v-chip ${v.chipTipo || ""}">${esc(v.chip)}</span>` : ""}</span>
+        <span class="mut">${fmtBRLCurto(c.anterior || 0)}</span>
+      </a>`;
+    }).join("");
+  el("rodDist").textContent = "Clique numa categoria para ver os lançamentos.";
 }
 
 
 /* Sankey em SVG puro. Cada coluna soma o mesmo total (a receita, ou o gasto
    quando ele passa da receita e entra um nó "Déficit"), então as faixas
    fecham de uma coluna para a outra sem sobrar nem faltar. */
+let SANKEY_ABERTA = null;   // id da categoria com as subcategorias abertas
 function renderSankey() {
   const alvo = el("sankey");
   const receita = Math.max(0, D.resumo.entradas || 0);
   const gasto = Math.max(0, D.resumo.gasto || 0);
-  el("notaSankey").textContent = D.periodo.rotulo;
+  el("notaSankey").textContent = "";   // o mês já está no seletor
   if (!gasto && !receita) { alvo.innerHTML = `<div class="vg-nada" style="padding:24px;color:var(--text-3)">Sem movimento no período.</div>`; return; }
 
   const estreito = alvo.clientWidth < 900;
   const periodoQ = { from: D.periodo.mesDe || D.periodo.mesAte, to: D.periodo.mesAte };
   const link = id => id ? `transacoes.html?${new URLSearchParams({ ...periodoQ, category: id })}` : null;
 
-  // Categorias abaixo de 1% do gasto viram "Outras"; subs, até 6 por pai.
-  const cats = [], outras = { nome: "Outras", cor: "var(--line-forte)", total: 0, filhos: [] };
-  for (const c of D.categorias.filter(c => c.total > 0)) {
-    if (c.total < gasto * 0.01) { outras.total += c.total; continue; }
-    // Subcategorias que pesam: até 4 por pai, cada uma com 0,5%+ do gasto.
-    // Listar tudo engarrafava a última coluna; cortar em 2% esvaziava.
-    const filhos = [...c.filhos].sort((a, b) => b.total - a.total)
-      .filter(f => f.total >= gasto * 0.005).slice(0, 4);
-    cats.push({ ...c, filhos });
-  }
-  if (outras.total > 0) cats.push(outras);
+  // As 8 maiores categorias; o resto vira "Outras N". Subcategorias só da
+  // categoria aberta (clique nela) -- com todas abertas eram ~28 nós e o
+  // gráfico passava de 800px de altura.
+  const TOP = 8;
+  const ordenadas = D.categorias.filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+  const cats = ordenadas.slice(0, TOP).map(c => ({ ...c, filhos: [...(c.filhos || [])].filter(f => f.total > 0).sort((a, b) => b.total - a.total).slice(0, 6) }));
+  const resto = ordenadas.slice(TOP);
+  if (resto.length) cats.push({ nome: `Outras ${resto.length}`, cor: "var(--line-forte)", total: resto.reduce((a, c) => a + c.total, 0), filhos: [] });
+  if (SANKEY_ABERTA && !cats.some(c => c.id === SANKEY_ABERTA && c.filhos.length)) SANKEY_ABERTA = null;
 
   const deficit = Math.max(0, gasto - receita);
   const restante = Math.max(0, receita - gasto);
@@ -482,9 +506,12 @@ function renderSankey() {
   if (deficit) lks.push({ de: "def", para: "desp", valor: deficit, cor: "var(--laranja)" });
   cats.forEach((c, i) => {
     const id = `c${i}`;
-    no(id, 2, c.nome, c.total, c.cor, link(c.id));
+    // Categoria com subcategorias abre/fecha no clique; sem filhos, vai direto para os lançamentos.
+    no(id, 2, c.nome, c.total, c.cor, c.filhos.length ? null : link(c.id));
+    const n = nos[nos.length - 1];
+    if (c.filhos.length) { n.abre = c.id; n.aberta = c.id === SANKEY_ABERTA; }
     lks.push({ de: "desp", para: id, valor: c.total, cor: c.cor });
-    if (!estreito) c.filhos.forEach((f, j) => {
+    if (c.id === SANKEY_ABERTA) c.filhos.forEach((f, j) => {
       const fid = `c${i}f${j}`;
       no(fid, 3, f.nome, f.total, f.cor || c.cor, link(f.id));
       lks.push({ de: id, para: fid, valor: f.total, cor: f.cor || c.cor });
@@ -495,29 +522,32 @@ function renderSankey() {
   // a espessura segue o valor, mas num teto pequeno (o maior fluxo tem
   // FAIXA px). Proporcional à altura toda, "Despesas" ocupava a tela e as
   // categorias pequenas se empilhavam umas sobre as outras.
-  const ncol = estreito ? 3 : 4;
+  const ncol = SANKEY_ABERTA ? 4 : 3;
   const porCol = [...Array(ncol)].map((_, k) => nos.filter(n => n.col === k));
-  const SLOT = 44, FAIXA = 36, MIN = 4;
+  // Faixas mais encorpadas que antes (o maior fluxo tem FAIXA px), mas bem
+  // abaixo do mockup. Cada nó ocupa pelo menos SLOT de altura, ou a própria
+  // espessura + respiro, então os blocos grossos não encostam no vizinho.
+  const SLOT = 40, FAIXA = 64, MIN = 4, RESPIRO = 16;
   const escala = FAIXA / (topo || 1);
   const W = alvo.clientWidth - 36, NW = 8;
   const xCol = k => k === 0 ? 0 : k === ncol - 1 ? W - NW : (W - NW) * k / (ncol - 1);
-  // Linha de cada nó. Subcategoria começa na linha do pai (ou na próxima
-  // livre): fica perto dele, e as faixas quase não se cruzam.
-  const linha = {};
+  // Posição de cada nó, coluna a coluna. Subcategoria começa na altura do
+  // pai (ou logo abaixo do anterior): fica perto dele e as faixas não cruzam.
+  let H = 0;
   porCol.forEach((col, k) => {
     let livre = 0;
     for (const n of col) {
-      const pai = k === 3 ? lks.find(l => l.para === n.id)?.de : null;
-      linha[n.id] = Math.max(livre, pai != null ? linha[pai] ?? 0 : livre);
-      livre = linha[n.id] + 1;
+      n.h = Math.max(MIN, n.valor * escala);
+      n.x = xCol(n.col);
+      const altura = Math.max(SLOT, n.h + RESPIRO);
+      const pai = k === 3 ? nos.find(m => m.id === lks.find(l => l.para === n.id)?.de) : null;
+      const topoLinha = Math.max(livre, pai ? pai.y - (Math.max(SLOT, n.h + RESPIRO) - n.h) / 2 : 0);
+      n.y = topoLinha + (altura - n.h) / 2;
+      livre = topoLinha + altura;
     }
+    H = Math.max(H, livre);
   });
-  const H = Math.max(200, (Math.max(...Object.values(linha)) + 1) * SLOT);
-  for (const n of nos) {
-    n.h = Math.max(MIN, n.valor * escala);
-    n.x = xCol(n.col);
-    n.y = linha[n.id] * SLOT + (SLOT - n.h) / 2;
-  }
+  H = Math.max(200, H);
   const porId = Object.fromEntries(nos.map(n => [n.id, n]));
   const saida = {}, entrada = {};
   const caminhos = lks.map(l => {
@@ -527,8 +557,11 @@ function renderSankey() {
     const y0 = a.y + (saida[a.id] || 0) + h / 2; saida[a.id] = (saida[a.id] || 0) + h;
     const y1 = b.y + (entrada[b.id] || 0) + h / 2; entrada[b.id] = (entrada[b.id] || 0) + h;
     const x0 = a.x + NW, x1 = b.x, mx = (x0 + x1) / 2;
-    return `<path class="lk" data-de="${a.id}" data-para="${b.id}" data-valor="${l.valor}" stroke="${esc(l.cor)}" stroke-width="${h.toFixed(1)}"
-      d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}"/>`;
+    const d = `M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)}`;
+    // Faixa visível + uma "pega" invisível de pelo menos 14px: as faixas das
+    // categorias têm 4-7px e eram difíceis de acertar com o mouse.
+    return `<path class="lk" data-de="${a.id}" data-para="${b.id}" data-valor="${l.valor}" stroke="${esc(l.cor)}" stroke-width="${h.toFixed(1)}" d="${d}"/>
+      <path class="lk-pega" data-de="${a.id}" data-para="${b.id}" data-valor="${l.valor}" stroke-width="${Math.max(14, h).toFixed(1)}" d="${d}"/>`;
   }).join("");
   const rotulos = nos.map(n => {
     // Como na referência: receita e despesas com o rótulo à direita;
@@ -537,9 +570,10 @@ function renderSankey() {
     const esquerda = n.col >= 2;
     const tx = esquerda ? n.x - 8 : n.x + NW + 8, anc = esquerda ? "end" : "start";
     const cy = n.y + n.h / 2;
-    return `<g class="nd" data-no="${n.id}" data-valor="${n.valor}" data-nome="${esc(n.nome)}" ${n.ir ? `data-ir="${esc(n.ir)}"` : ""}>
+    const seta = n.abre ? ` ${n.aberta ? "▾" : "▸"}` : "";
+    return `<g class="nd" data-no="${n.id}" data-valor="${n.valor}" data-nome="${esc(n.nome)}" ${n.ir ? `data-ir="${esc(n.ir)}"` : ""} ${n.abre ? `data-abre="${esc(n.abre)}"` : ""}>
       <rect x="${n.x}" y="${n.y.toFixed(1)}" width="${NW}" height="${n.h.toFixed(1)}" fill="${esc(n.cor)}"/>
-      <text x="${tx}" y="${(cy - 1).toFixed(1)}" text-anchor="${anc}">${esc(n.nome)}</text>
+      <text x="${tx}" y="${(cy - 1).toFixed(1)}" text-anchor="${anc}">${esc(n.nome)}<tspan class="seta-sk">${seta}</tspan></text>
       <text class="v" x="${tx}" y="${(cy + 12).toFixed(1)}" text-anchor="${anc}">${esc(fmtBRL(n.valor))}</text>
     </g>`;
   }).join("");
@@ -563,7 +597,7 @@ function ligarSankey(alvo, lks, receita, gasto) {
     alvo.querySelectorAll(".nd").forEach(g => g.classList.toggle("on", nosIds.has(g.dataset.no)));
   };
   alvo.onmousemove = e => {
-    const g = e.target.closest(".nd"), p = e.target.closest(".lk");
+    const g = e.target.closest(".nd"), p = e.target.closest(".lk, .lk-pega");
     if (!g && !p) { alvo.classList.remove("foco"); dica.hidden = true; return; }
     let lista, ids, texto;
     if (g) {
@@ -583,13 +617,27 @@ function ligarSankey(alvo, lks, receita, gasto) {
     acender(lista, ids);
     dica.innerHTML = texto;
     dica.hidden = false;
-    const r = alvo.getBoundingClientRect();
-    const x = Math.min(e.clientX - r.left + 14, r.width - dica.offsetWidth - 4);
+    // Coordenadas da tela vêm ampliadas pelo zoom da página; o estilo não.
+    const r = alvo.getBoundingClientRect(), z = zoomDaPagina();
+    const x = Math.min((e.clientX - r.left) / z + 14, r.width / z - dica.offsetWidth - 4);
     dica.style.left = `${x}px`;
-    dica.style.top = `${e.clientY - r.top + 14}px`;
+    dica.style.top = `${(e.clientY - r.top) / z + 14}px`;
   };
   alvo.onmouseleave = () => { alvo.classList.remove("foco"); dica.hidden = true; };
-  alvo.onclick = e => { const g = e.target.closest(".nd[data-ir]"); if (g) location.href = g.dataset.ir; };
+  alvo.onclick = e => {
+    // Clicar na faixa vale o mesmo que clicar no nó onde ela chega.
+    const faixa = e.target.closest(".lk, .lk-pega");
+    const destino = faixa && alvo.querySelector(`.nd[data-no="${faixa.dataset.para}"]`);
+    const abre = e.target.closest(".nd[data-abre]") || (destino?.matches("[data-abre]") ? destino : null);
+    if (!abre && destino?.dataset.ir) { location.href = destino.dataset.ir; return; }
+    if (abre) {
+      SANKEY_ABERTA = SANKEY_ABERTA === abre.dataset.abre ? null : abre.dataset.abre;
+      renderSankey();
+      return;
+    }
+    const g = e.target.closest(".nd[data-ir]");
+    if (g) location.href = g.dataset.ir;
+  };
 }
 
 /* Compara categoria a categoria com o período anterior do MESMO tamanho: mês
@@ -617,7 +665,7 @@ function renderComparativo() {
   el("cmp").innerHTML = cats.map(c => {
     const v = chipVar(c.total, c.anterior);
     return `<div class="vg-cmp" title="${esc(`${c.nome}: ${fmtBRL(c.total)} em ${D.periodo.rotulo} · ${fmtBRL(c.anterior)} em ${D.periodo.anteriorRotulo}`)}">
-      <div class="vg-cmp-topo"><span class="v-nome"><i class="v-ponto-cor" style="background:${c.cor}"></i>${esc(`${c.emoji ? c.emoji + " " : ""}${c.nome}`)}</span>
+      <div class="vg-cmp-topo"><span class="v-nome"><i class="v-ponto-cor" style="background:${c.cor}"></i>${esc(`${emojiTexto(c)}${c.nome}`)}</span>
         ${v.chip ? `<span class="v-chip ${v.chipTipo || ""}">${esc(v.chip)}</span>` : ""}</div>
       <div class="vg-cmp-b"><span class="vg-trilha"><i style="width:${c.total / maior * 100}%;background:${c.cor}"></i></span><b>${fmtBRLCurto(c.total)}</b></div>
       <div class="vg-cmp-b ant"><span class="vg-trilha"><i style="width:${c.anterior / maior * 100}%;background:${c.cor}"></i></span><span>${fmtBRLCurto(c.anterior)}</span></div>
@@ -665,10 +713,18 @@ function renderFixas() {
   // inteira: um erro aqui matava tambem os paineis renderizados depois.
   const abertas = f.abertas || [];
   el("notaFixas").textContent = `${labelMes(D.mesFoco)} · ${fmtBRL(f.pendente)} a pagar`;
-  if (!abertas.length) {
+  // Tudo pago (ou nada no mês): o card vira uma linha na largura toda e o
+  // "Gasto geral mês a mês" ao lado ganha a linha inteira.
+  const compacto = !abertas.length;
+  el("secFixas").classList.toggle("c6", !compacto);
+  el("secFixas").classList.toggle("c12", compacto);
+  el("secFixas").classList.toggle("fx-compacto", compacto);
+  el("secGeral").classList.toggle("c6", !compacto);
+  el("secGeral").classList.toggle("c12", compacto);
+  if (compacto) {
     el("fixas").innerHTML = total
-      ? `<div class="vazio">Todas as ${f.quantidade} contas fixas do mês já foram pagas.</div>`
-      : `<div class="vazio">Sem contas fixas no mês.</div>`;
+      ? `<a class="fx-linha" href="contas_fixas2.html"><i class="v-ponto-cor" style="background:var(--verde)"></i><b>${f.quantidade} de ${f.quantidade} contas fixas pagas</b><span class="mut">${fmtBRL(f.pago)}</span></a>`
+      : `<div class="fx-linha mut">Sem contas fixas no mês.</div>`;
     el("rodFixas").textContent = "";
     return;
   }
@@ -694,7 +750,7 @@ function renderTop() {
   el("notaTop").textContent = `${d.quantidade} lançamentos · ticket médio ${fmtBRL(d.ticket)}`;
   if (!t.length) { el("top").innerHTML = `<div class="vazio">Sem gasto no período.</div>`; return; }
   el("top").innerHTML = vListaBarras(t.map(x => ({
-    nome: `${x.emoji ? x.emoji + " " : ""}${x.descricao}`, sub: x.categoria,
+    nome: `${emojiTexto(x)}${x.descricao}`, sub: x.categoria,
     ponto: x.emoji ? "" : x.cor, cor: x.cor, fracao: 0,
     valor: fmtBRL(x.valor),
     dica: `${fmtData(x.data)} · ${x.categoria} · ${x.conta}${x.parcela ? ` · parcela ${x.parcela}` : ""}`,
@@ -786,7 +842,7 @@ async function carregar() {
   D = await pedir(`/visao-geral?${q}`);
   REF = REF || D.periodo.mesAte;
   el("fRef").value = REF;
-  el("subtitulo").textContent = D.periodo.rotulo;
+  el("subtitulo").textContent = "";   // o mês já está no seletor
   for (const b of el("segPeriodo").querySelectorAll("button")) {
     b.classList.toggle("ativo", b.dataset.periodo === PERIODO);
   }
@@ -794,17 +850,16 @@ async function carregar() {
   if (!SEM_INICIO || SEM_REF !== REF) SEM_INICIO = semanaInicial(REF);
   SEM_REF = REF;
   renderSemana();
+  renderFixas();   // antes do gráfico: decide se ele ocupa meia linha ou a linha toda
   renderGeral();
   renderCartaoLinha();
   renderCartoes();
-  renderComparativo();
-  renderFixas();
   renderDist();
   renderSankey();
   renderTop();
   renderInsights();
   renderInvestimentos();
-  setEstado("estado", D.periodo.rotulo, "ok");
+  setEstado("estado", "", "ok");   // o mês já está no seletor
 }
 
 async function recarregar() {
@@ -946,7 +1001,7 @@ async function abrirSemana() {
     const nome = DIAS_SEM[(diaLocal(d).getDay() + 6) % 7];
     return `<div class="sem-dia"><span>${nome}, ${fmtData(d)}</span><span>${fmtBRL(doDia.reduce((s, t) => s + t.gasto, 0))}</span></div>`
       + doDia.map(t => `<div class="sem-lin"><span>${esc(t.descricao)}
-          <small>${esc(t.categoria?.emoji || "")} ${esc(t.categoria?.nome || "Sem categoria")} · ${esc(t.rotuloInstrumento || t.contaNome || "")}${t.parcelaTotal ? ` · ${t.parcelaNumero}/${t.parcelaTotal}` : ""}</small></span>
+          <small>${esc(emojiTexto(t.categoria))}${esc(t.categoria?.nome || "Sem categoria")} · ${esc(t.rotuloInstrumento || t.contaNome || "")}${t.parcelaTotal ? ` · ${t.parcelaNumero}/${t.parcelaTotal}` : ""}</small></span>
           <strong>${fmtBRL(t.gasto)}</strong></div>`).join("");
   }).join("") : '<div class="vazio">Nenhum gasto nesta semana.</div>';
   el("semAbrir").href = `transacoes.html?from=${isoDia(inicio).slice(0, 7)}&to=${isoDia(fim).slice(0, 7)}&type=DEBIT`;

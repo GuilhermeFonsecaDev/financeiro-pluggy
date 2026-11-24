@@ -42,11 +42,12 @@ import contextvars
 import re
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import banco as fin
 import cartoes
+import condicoes as cond
 import extrato_camada as cam
 import pluggy_extrato as px
 
@@ -168,6 +169,10 @@ _COLUNAS_NOVAS = {
     "fixas_descontos": {"forma_pagamento": "TEXT NOT NULL DEFAULT ''",
                         "transacao_id": "TEXT",
                         "compra_projetada": "TEXT"},
+    # Condições E/OU do vínculo: operador do termo e ligação com o anterior.
+    # OU por padrão, que é como os termos antigos sempre funcionaram.
+    "fixas_termos": {"operador": "TEXT NOT NULL DEFAULT 'contem'",
+                     "ligacao": "TEXT NOT NULL DEFAULT 'OU'"},
 }
 
 # As tags mudaram de nome para bater com o dashboard manual.
@@ -281,10 +286,15 @@ def _abrir() -> sqlite3.Connection:
     if not _pronto:
         conn.executescript(SCHEMA)
         for tabela, colunas in _COLUNAS_NOVAS.items():
-            existentes = {l["name"] for l in conn.execute(f"PRAGMA table_info({tabela})")}
-            for coluna, tipo in colunas.items():
-                if coluna not in existentes:
-                    conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
+            # A cópia da 2.0 (f2_*) é criada uma vez com a estrutura da época;
+            # coluna nova precisa chegar nela também.
+            for nome in (tabela, "f2_" + tabela):
+                existentes = {l["name"] for l in conn.execute(f"PRAGMA table_info({nome})")}
+                if not existentes:
+                    continue
+                for coluna, tipo in colunas.items():
+                    if coluna not in existentes:
+                        conn.execute(f"ALTER TABLE {nome} ADD COLUMN {coluna} {tipo}")
         # Sobra da detecção automática, que não existe mais: guardava só as
         # chaves de sugestão dispensadas, nenhum dado financeiro.
         conn.execute("DROP TABLE IF EXISTS fixas_sugestoes_ignoradas")
@@ -514,7 +524,7 @@ def _projecoes_do_mes(mes_ref: str) -> dict[str, list[dict[str, Any]]]:
     return por_grupo
 
 
-def _casar_projecao(termos: list[str], projecoes: dict[str, list[dict[str, Any]]],
+def _casar_projecao(termos: list, projecoes: dict[str, list[dict[str, Any]]],
                     usadas: set[int], referencia: str = "") -> dict[str, Any] | None:
     """A parcela projetada que estes termos identificam, se houver.
 
@@ -535,8 +545,7 @@ def _casar_projecao(termos: list[str], projecoes: dict[str, list[dict[str, Any]]
             if referencia and referencia not in (
                 grupo, item.get("cartaoId"), item.get("contaId")):
                 continue
-            descricao = cam.normalizar(item["descricao"])
-            if any(t in descricao for t in termos):
+            if casa_fixa(item["descricao"], [c if isinstance(c, dict) else {"termo": c} for c in termos]):
                 usadas.add(id(item))
                 return {
                     "forma": grupo,
@@ -576,6 +585,37 @@ def _termos_por_fixa(conn: sqlite3.Connection) -> dict[str, list[str]]:
     return saida
 
 
+def _condicoes_por_fixa(conn: sqlite3.Connection) -> dict[str, list[dict]]:
+    """Condições E/OU de cada conta (termo, operador, ligação com a anterior)."""
+    saida: dict[str, list[dict]] = {}
+    try:
+        linhas = conn.execute(
+            "SELECT fixa_id, termo, operador, ligacao FROM fixas_termos ORDER BY fixa_id, ordem"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Conexão aberta antes da migração das colunas (outra tela chegou
+        # primeiro): sem operador/ligação, os termos valem como OU.
+        linhas = [{"fixa_id": l["fixa_id"], "termo": l["termo"], "operador": "", "ligacao": ""}
+                  for l in conn.execute("SELECT fixa_id, termo FROM fixas_termos ORDER BY fixa_id, ordem")]
+    for linha in linhas:
+        saida.setdefault(linha["fixa_id"], []).append({
+            "termo": linha["termo"], "operador": linha["operador"] or "contem",
+            "ligacao": linha["ligacao"] or "OU"})
+    return saida
+
+
+def _condicoes_da(fixa, condicoes_por_fixa) -> list:
+    """Condições da conta; sem lista, o termo legado (ou strings soltas = OU)."""
+    lista = (condicoes_por_fixa or {}).get(fixa["id"]) or ([fixa["termo"]] if fixa["termo"] else [])
+    return [c if isinstance(c, dict) else {"termo": c} for c in lista]
+
+
+def casa_fixa(descricao: str, condicoes: list) -> bool:
+    """A regra de vínculo da conta casa com esta descrição? O termo perde o
+    contador de parcela (_termo_de_regra) antes de comparar."""
+    return cond.casa(descricao, condicoes, "contem", preparar_termo=_termo_de_regra)
+
+
 def _termos_de_regra(termos: list[str]) -> list[str]:
     """Lista normalizada e sem vazios, pronta para o CONTÉM."""
     return [t for t in (_termo_de_regra(x) for x in termos or []) if t]
@@ -604,14 +644,13 @@ def _casar(fixas: list[sqlite3.Row], candidatas: list[sqlite3.Row],
     for fixa in fixas:
         # Qualquer um dos termos serve (OU), igual às regras do extrato: a
         # descrição do mesmo pagamento muda de mês para mês.
-        brutos = (termos_por_fixa or {}).get(fixa["id"]) or [fixa["termo"]]
-        termos = _termos_de_regra(brutos)
-        if not termos:
+        # Agora com E / OU / NÃO (backend/condicoes.py); termos antigos = OU.
+        condicoes = _condicoes_da(fixa, termos_por_fixa)
+        if not _termos_de_regra([c["termo"] for c in condicoes if c.get("operador") != "nao_contem"]):
             continue
         previsto = float(fixa["valor_previsto"] or 0)
         for tx in candidatas:
-            descricao = cam.normalizar(tx["descricao"])
-            if not any(t in descricao for t in termos):
+            if not casa_fixa(tx["descricao"], condicoes):
                 continue
             referencia = fixa["conta_id"]
             permitidas = (fontes_por_referencia or {}).get(referencia, {referencia})
@@ -799,7 +838,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             f for f in fixas
             if not (f["id"] in do_mes and do_mes[f["id"]]["transacao_id"])
         ]
-        termos_por_fixa = _termos_por_fixa(conn)
+        termos_por_fixa = _condicoes_por_fixa(conn)
         automaticos = _casar(sem_vinculo, candidatas, vinculos_manuais,
                              termos_por_fixa, fontes_por_referencia)
 
@@ -826,7 +865,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             if referencia in identidades:
                 referencia = identidades[referencia]["cartaoId"]
             achado = _casar_projecao(
-                _termos_de_regra(termos_por_fixa.get(f["id"]) or [f["termo"]]),
+                _condicoes_da(f, termos_por_fixa),
                 projecoes, projecao_usada, referencia)
             if achado:
                 projecao_por_fixa[f["id"]] = achado
@@ -936,7 +975,8 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
             "valorPrevisto": float(f["valor_previsto"] or 0),
             "diaVencimento": f["dia_vencimento"],
             "termo": f["termo"],
-            "termos": termos_por_fixa.get(f["id"]) or ([f["termo"]] if f["termo"] else []),
+            "termos": [c["termo"] for c in termos_por_fixa.get(f["id"], [])] or ([f["termo"]] if f["termo"] else []),
+            "condicoes": _condicoes_da(f, termos_por_fixa),
             "contaId": f["conta_id"],
             "desde": f["desde"],
             "ate": f["ate"],
@@ -1009,7 +1049,7 @@ def mes_payload(mes_ref: str) -> dict[str, Any]:
 
 
 def candidatas_payload(mes_ref: str, busca: str = "",
-                       como_regra: bool = False) -> dict[str, Any]:
+                       como_regra: bool = False, condicoes: list | None = None) -> dict[str, Any]:
     """Transações do mês que casam com um termo.
 
     Serve tanto para o seletor de vínculo manual quanto para a prévia da regra
@@ -1039,8 +1079,12 @@ def candidatas_payload(mes_ref: str, busca: str = "",
         identidades = cartoes.identidades(conn)
         categorias = {l["id"]: l for l in conn.execute("SELECT * FROM extrato_categorias")}
 
-    termo = _termo_de_regra(busca) if como_regra else cam.normalizar(busca)
-    encontradas = [t for t in linhas if not termo or termo in cam.normalizar(t["descricao"])]
+    if condicoes:
+        # Prévia do cadastro: as condições E/OU exatamente como a regra casa.
+        encontradas = [t for t in linhas if casa_fixa(t["descricao"], condicoes)]
+    else:
+        termo = _termo_de_regra(busca) if como_regra else cam.normalizar(busca)
+        encontradas = [t for t in linhas if not termo or termo in cam.normalizar(t["descricao"])]
     return {
         "total": len(encontradas),
         "transacoes": [
@@ -1087,19 +1131,16 @@ def _validar(dados: dict) -> dict:
 
     # Aceita a lista nova e o campo antigo, para uma chamada velha (ou o
     # importador) continuar funcionando sem mudanca.
-    brutos = dados.get("termos")
-    if not isinstance(brutos, list):
-        brutos = [dados.get("termo") or ""]
-    termos, vistos = [], set()
-    for item in brutos:
-        texto = str(item or "").strip()
-        chave = cam.normalizar(texto)
-        if not texto or chave in vistos:
-            continue
-        vistos.add(chave)
-        termos.append(texto[:200])
-    if len(termos) > 20:
+    if isinstance(dados.get("condicoes"), list):
+        brutos = dados["condicoes"]
+    else:
+        brutos = dados.get("termos")
+        if not isinstance(brutos, list):
+            brutos = [dados.get("termo") or ""]
+    condicoes = cond.limpar(brutos, "contem", limite=200)
+    if len(condicoes) > 20:
         raise ValueError("No máximo 20 termos por conta fixa.")
+    termos = [c["termo"] for c in condicoes if c["operador"] != "nao_contem"]
 
     return {
         "nome": nome,
@@ -1110,6 +1151,7 @@ def _validar(dados: dict) -> dict:
         # `termos` e a lista; `termo` continua sendo o primeiro dela, porque
         # varios payloads e o importador ainda leem a coluna antiga.
         "termos": termos,
+        "condicoes": condicoes,
         "termo": termos[0] if termos else "",
         "conta_id": str(dados.get("contaId") or "").strip(),
         "ativo": 0 if dados.get("ativo") is False else 1,
@@ -1121,13 +1163,15 @@ def _validar(dados: dict) -> dict:
 
 
 def _gravar_termos(conn: sqlite3.Connection, fixa_id: str,
-                   termos: list[str]) -> None:
+                   condicoes: list) -> None:
     """Reescreve a lista inteira: e mais simples que diferenciar, e a lista
     tem no maximo algumas unidades."""
     conn.execute("DELETE FROM fixas_termos WHERE fixa_id = ?", (fixa_id,))
+    linhas = [c if isinstance(c, dict) else {"termo": c} for c in condicoes]
     conn.executemany(
-        "INSERT INTO fixas_termos (fixa_id, ordem, termo) VALUES (?, ?, ?)",
-        [(fixa_id, ordem, termo) for ordem, termo in enumerate(termos)])
+        "INSERT INTO fixas_termos (fixa_id, ordem, termo, operador, ligacao) VALUES (?, ?, ?, ?, ?)",
+        [(fixa_id, ordem, c["termo"], c.get("operador") or "contem", c.get("ligacao") or "OU")
+         for ordem, c in enumerate(linhas)])
 
 
 def criar(dados: dict) -> dict:
@@ -1150,7 +1194,7 @@ def criar(dados: dict) -> dict:
              datetime.now().isoformat(timespec="seconds"), desde, d["ate"],
              d["forma_pagamento"], d["incluir_calculos"]),
         )
-        _gravar_termos(conn, novo, d["termos"])
+        _gravar_termos(conn, novo, d["condicoes"])
         conn.commit()
     return {"ok": True, "id": novo}
 
@@ -1172,12 +1216,12 @@ def atualizar(fixa_id: str, dados: dict) -> dict:
              d["desde"], d["ate"], d["forma_pagamento"],
              d["incluir_calculos"], fixa_id),
         )
-        _gravar_termos(conn, fixa_id, d["termos"])
+        _gravar_termos(conn, fixa_id, d["condicoes"])
         conn.commit()
     return {"ok": True, "id": fixa_id}
 
 
-def historico_payload(fixa_id: str) -> dict[str, Any]:
+def historico_payload(fixa_id: str, janela: int = 0) -> dict[str, Any]:
     """Todas as datas em que esta conta fixa foi paga, mês a mês.
 
     Sai da transação vinculada, não de um registro de "pago" -- é a data em
@@ -1204,6 +1248,14 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
         ).fetchone()
         primeiro = max(fixa["desde"] or "", limites["min_mes"] or "")
         ultimo = min(fixa["ate"] or "9999-12", limites["max_mes"] or "0000-01")
+        if janela:
+            # Painel da conta: os últimos N meses até hoje, mesmo antes do
+            # "desde" do cadastro (a conta costuma ser recadastrada a cada mês e
+            # o pagamento antigo ainda casa com a regra).
+            hoje = date.today().strftime("%Y-%m")
+            ultimo = min(ultimo, hoje)
+            serial = int(ultimo[:4]) * 12 + int(ultimo[5:7]) - janela
+            primeiro = max(limites["min_mes"] or "", f"{serial // 12:04d}-{serial % 12 + 1:02d}")
         if not primeiro or primeiro > ultimo:
             return {"fixa": {"id": fixa["id"], "nome": fixa["nome"],
                              "termo": fixa["termo"],
@@ -1225,7 +1277,7 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
         } if fixa["conta_id"] else {}
 
         pagamentos = []
-        termos_da_fixa = _termos_por_fixa(conn).get(fixa_id) or [fixa["termo"]]
+        condicoes_da_fixa = _condicoes_da(fixa, _condicoes_por_fixa(conn))
         for mes_ref in _meses_entre(primeiro, ultimo):
             candidatas = _candidatas_do_mes(conn, mes_ref)
             por_id = {t["transacao_id"]: t for t in candidatas}
@@ -1235,7 +1287,7 @@ def historico_payload(fixa_id: str) -> dict[str, Any]:
                 # Mesma regra do mês, mas só para esta conta: as outras contas
                 # não disputam aqui porque a pergunta é "o que casou com ESTA".
                 achado = _casar([fixa], candidatas, set(),
-                                {fixa_id: termos_da_fixa}, fontes_por_referencia)
+                                {fixa_id: condicoes_da_fixa}, fontes_por_referencia)
                 tx = achado.get(fixa_id)
                 origem = "regra" if tx is not None else None
             pagamentos.append({

@@ -32,9 +32,150 @@
 }
 
 /* Aviso de contas no cartão sem vínculo, ao lado de "N conta(s)". */
-.f2-aviso { color: var(--laranja); cursor: help; }
+/* Avisos de cartão ao lado de "Faturas do mês": texto laranja com bolinha,
+   leve (o clique abre a lista). */
+.faturas-cab { display: flex; align-items: baseline; gap: 14px; margin: 0 0 12px; }
+.faturas-cab .faturas-titulo { margin: 0; }
+#avisosFaturas { display: flex; gap: 14px; }
+.f2-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; color: var(--laranja);
+  cursor: pointer; white-space: nowrap; }
+.f2-aviso::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.f2-aviso:hover { text-decoration: underline; text-underline-offset: 3px; }
+.f2-aviso[hidden] { display: none; }
+#avisoConferir { cursor: help; }
+/* Topo: tudo numa linha, alinhado ao centro. */
+.topo-fixas { align-items: center; flex-wrap: wrap; }
+.topo-fixas .topo-esq { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.topo-fixas .topo-esq h1 { margin: 0 6px 0 0; }
+.topo-fixas .topo-dir { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Mês e Atual/Previsto do lado direito, antes das ações, separados delas por um fio. */
+.topo-fixas .topo-filtros { display: flex; align-items: center; gap: 8px; padding-right: 14px; margin-right: 6px; border-right: 1px solid var(--line); }
+.topo-fixas .estado:empty { display: none; }
+/* Simular e Nova conta: mesmo quadrado, mesmo peso. O "+" não é mais um
+   bloco azul cheio (pesava o dobro do vizinho): contorno e ícone azuis. */
+.btn-ic { width: 38px; height: 38px; min-height: 38px; padding: 0; display: inline-grid; place-items: center; border-radius: 10px; }
+.btn-ic.primario { background: color-mix(in srgb, var(--azul) 14%, transparent); border: 1px solid color-mix(in srgb, var(--azul) 45%, transparent); color: #8cc0f5; }
+.btn-ic.primario:hover { background: color-mix(in srgb, var(--azul) 24%, transparent); color: #fff; }
 
 /* Partes da linha Cartões na composição. */
 .composicao-linha.f2-sub { padding-left: 12px; font-size: 12px; color: var(--text-3); }
 .composicao-linha.f2-sub strong { font-weight: 500; color: var(--text-2); }
 .f2-nao-desconta { color: var(--text-3); text-decoration: line-through; }
+
+/* Painel da conta fixa (mesmo padrão do de Transações, estilos base em tema.css). */
+.fxp-status { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px; border: 1px solid; }
+.fxp-status b { display: block; font-size: 13.5px; }
+.fxp-status small { color: var(--text-3); font-size: 12px; }
+.fxp-status .sutil { margin-left: auto; flex: none; }
+.fxp-status.ok { border-color: color-mix(in srgb, var(--verde) 40%, transparent); background: color-mix(in srgb, var(--verde) 8%, transparent); }
+.fxp-status.esp { border-color: color-mix(in srgb, var(--laranja) 40%, transparent); background: color-mix(in srgb, var(--laranja) 8%, transparent); }
+.fxp-status.info { border-color: var(--line); }
+.fxp-selo { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+.fxp-selo .icone-svg { stroke-width: 2.4; }
+.fxp-status.ok .fxp-selo { color: var(--verde); background: color-mix(in srgb, var(--verde) 16%, transparent); }
+.fxp-status.esp .fxp-selo { color: var(--laranja); background: color-mix(in srgb, var(--laranja) 16%, transparent); }
+.fxp-status.info .fxp-selo { color: var(--text-3); background: var(--surface-2); }
+.fxp-conta { display: grid; grid-template-columns: 1fr auto; row-gap: 7px; font-size: 13.5px; }
+.fxp-conta span { color: var(--text-2); }
+.fxp-conta span small { color: var(--text-3); }
+.fxp-conta b { text-align: right; font-weight: 550; font-variant-numeric: tabular-nums; }
+.fxp-conta .tot { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; color: var(--text); font-weight: 650; }
+.fxp-forma { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--cor) 50%, transparent); background: color-mix(in srgb, var(--cor) 14%, transparent);
+  color: color-mix(in srgb, var(--cor) 55%, #fff); }
+.fxp-forma.herdada { border-style: dashed; }
+.fxp-hist { display: flex; gap: 6px; align-items: flex-end; height: 62px; }
+.fxp-hist div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
+.fxp-hist i { width: 100%; border-radius: 4px; background: color-mix(in srgb, var(--azul) 50%, transparent); }
+.fxp-hist i.atual { background: var(--azul); }
+.fxp-hist i.pend { background: color-mix(in srgb, var(--laranja) 55%, transparent); }
+.fxp-hist span { font-size: 10.5px; color: var(--text-3); }
+.fxp-hist span.a { color: var(--text); font-weight: 600; }
+.txp-st span { float: right; text-transform: none; letter-spacing: 0; }
+#fxPainel code { font-family: Consolas, monospace; font-size: 12px; background: var(--surface-3); padding: 1px 6px; border-radius: 5px; }
+.primario-suave { background: color-mix(in srgb, var(--azul) 16%, transparent); border-color: color-mix(in srgb, var(--azul) 45%, transparent); color: #8cc0f5; }
+/* Lista de pagamentos mês a mês no painel. */
+.fxp-pags { display: flex; flex-direction: column; margin-top: 12px;
+  /* 5 registros à vista (~49px cada); o resto rola. */
+  max-height: 246px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-forte) transparent; padding-right: 4px; }
+.fxp-pag { display: grid; grid-template-columns: 64px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.fxp-pag-mes { font-size: 12px; color: var(--text-3); }
+.fxp-pag-info { min-width: 0; }
+.fxp-pag-info b { display: block; font-size: 13px; font-weight: 600; }
+.fxp-pag-info small { display: block; color: var(--text-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fxp-pag-v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+.fxp-pag.falta b, .fxp-pag.falta .fxp-pag-v { color: var(--laranja); }
+
+/* Cadastro como painel lateral (mesmo padrão dos cards de detalhes). */
+#modal.form-lateral { align-items: stretch; justify-content: flex-end; padding: 0; }
+#modal .form-painel { width: min(500px, 100%); max-width: none; height: 100vh; max-height: none; margin: 0; padding: 0;
+  border-radius: 0; border: 0; border-left: 1px solid var(--line-forte); overflow-y: auto; display: flex; flex-direction: column;
+  animation: fp-entrar var(--mov-medio, .22s) var(--mov-suave, ease); }
+@keyframes fp-entrar { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+#modal .txp-nome { margin: 0; }
+.fp-st { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 12px; }
+.fp-st b { width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); display: grid; place-items: center; font-size: 10.5px; }
+#modal .campo { display: flex; flex-direction: column; gap: 5px; margin: 0 0 12px; }
+#modal .campo > span:first-child { font-size: 12px; color: var(--text-3); }
+#modal .txp-sec .campo:last-child { margin-bottom: 0; }
+.fp-linha { display: grid; gap: 12px; }
+.fp-linha .campo { margin-bottom: 12px; }
+.fp-3 { grid-template-columns: 1.6fr 1fr .7fr; }
+.fp-2 { grid-template-columns: 1fr 1fr; }
+#fTagSeg { align-self: flex-start; }
+.fp-formas { display: flex; flex-wrap: wrap; gap: 6px; }
+.fp-forma { min-height: 0; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; opacity: .5;
+  border: 1px solid color-mix(in srgb, var(--cor) 50%, transparent); background: color-mix(in srgb, var(--cor) 14%, transparent);
+  color: color-mix(in srgb, var(--cor) 55%, #fff); transition: opacity var(--mov-rapido, .15s) ease; }
+.fp-forma.auto { border-style: dashed; font-weight: 500; }
+.fp-forma:hover { opacity: .85; }
+.fp-forma.ativo { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in srgb, var(--cor) 70%, transparent); }
+.fp-termos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 38px; padding: 5px 8px;
+  border: 1px solid var(--line-forte); border-radius: 10px; background: var(--surface-2); cursor: text; }
+.fp-termos input { flex: 1; min-width: 120px; border: 0; background: transparent; padding: 3px 2px; min-height: 0; box-shadow: none; outline: none; }
+.fp-termo { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 9px; border-radius: 7px; background: var(--surface-3);
+  font-family: Consolas, monospace; font-size: 12.5px; }
+.fp-termo button { min-height: 0; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--text-3); }
+.fp-termo button:hover { color: var(--text); }
+#modal .previa { padding: 0; overflow: hidden; }
+.fp-prev-cab { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--surface-3); font-size: 12px; color: var(--text-2); }
+.fp-prev-cab b { color: var(--verde); font-weight: 600; }
+#modal .previa .l { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
+#modal .previa .l .d { color: var(--text-3); }
+#modal .previa .l b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.fp-prev-aviso { padding: 7px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--laranja); }
+.fp-chave { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; margin-top: 2px; }
+.fp-chave input { position: absolute; opacity: 0; pointer-events: none; }
+.fp-chave i { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-3); position: relative; transition: background var(--mov-rapido, .15s) ease; }
+.fp-chave i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform var(--mov-rapido, .15s) ease; }
+.fp-chave input:checked + i { background: var(--azul); }
+.fp-chave input:checked + i::after { transform: translateX(16px); }
+.fp-chave input:focus-visible + i { outline: 2px solid var(--azul); outline-offset: 2px; }
+.fp-rodape { display: flex; gap: 8px; align-items: center; padding: 14px 20px; margin-top: auto; background: var(--surface-2); position: sticky; bottom: 0; }
+#fIcone { background: var(--surface-3); color: var(--text-2); border: 1px solid var(--line-forte); }
+
+/* Ajustes unslop-ui: status em linha, forma de pagamento só como texto colorido,
+   cadastro sem numeração e sem cores fortes fora do botão Salvar. */
+.fxp-status, .fxp-status.ok, .fxp-status.esp, .fxp-status.info { border: 0; background: none; padding: 0; border-radius: 0; gap: 10px; }
+.fxp-selo, .fxp-status .fxp-selo { width: auto; height: auto; background: none !important; }
+.fxp-status.ok .fxp-selo { color: var(--verde); }
+.fxp-status.esp .fxp-selo { color: var(--laranja); }
+.fxp-forma, .fxp-forma.herdada { padding: 0; border: 0; background: none; border-radius: 0; font-weight: 500; font-size: 13px; }
+.fxp-hist i { border-radius: 2px; }
+.fp-st { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+#fIcone, #modalSub { display: none; }
+.fp-forma, .fp-forma.auto { opacity: 1; border-radius: 6px; border: 1px solid var(--line-forte); border-style: solid; background: none;
+  color: var(--text-2); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.fp-forma:not(.auto)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cor); }
+.fp-forma:hover { opacity: 1; color: var(--text); }
+.fp-forma.ativo { box-shadow: none; background: var(--surface-3); border-color: var(--text-3); color: var(--text); }
+#modal #fTagSeg button.ativo { background: var(--surface-3); color: var(--text); }
+.fp-prev-cab { background: none; }
+.fp-prev-cab b { color: var(--text); font-weight: 500; }
+.fp-rodape { background: var(--surface); border-top: 1px solid var(--line); }
+#btnExcluir { color: var(--vermelho); }
+
+/* O painel do cadastro preso às bordas da janela (não 100vh): em algumas
+   janelas o 100vh passava da área visível e o rodapé com Salvar/Cancelar
+   ficava fora da tela. */
+#modal .form-painel { position: fixed; top: 0; right: 0; bottom: 0; height: auto; max-height: none; }

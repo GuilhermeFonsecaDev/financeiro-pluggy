@@ -88,3 +88,38 @@ class PagamentosFatura(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PagamentoVistoNaConta(PagamentosFatura):
+    """O débito na conta corrente chega antes do crédito no cartão."""
+    def setUp(self):
+        super().setUp()
+        self.db.executescript('''
+            CREATE TABLE pluggy_contas (conta_id,item_id,tipo);
+            INSERT INTO pluggy_contas VALUES ('a','item1','CREDIT'),('cc','item1','BANK');
+        ''')
+
+    def debito_conta(self, id, valor, dia):
+        self.db.execute('INSERT INTO pluggy_transacoes VALUES (?,?,?,?,?,?,?,?)',
+                        ('cc',id,'2026-09-'+dia,'POSTED','',-valor,'DEBIT','Pagamento efetuado - Pagamento Fatura'))
+
+    def test_adiantamento_so_na_conta_abate(self):
+        self.pagamento('quitacao',3709.99,'01')
+        self.debito_conta('cc-quit',3709.99,'01')   # mesmo pagamento: nao conta duas vezes
+        self.debito_conta('cc-adiant',523,'23')     # ainda nao chegou ao cartao
+        saldo, audit = self.calcular()
+        self.assertEqual(saldo, round(1453.68 - 523, 2))
+        self.assertEqual(audit[0]['pagamentos'], [{'data':'2026-09-23','valor':523,'pendente':False,'pelaConta':True}])
+
+    def test_quando_chega_ao_cartao_nao_duplica(self):
+        self.pagamento('quitacao',3709.99,'01')
+        self.debito_conta('cc-adiant',523,'23')
+        self.pagamento('adiant-cartao',523,'24')
+        self.assertEqual(self.calcular()[0], round(1453.68 - 523, 2))
+
+    def test_conexao_com_dois_cartoes_nao_adivinha(self):
+        self.db.execute("INSERT INTO pluggy_contas VALUES ('b','item1','CREDIT')")
+        self.pagamento('quitacao',3709.99,'01')
+        self.debito_conta('cc-adiant',523,'23')
+        self.assertEqual(self.calcular()[0], 1453.68)
+        self.assertEqual(self.calcular()[1], [])

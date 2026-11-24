@@ -14,7 +14,7 @@
    subcategorias abertas dela), então a régua só aparece entre uma categoria e
    a próxima, nunca entre a categoria e o filho dela nem entre um filho e o
    irmão ao lado. */
-.linha-cat { display: grid; grid-template-columns: 20px 28px 1fr 200px 24px; gap: 10px; align-items: center; padding: 9px 6px; }
+.linha-cat { display: grid; grid-template-columns: 20px 28px 1fr 200px 72px 24px; gap: 10px; align-items: center; padding: 9px 6px; }
 .linha-cat:hover { background: var(--surface-2); }
 .grupo-cat { border-bottom: 1px solid var(--line); }
 .grupo-cat:last-child { border-bottom: 0; }
@@ -57,6 +57,19 @@
 .pizza-leg b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .pizza-leg small { color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
 .so-ano { display: none; }
+.ano .so-mes { display: none; }
+/* Variação contra o mês anterior: ▲ subiu (vermelho), ▼ caiu (verde). */
+.var-cel { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.var-cel.sobe { color: var(--vermelho); }
+.var-cel.cai { color: var(--verde); }
+.var-cel.igual, .var-cel.novo { color: var(--text-3); font-weight: 500; }
+/* Subcategoria mais leve: linha mais baixa, bolinha no lugar do ícone (o
+   ícone fica só no pai) e barra medindo a fatia dentro do pai. */
+.linha-cat.filho { padding-top: 5px; padding-bottom: 5px; }
+.linha-cat.filho .nome { font-size: 13px; }
+.ponto-filho { width: 8px; height: 8px; border-radius: 50%; justify-self: center; opacity: .85; }
+.linha-cat.filho .gastos-cel .valor { font-weight: 500; color: var(--text-2); }
+.linha-cat.filho .barra > span { opacity: .75; }
 /* Na visão anual, total, média e os títulos das colunas ficam centralizados. */
 .ano .gastos-cel { justify-content: center; }
 .ano .gastos-cel .valor { text-align: center; min-width: 0; }
@@ -81,7 +94,7 @@
 .ano-sel { display: inline-flex; align-items: center; gap: 8px; }
 .ano-sel[hidden] { display: none; }
 .ano-sel b { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
-.cabec { display: grid; grid-template-columns: 20px 28px 1fr 200px 24px; gap: 10px; padding: 0 6px 8px; color: var(--text-3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.cabec { display: grid; grid-template-columns: 20px 28px 1fr 200px 72px 24px; gap: 10px; padding: 0 6px 8px; color: var(--text-3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .cabec .r { text-align: right; }
 .cat-modal { width:min(520px,100%); }
 .cat-form { display:grid; gap:14px; }
@@ -123,6 +136,7 @@
   /* Valor + barra já são uma célula só, então a tela estreita so precisa
      encolher essa coluna -- sem quebrar a grade em outra contagem de trilhas. */
   .linha-cat, .cabec { grid-template-columns: 20px 28px 1fr 84px 24px; }
+  .var-cel, .cabec .so-mes { display: none; }
   .gastos-cel .barra { display: none; }
   .cat-lista-linha { grid-template-columns:28px minmax(0,1fr) 34px 34px; gap:6px; }
   .cat-lista-acao { min-width:34px; width:34px; padding:0; }
@@ -175,7 +189,7 @@
   <section class="painel">
     <div class="cabec">
       <span></span><span></span><span>Categoria</span>
-      <span class="r" id="cabecGastos">Gastos</span><span class="r so-ano" id="cabecMeses">Mês a mês</span><span></span>
+      <span class="r" id="cabecGastos">Gastos</span><span class="r so-ano" id="cabecMeses">Mês a mês</span><span class="r so-mes" id="cabecVar">vs anterior</span><span></span>
     </div>
     <div id="arvore" data-esqueleto="linhas:8"></div>
     <div id="vazio"></div>
@@ -221,7 +235,7 @@
         <div class="campo"><span>Emoji</span>
           <input id="catEmoji" type="hidden" />
           <button class="cat-emoji-botao vazio" id="catEmojiBotao" type="button" data-abre-pop
-            aria-label="Escolher emoji" aria-haspopup="dialog" aria-expanded="false">
+            aria-label="Escolher ícone" aria-haspopup="dialog" aria-expanded="false">
             <span id="catEmojiPreview">＋</span>
           </button>
         </div>
@@ -245,10 +259,10 @@
   </div>
 </div>
 
-<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher emoji" hidden>
-  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar emoji..." autocomplete="off" /></div>
+<div class="pop emoji-pop" id="popEmoji" role="dialog" aria-label="Escolher ícone" hidden>
+  <div class="pop-busca"><input id="emojiBusca" type="search" placeholder="Buscar ícone…" autocomplete="off" /></div>
   <div class="emoji-grade" id="emojiGrade"></div>
-  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem emoji</button></div>
+  <div class="pop-rodape"><button class="sutil" id="emojiLimpar" type="button">Sem ícone</button></div>
 </div>
 
 <script src="app.js"></script>
@@ -286,7 +300,7 @@ function salvarUltimoMes(mes) {
  * dela. Sem emoji, a própria cor preenche o quadrado. */
 function iconeCat(cat) {
   if (cat.emoji) {
-    return `<span class="icone-cat" style="background:${esc(cat.cor)}22;border:1px solid ${esc(cat.cor)}55">${esc(cat.emoji)}</span>`;
+    return `<span class="icone-cat" style="background:${esc(cat.cor)}22;border:1px solid ${esc(cat.cor)}55">${simboloCategoria(cat, 15)}</span>`;
   }
   // Categoria-pai não tem emoji -- a inicial do nome no quadrado colorido
   // ocupa o lugar dele, em vez de deixar o quadrado vazio.
@@ -294,7 +308,21 @@ function iconeCat(cat) {
   return `<span class="icone-cat inicial" style="background:${esc(cat.cor)}">${inicial}</span>`;
 }
 
+/** Variação contra o mês anterior (ANTERIOR: id -> total). */
+function celulaVar(cat) {
+  if (!ANTERIOR) return `<span class="var-cel"></span>`;
+  const ant = ANTERIOR[cat.id] || 0, at = cat.total || 0;
+  const dica = `${labelMes(MES_ANTERIOR)}: ${fmtBRL(ant)}`;
+  if (!ant && !at) return `<span class="var-cel igual"></span>`;
+  if (!ant) return `<span class="var-cel novo" title="${esc(dica)}">novo</span>`;
+  const d = (at - ant) / ant * 100;
+  if (Math.abs(d) < 0.5) return `<span class="var-cel igual" title="${esc(dica)}">=</span>`;
+  return `<span class="var-cel ${d > 0 ? "sobe" : "cai"}" title="${esc(dica)}">${d > 0 ? "▲" : "▼"} ${Math.abs(d).toLocaleString("pt-BR", { maximumFractionDigits: Math.abs(d) < 10 ? 1 : 0 })}%</span>`;
+}
+
+let ANTERIOR = null, MES_ANTERIOR = "";
 function linhaCat(cat, total, ehFilho = false) {
+  // Subcategoria: a barra mede a fatia dentro do pai (total = total do pai).
   const share = total ? (cat.total / total * 100) : 0;
   // filhos já chega filtrado pelo render; length basta e funciona no modo
   // "mostrar sem gasto", onde os filhos podem estar todos zerados.
@@ -304,13 +332,13 @@ function linhaCat(cat, total, ehFilho = false) {
     <div class="linha-cat ${ehFilho ? "filho" : ""}" data-cat="${esc(cat.id)}">
       <button class="expandir ${aberta ? "aberto" : ""}" data-expandir="${esc(cat.id)}"
               ${temFilhos ? "" : "disabled"} aria-label="Expandir">▶</button>
-      ${iconeCat(cat)}
+      ${ehFilho ? `<span class="ponto-filho" style="background:${esc(cat.cor)}"></span>` : iconeCat(cat)}
       <span class="nome">${esc(cat.nome)}${cat.quantidade
         ? `<span class="qtd" style="background:${esc(cat.cor)}22;color:${esc(cat.cor)}">${cat.quantidade}</span>` : ""}</span>
-      ${VISAO === "ano" ? celulasAno(cat, share) : `<div class="gastos-cel" title="${cat.total ? share.toFixed(1) + "% do total" : "Sem gasto no filtro atual"}">
+      ${VISAO === "ano" ? celulasAno(cat, share) : `<div class="gastos-cel" title="${cat.total ? share.toFixed(1) + (ehFilho ? "% da categoria" : "% do total") : "Sem gasto no filtro atual"}">
         <span class="valor ${cat.total ? "" : "muted"}">${cat.total ? fmtBRL(cat.total) : "—"}</span>
         <span class="barra"><span style="width:${Math.max(share, cat.total ? 2 : 0)}%;background:${esc(cat.cor)}"></span></span>
-      </div>`}
+      </div>${celulaVar(cat)}`}
       <button class="icone" data-editar="${esc(cat.id)}" aria-label="Editar categoria">✎</button>
     </div>`;
 }
@@ -382,7 +410,7 @@ function render(p) {
   alvo.innerHTML = visiveis.map(cat => {
     const filhos = todas ? (cat.filhos || []) : (cat.filhos || []).filter(f => f.total > 0);
     const corpo = abertas.has(cat.id)
-      ? filhos.map(f => linhaCat({ ...f, filhos: [] }, p.total, true)).join("")
+      ? filhos.map(f => linhaCat({ ...f, filhos: [] }, cat.total, true)).join("")
       : "";
     // A régua vem do grupo, não da linha: assim ela separa uma categoria da
     // próxima, mas não aparece entre a categoria e as subcategorias dela.
@@ -413,6 +441,7 @@ async function carregar() {
   sincronizarVisao();
   let p;
   if (VISAO === "ano") {
+    ANTERIOR = null;
     const meses = Array.from({ length: 12 }, (_, i) => `${ANO}-${String(i + 1).padStart(2, "0")}`);
     const [ano, ...porMes] = await Promise.all([
       pedir(consulta({ from: meses[0], to: meses[11] })),
@@ -428,7 +457,21 @@ async function carregar() {
     p = ano;
   } else {
     MENSAL = null;
-    p = await pedir(consulta(filtros.month ? { month: filtros.month } : {}));
+    const mes = filtros.month || MES_ATUAL;
+    const [y, m] = mes.split("-").map(Number);
+    MES_ANTERIOR = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+    let ant;
+    [p, ant] = await Promise.all([
+      pedir(consulta(filtros.month ? { month: filtros.month } : {})),
+      pedir(consulta({ month: MES_ANTERIOR })).catch(() => null),
+    ]);
+    // Cabeçalho curto ("vs out") para não quebrar em duas linhas.
+    document.getElementById("cabecVar").textContent = `vs ${labelMes(MES_ANTERIOR).slice(0, 3).toLowerCase()}`;
+    ANTERIOR = null;
+    if (ant) {
+      ANTERIOR = {};
+      for (const c of ant.categorias) for (const x of [c, ...(c.filhos || [])]) ANTERIOR[x.id] = x.total || 0;
+    }
   }
   render(p);
 
@@ -502,15 +545,14 @@ function normalizarBusca(valor) {
 
 function renderEmojiPicker(filtro = "") {
   const termo = normalizarBusca(filtro.trim());
-  const catalogo = EMOJI_CATALOGO.length
-    ? EMOJI_CATALOGO
-    : EMOJIS.map(emoji => ({ emoji, nome: "", grupo: "" }));
+  // Ícones das categorias (app.js): o mesmo traço do menu, em vez de emoji.
+  const catalogo = catalogoIcones().map(i => ({ emoji: i.valor, nome: i.nome, grupo: i.busca }));
   EMOJI_FILTRADOS = catalogo.filter(item => !termo ||
-    normalizarBusca(`${item.emoji} ${item.nome} ${item.grupo} ${EMOJI_BUSCA[item.emoji] || ""}`).includes(termo));
+    normalizarBusca(`${item.nome} ${item.grupo}`).includes(termo));
   EMOJI_RENDERIZADOS = 0;
   document.getElementById("emojiGrade").innerHTML = EMOJI_FILTRADOS.length
     ? ""
-    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum emoji encontrado.</div>';
+    : '<div class="pop-vazio" style="grid-column:1/-1">Nenhum ícone encontrado.</div>';
   renderMaisEmojis();
 }
 
@@ -520,7 +562,7 @@ function renderMaisEmojis() {
   if (!lote.length) return;
   grade.insertAdjacentHTML("beforeend", lote.map(item =>
     `<button class="emoji-opcao" type="button" data-emoji="${esc(item.emoji)}"
-      aria-label="Usar ${esc(item.emoji)} — ${esc(item.nome)}" title="${esc(item.nome)}">${esc(item.emoji)}</button>`).join(""));
+      aria-label="Usar o ícone ${esc(item.nome)}" title="${esc(item.nome)}">${simboloCategoria({ emoji: item.emoji, nome: "A", cor: "#a7aebb" }, 18)}</button>`).join(""));
   EMOJI_RENDERIZADOS += lote.length;
   marcarEmojiSelecionado();
 }
@@ -528,7 +570,9 @@ function renderMaisEmojis() {
 function marcarEmojiSelecionado() {
   const atual = document.getElementById("catEmoji").value.trim();
   const botao = document.getElementById("catEmojiBotao");
-  document.getElementById("catEmojiPreview").textContent = atual || "＋";
+  const corPrevia = document.getElementById("catCor")?.value || "#a7aebb";
+  document.getElementById("catEmojiPreview").innerHTML = atual
+    ? simboloCategoria({ emoji: atual, nome: document.getElementById("catNome")?.value || "?", cor: corPrevia }, 20) : "＋";
   botao.classList.toggle("vazio", !atual);
   document.querySelectorAll("#emojiGrade [data-emoji]").forEach(botao => {
     botao.classList.toggle("selecionado", botao.dataset.emoji === atual);
@@ -539,10 +583,11 @@ function marcarEmojiSelecionado() {
  *  categoria-pai: o botão de emoji trava e qualquer emoji já escolhido
  *  é descartado, pra não ficar um valor invisível esperando pra ser salvo. */
 function atualizarDisponibilidadeEmoji() {
-  const ehSubcategoria = !!document.getElementById("catPai").value;
+  // Com ícones, categoria pai também tem o seu (antes só subcategoria tinha emoji).
+  const ehSubcategoria = true;
   const botao = document.getElementById("catEmojiBotao");
   botao.disabled = !ehSubcategoria;
-  botao.title = ehSubcategoria ? "" : "Só subcategorias têm emoji";
+  botao.title = ehSubcategoria ? "" : "Só subcategorias têm ícone";
   if (!ehSubcategoria) document.getElementById("catEmoji").value = "";
   marcarEmojiSelecionado();
 }
@@ -645,6 +690,7 @@ async function carregarCategorias() {
 }
 
 async function carregarCatalogoEmojis() {
+  return;   // seletor usa os ícones do app.js; os emojis em JSON não são mais usados
   try {
     const arquivos = Array.from({ length:16 }, (_, i) =>
       `assets/emojis/emoji-${String(i).padStart(2, "0")}.json`);

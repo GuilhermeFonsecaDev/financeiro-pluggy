@@ -7,7 +7,7 @@
 /* Mesmas colunas do Dashboard Financeiro manual. A linha carrega SÓ estes
    valores: tudo que é contexto (regra, vínculo, categoria, vencimento) vive no
    painel de detalhe, senão a tabela deixa de ser legível de relance. */
-.colunas { display: grid; grid-template-columns: 22px 1fr 128px 112px 106px 120px 100px 158px 50px; gap: 10px; align-items: center; }
+.colunas { display: grid; grid-template-columns: 22px 1fr 128px 112px 106px 120px 48px 96px 70px; gap: 10px; align-items: center; }
 
 .cabec { padding: 0 10px 10px; color: var(--text-3); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .cabec .c { text-align: center; }
@@ -15,20 +15,50 @@
 .fixa { padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .fixa:last-child { border-bottom: 0; }
 .fixa:hover { background: var(--surface-2); }
-.fixa .nome { font-size: 14px; font-weight: 650; letter-spacing: .02em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nome em caixa normal (nomeLegivel no JS); a tag "N descontos" nunca é
+   cortada -- quem encolhe com reticências é o nome. */
+.fixa .nome { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.fixa .nome-txt { overflow: hidden; text-overflow: ellipsis; min-width: 64px; }
+/* Seta só aparece ao passar o mouse na linha (ou com a linha aberta / foco),
+   como o ⋯ das Transações. Em tela de toque fica sempre. */
+@media (hover: hover) {
+  .fixa .seta:not(.aberta) { opacity: 0; transition: opacity var(--mov-rapido, .15s) ease, color var(--mov-rapido, .15s) ease; }
+  .fixa:hover .seta, .fixa .seta:focus-visible { opacity: 1; }
+}
+/* Quantos subdescontos a conta tem: numerozinho azul preso na pílula de
+   Descontos (que é o que abre a lista). */
+.pilula.desc { position: relative; overflow: visible; }
+.qtd-desc { position: absolute; top: -5px; right: -7px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
+  display: grid; place-items: center; background: var(--azul); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 1; }
 
 /* Triângulo de abrir/fechar, como no dashboard: é o único jeito óbvio de saber
    que a linha expande — e de fechá-la depois. */
-.seta { width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 7px; display: grid; place-items: center; font-size: 9px; color: var(--text-2); transition: transform .12s; }
-.seta.aberta { transform: rotate(90deg); color: var(--azul); }
+.seta { width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 7px; display: grid; place-items: center; color: var(--text-2); transition: transform var(--mov-rapido, .15s) ease, color var(--mov-rapido, .15s) ease; }
+/* Gira só o desenho da seta, não o botão: o contador preso nela fica no lugar. */
+.seta .icone-svg { transition: transform var(--mov-rapido, .15s) ease; }
+.seta.aberta { color: var(--azul); }
+.seta.aberta .icone-svg { transform: rotate(90deg); }
 
-.acoes-cel { display: flex; gap: 2px; justify-content: flex-end; }
+.acoes-cel { display: flex; gap: 8px; justify-content: flex-end; }
 /* Discreto, mas nunca invisível: escondido atrás de :hover, o menu simplesmente
    não existia para quem procurava por ele. */
-.acoes-cel .icone { width: 22px; min-height: 22px; opacity: .4; }
+.acoes-cel .icone { width: 28px; height: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; border-radius: 8px; color: var(--text-3); opacity: .55; }
 .fixa:hover .acoes-cel .icone, .acoes-cel .icone:focus-visible { opacity: 1; }
-.acoes-cel .info { border: 1px solid var(--line-forte); border-radius: 50%; background: var(--surface-2); font-size: 12px; font-weight: 700; }
-.acoes-cel .info:hover { border-color: var(--azul); color: var(--azul); background: color-mix(in srgb, var(--azul) 10%, transparent); }
+.acoes-cel .icone:hover { color: var(--text); background: var(--surface-3); }
+.acoes-cel .info:hover { color: var(--azul); background: color-mix(in srgb, var(--azul) 12%, transparent); }
+
+/* Pago: um quadrado com o estado em ícone -- ✓ verde pago, ! laranja
+   pendente, — apagado informativa. O texto fica na dica e no aria-label. */
+.col-pago { display: flex; justify-content: center; }
+.selo-pago { width: 30px; height: 30px; min-height: 30px; padding: 0; display: grid; place-items: center; border-radius: 8px; border: 1px solid;
+  transition: background var(--mov-rapido, .15s) ease, border-color var(--mov-rapido, .15s) ease, transform var(--mov-rapido, .15s) ease; }
+.selo-pago .icone-svg { stroke-width: 2.4; }
+.selo-pago.pago { border-color: color-mix(in srgb, var(--verde) 45%, transparent); background: color-mix(in srgb, var(--verde) 14%, transparent); color: var(--verde); }
+.selo-pago.pendente { border-color: color-mix(in srgb, var(--laranja) 45%, transparent); background: color-mix(in srgb, var(--laranja) 12%, transparent); color: var(--laranja); }
+.selo-pago.informativa { border-color: var(--line); background: transparent; color: var(--text-3); cursor: default; }
+.selo-pago.pago:hover { background: color-mix(in srgb, var(--verde) 22%, transparent); }
+.selo-pago.pendente:hover { background: color-mix(in srgb, var(--laranja) 20%, transparent); }
+.selo-pago:not(:disabled):active { transform: scale(.92); }
 
 /* Caixa de valor bruto: editável, como no dashboard manual. */
 .bruto { width: 100%; text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; padding: 6px 9px 6px 3px; border: 0; background: transparent; }
@@ -55,7 +85,8 @@
 .pilula.tag-pessoais { border-color: color-mix(in srgb, var(--azul) 42%, transparent); background: color-mix(in srgb, var(--azul) 12%, transparent); color: #8dbdf3; }
 .pilula.tag-empresa { border-color: color-mix(in srgb, var(--verde) 42%, transparent); background: color-mix(in srgb, var(--verde) 12%, transparent); color: #7fd8a8; }
 .pilula.informativa { border-color:rgba(141,158,178,.35); background:var(--surface-2); color:var(--text-3); }
-.fixa.informativa .nome::after { content:"Informativa"; display:inline-flex; margin-left:8px; padding:2px 6px; border:1px solid var(--line-forte); border-radius:999px; color:var(--text-3); font-size:9.5px; font-weight:650; text-transform:uppercase; letter-spacing:.04em; vertical-align:2px; }
+/* "Informativa" saiu do lado do nome: o quadrado "—" da coluna Pago já
+   marca isso (com a explicação na dica), e a etiqueta espremia o nome. */
 .pilula.desc { border-color: color-mix(in srgb, var(--azul) 30%, transparent); background: color-mix(in srgb, var(--azul) 9%, transparent); color: #8dbdf3; }
 .pilula.desc.zero { border-color: var(--line); background: none; color: var(--text-3); font-weight: 450; }
 .pilula.pago { border-color: color-mix(in srgb, var(--verde) 42%, transparent); background: color-mix(in srgb, var(--verde) 12%, transparent); color: #7fd8a8; }
@@ -66,6 +97,15 @@
 
 select.forma { width: 100%; font-size: 13.5px; padding: 6px 8px; text-align: center; }
 select.forma.herdada { color: var(--text-2); }
+/* Pagamento como tag: cada banco na sua cor, PIX verde. O texto é a cor
+   clareada para ler bem no fundo escuro. Forma herdada (veio sozinha) tem a
+   borda tracejada; escolhida à mão, contínua. */
+select.forma.tag-forma { height: 28px; min-height: 0; padding: 0 22px 0 10px; background-position: right 7px center; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--cor) 50%, transparent); background-color: color-mix(in srgb, var(--cor) 14%, transparent);
+  color: color-mix(in srgb, var(--cor) 55%, #fff); }
+select.forma.tag-forma.herdada { border-style: dashed; }
+select.forma.tag-forma:hover { background-color: color-mix(in srgb, var(--cor) 22%, transparent); }
+select.forma.tag-forma option { background: var(--surface-2); color: var(--text); font-weight: 450; }
 
 /* Subdescontos: uma pequena tabela centralizada, sem campos perdidos num
    cartão muito largo. Cabeçalho, linhas e resumo compartilham o mesmo eixo. */
@@ -238,7 +278,7 @@ select.forma.herdada { color: var(--text-2); }
 
 
 @media (max-width: 1700px) {
-  .colunas { grid-template-columns: 22px minmax(220px, 1fr) 112px 120px 100px 50px; }
+  .colunas { grid-template-columns: 22px minmax(220px, 1fr) 112px 120px 48px 70px; }
   .col-tag, .col-desc, .col-forma { display: none; }
 }
 
@@ -248,7 +288,7 @@ select.forma.herdada { color: var(--text-2); }
 }
 
 @media (max-width: 1180px) {
-  .colunas { grid-template-columns: 22px 1fr 106px 112px 96px 50px; }
+  .colunas { grid-template-columns: 22px 1fr 106px 112px 48px 70px; }
   .col-tag, .col-desc, .col-forma { display: none; }
   .subs { margin-left: 0; }
   .subs-corpo { width: calc(100% - 20px); }

@@ -183,12 +183,12 @@ mark { background:color-mix(in srgb, var(--azul) 24%, transparent); color:inheri
     </div>
     <div class="form-grid">
       <label class="campo full"><span>Nome</span><input id="fNome" type="text" placeholder="ex.: Salário empresa" autocomplete="off" /></label>
-      <label class="campo"><span>Condição</span><select id="fOperador">
+      <label class="campo" hidden style="display:none"><span>Condição</span><select id="fOperador">
         <option value="contem">A descrição contém</option>
         <option value="comeca_com">A descrição começa com</option>
         <option value="igual">A descrição é igual a</option>
       </select></label>
-      <label class="campo"><span>Termo</span><input id="fTermo" type="text" placeholder="ex.: PAGAMENTO SALARIO" autocomplete="off" /></label>
+      <div class="campo full"><span>Quando a descrição</span><div id="fCondicoes"></div></div>
       <label class="campo"><span>Do dia</span><input id="fDiaInicio" type="text" inputmode="numeric" value="1" /></label>
       <label class="campo"><span>Até o dia</span><input id="fDiaFim" type="text" inputmode="numeric" value="31" /></label>
       <label class="campo full"><span>Competência</span><select id="fCompetencia">
@@ -403,7 +403,7 @@ function renderFontes() {
     <div class="regra-entrada ${r.ativo ? "" : "off"}">
       <div>
         <div class="regra-nome">${marcar(r.nome)}${f ? `<span class="selo-reg ${f.regularidade}">${REGULARIDADE[f.regularidade]}</span>` : ""}</div>
-        <div class="regra-cond">Descrição ${esc(OPERADORES[r.operador] || r.operador)} <span class="termo">“${marcar(r.termo)}”</span>
+        <div class="regra-cond">Descrição ${frasesCondicoes(r.condicoes)}
           · dias ${r.diaInicio}–${r.diaFim} · competência: <b>${esc(COMPETENCIAS[String(r.deslocamentoMeses)])}</b></div>
         ${presenca ? `<div class="en-meses" aria-label="Meses com entrada">${presenca}</div>` : ""}
       </div>
@@ -440,7 +440,8 @@ let previaTimer = null, previaSeq = 0;
 function dadosDoModal() {
   return {
     nome:el("fNome").value.trim(), operador:el("fOperador").value,
-    termo:el("fTermo").value.trim(), ativo:el("fAtivo").checked,
+    termo:(lerCondicoes(el("fCondicoes")).find(c => c.operador !== "nao_contem") || {}).termo || "",
+    condicoes:lerCondicoes(el("fCondicoes")), ativo:el("fAtivo").checked,
     diaInicio:Number(el("fDiaInicio").value), diaFim:Number(el("fDiaFim").value),
     deslocamentoMeses:Number(el("fCompetencia").value),
   };
@@ -475,7 +476,9 @@ function abrirModal(regra = null, pre = {}) {
   el("btnSalvar").textContent = regra ? "Salvar" : "Criar regra";
   el("fNome").value = regra?.nome || pre.nome || "";
   el("fOperador").value = regra?.operador || "contem";
-  el("fTermo").value = regra?.termo || pre.termo || "";
+  montarCondicoes(el("fCondicoes"),
+    regra?.condicoes ?? [{ termo: pre.termo || "", operador: "contem" }],
+    { aoMudar: () => { clearTimeout(previaTimer); previaTimer = setTimeout(atualizarPrevia, 250); }, placeholder: "ex.: PAGAMENTO SALARIO" });
   el("fDiaInicio").value = regra?.diaInicio ?? pre.diaInicio ?? 1;
   el("fDiaFim").value = regra?.diaFim ?? pre.diaFim ?? 31;
   el("fCompetencia").value = String(regra?.deslocamentoMeses ?? 0);
@@ -602,7 +605,7 @@ function ligar() {
     const r = DADOS.regras.find(x => x.id === alvo.dataset.alterna);
     try {
       await pedir(`/extrato/entradas/regras/${encodeURIComponent(r.id)}`, "PUT", {
-        nome:r.nome, operador:r.operador, termo:r.termo, ativo:alvo.checked,
+        nome:r.nome, operador:r.operador, termo:r.termo, condicoes:r.condicoes, ativo:alvo.checked,
         diaInicio:r.diaInicio, diaFim:r.diaFim, deslocamentoMeses:r.deslocamentoMeses,
       });
       await recarregar();

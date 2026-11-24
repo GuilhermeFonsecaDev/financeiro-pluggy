@@ -137,19 +137,14 @@
           <option value="categoria_original">A categoria da Pluggy</option>
         </select></label>
 
-      <label class="campo"><span>Condição</span>
+      <label class="campo" hidden style="display:none"><span>Condição</span>
         <select id="fOperador">
           <option value="contem">contém</option>
           <option value="comeca_com">começa com</option>
           <option value="igual">é igual a</option>
         </select></label>
 
-      <div class="campo full">
-        <div class="termos-topo"><span>Termos</span></div>
-        <div class="termos-lista" id="fTermos"></div>
-        <button type="button" class="termo-add" id="btnAddTermo" data-add-termo
-                style="margin-top:7px">+ Adicionar termo</button>
-      </div>
+      <div class="campo full"><span>Condições</span><div id="fCondicoes"></div></div>
 
       <label class="campo"><span>Valor mínimo <small>(opcional)</small></span>
         <span class="dinheiro-input"><span>R$</span><input id="fValorMin" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" /></span></label>
@@ -224,40 +219,8 @@ const textoFaixa = regra => {
   return "";
 };
 
-function criarLinhaTermo(valor = "", removivel = true) {
-  const linha = document.createElement("div");
-  linha.className = "termo-linha";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "f-termo";
-  input.placeholder = "ex.: RLRSOARES";
-  input.autocomplete = "off";
-  input.setAttribute("aria-label", "Termo da regra");
-  input.value = valor;
-  linha.appendChild(input);
-  if (removivel) {
-    const remover = document.createElement("button");
-    remover.type = "button";
-    remover.className = "termo-remover";
-    remover.dataset.removeTermo = "";
-    remover.title = "Remover termo";
-    remover.setAttribute("aria-label", "Remover termo");
-    remover.textContent = "×";
-    linha.appendChild(remover);
-  }
-  el("fTermos").appendChild(linha);
-  return input;
-}
-
-function preencherTermos(valores = [""]) {
-  const termos = valores.filter(v => v != null);
-  el("fTermos").innerHTML = "";
-  (termos.length ? termos : [""]).forEach(valor => criarLinhaTermo(valor, true));
-}
-
 function termosAtuais() {
-  return [...document.querySelectorAll(".f-termo")]
-    .map(input => input.value.trim()).filter(Boolean);
+  return lerCondicoes(el("fCondicoes")).map(c => c.termo);
 }
 
 const normal = t => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -387,8 +350,7 @@ function render() {
         <div>
           <div class="regra-nome">${marcar(r.nome)}</div>
           <div class="regra-cond">Quando <b>${esc(CAMPOS[r.campo] || r.campo)}</b>
-            ${esc(OPERADORES[r.operador] || r.operador)}
-            <span class="termo">${termos}</span>${faixa ? ` · valor ${esc(faixa)}` : ""}</div>
+            ${frasesCondicoes(r.condicoes)}${faixa ? ` · valor ${esc(faixa)}` : ""}</div>
           <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${cat}${renomeia}${fora}</div>
         </div>
         <span class="afeta">${r.afetadas} transaç${r.afetadas === 1 ? "ão" : "ões"}</span>
@@ -411,7 +373,12 @@ function abrirModal(regra = null, pre = {}) {
   el("fNome").value = regra?.nome ?? pre.nome ?? "";
   el("fCampo").value = regra?.campo ?? pre.campo ?? "descricao";
   el("fOperador").value = regra?.operador ?? pre.operador ?? "contem";
-  preencherTermos(regra?.termos ?? pre.termos ?? [regra?.termo ?? pre.termo ?? ""]);
+  // Regras antigas: um operador para todos os termos, ligados por OU.
+  const opAntigo = regra?.operador ?? pre.operador ?? "contem";
+  montarCondicoes(el("fCondicoes"),
+    regra?.condicoes ?? pre.condicoes ?? (regra?.termos ?? pre.termos ?? [regra?.termo ?? pre.termo ?? ""])
+      .map(termo => ({ termo, operador: opAntigo })),
+    { aoMudar: agendarPrevia, placeholder: "ex.: RLRSOARES" });
   el("fValorMin").value = fmtValorRegra(regra?.valorMin ?? pre.valorMin ?? null);
   el("fValorMax").value = fmtValorRegra(regra?.valorMax ?? pre.valorMax ?? null);
   el("fDescricaoNova").value = regra?.descricaoNova ?? pre.descricaoNova ?? "";
@@ -421,7 +388,7 @@ function abrirModal(regra = null, pre = {}) {
   el("fAtivo").checked = regra ? regra.ativo : true;
 
   el("modal").hidden = false;
-  el("fTermos").querySelector("input")?.focus();
+  el("fCondicoes").querySelector("input")?.focus();
   atualizarPrevia();
 }
 
@@ -435,6 +402,7 @@ function dadosDoModal() {
     operador: el("fOperador").value,
     termo: termos[0] || "",
     termos,
+    condicoes: lerCondicoes(el("fCondicoes")),
     valorMin: lerValorRegra(el("fValorMin").value),
     valorMax: lerValorRegra(el("fValorMax").value),
     descricaoNova: el("fDescricaoNova").value.trim() || null,
@@ -565,14 +533,6 @@ function ligar() {
   caixa.addEventListener("click", e => {
     if (e.target.closest("[data-remove-termo]")) setTimeout(agendarPrevia);
   });
-  el("btnAddTermo").addEventListener("click", () => criarLinhaTermo("", true).focus());
-  el("fTermos").addEventListener("click", e => {
-    const remover = e.target.closest("[data-remove-termo]");
-    // Sem termo nenhum a regra nao casa com nada, entao a ultima linha fica.
-    if (remover && el("fTermos").querySelectorAll(".termo-linha").length > 1) {
-      remover.closest(".termo-linha")?.remove();
-    }
-  });
   el("btnFechar").addEventListener("click", fecharModal);
   el("btnCancelar").addEventListener("click", fecharModal);
   el("btnSalvar").addEventListener("click", salvar);
@@ -589,6 +549,7 @@ function ligar() {
       await pedir(`/extrato/regras/${encodeURIComponent(r.id)}`, "PUT", {
         nome: r.nome, campo: r.campo, operador: r.operador, termo: r.termo,
         termos: r.termos,
+        condicoes: r.condicoes,
         valorMin: r.valorMin, valorMax: r.valorMax,
         categoriaId: r.categoriaId, descricaoNova: r.descricaoNova,
         ignorarCalculos: r.ignorarCalculos,
@@ -619,7 +580,7 @@ function ligar() {
     if (b.dataset.acao === "editar") return abrirModal(r);
     if (b.dataset.acao === "duplicar") {
       return abrirModal(null, { nome: `${r.nome} (cópia)`, campo:r.campo,
-        operador:r.operador, termo:r.termo, termos:r.termos,
+        operador:r.operador, termo:r.termo, termos:r.termos, condicoes:r.condicoes,
         valorMin:r.valorMin, valorMax:r.valorMax,
         categoriaId:r.categoriaId, descricaoNova:r.descricaoNova,
         ignorar:r.ignorarCalculos });
@@ -654,7 +615,7 @@ function guardarUrl() {
     // título de grupo (também escolhível) e subcategorias com o emoji.
     el("fCategoria").innerHTML = ['<option value="">Não alterar a categoria</option>']
       .concat(CATEGORIAS.map(c =>
-        `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${c.paiId ? `${esc(c.emoji)} ` : ""}${esc(c.nome)}</option>`)).join("");
+        `<option value="${esc(c.id)}" ${c.paiId ? "" : 'data-grupo="1"'}>${esc(emojiTexto(c))}${esc(c.nome)}</option>`)).join("");
     selectComBusca(el("fCategoria"), { placeholder: "Buscar categoria…" });
     await recarregar();
 
